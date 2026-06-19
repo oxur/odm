@@ -1,4 +1,13 @@
-# odm — ODD Document Manager
+# odm
+
+[![][build-badge]][build]
+[![][crate-badge]][crate]
+[![][tag-badge]][tag]
+[![][docs-badge]][docs]
+
+[![][logo]][logo-large]
+
+*The Odd Document Manager*
 
 `odm` is a command-line tool for managing design documents (ODDs — "Oxur Design
 Documents", or any design-doc workflow) with YAML frontmatter, a state
@@ -93,3 +102,16 @@ The workspace targets the stable toolchain (edition 2021, `max_width = 100`).
 ## License
 
 Licensed under either of Apache License, Version 2.0 or MIT license at your option.
+
+[//]: ---Named-Links---
+
+[logo]: assets/images/odim-x250.png
+[logo-large]: resources/images/odim-x1254.png
+[build]: https://github.com/oxur/odm/actions/workflows/ci.yml
+[build-badge]: https://github.com/oxur/odm/actions/workflows/ci.yml/badge.svg
+[crate]: https://crates.io/crates/oxur-odm
+[crate-badge]: https://img.shields.io/crates/v/oxur-odm.svg
+[docs]: https://docs.rs/oxur-odm/
+[docs-badge]: https://img.shields.io/badge/rust-documentation-blue.svg
+[tag-badge]: https://img.shields.io/github/tag/oxur/odm.svg
+[tag]: https://github.com/oxur/odm/tags
