@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/oxur-odm",
+]
+
+# Workspace-wide dependencies (shared versions)
+[workspace.dependencies]
+confyg = { version = "0.3" }
+clap = { version = "4.5", features = ["derive", "cargo"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2.5"
+regex = "1.10"
+sha2 = "0.10"
+colored = "2.1"
+unicode-normalization = "0.1"
+glob = "0.3"
+uuid = { version = "1.10", features = ["v4"] }
+tabled = "0.17"
+
+# odm depends on oxur-cli only for library UI helpers (table styling, colored
+# output). default-features = false keeps the heavy `binary` feature deps
+# (oxur-lang, oxur-comp, oxur-repl, clap, tokio, reedline, ...) out of the tree.
+oxur-cli = { version = "0.2.1", default-features = false }
+
+# Dev/test dependencies
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.10"
+proptest = "1.4"
+cargo-llvm-cov = "0.6"
+serial_test = "3.2"
+
+# Package metadata shared by all crates
+[workspace.package]
+version = "0.3.5"
+edition = "2021"
+authors = ["Duncan McGreggor <duncan@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/oxur/odm"

@@ -1,0 +1,14 @@
+# ODM Configuration for the odm repository
+# odm dogfoods itself to manage its own design documents.
+
+# Documentation directory
+docs_directory = "./docs"
+
+# Development documents directory
+dev_directory = "./docs/dev"
+
+# Preserve state directory structure in dustbin
+preserve_dustbin_structure = true
+
+# Automatically stage changes with git
+auto_stage_git = true

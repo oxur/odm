@@ -1,0 +1,31 @@
+# Rust
+/target/
+/*/target/
+**/*.rs.bk
+*.pdb
+# Cargo.lock IS committed: odm is a binary application (reproducible builds).
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing / coverage artifacts
+.coverage/
+*lcov*.info
+
+# OS
+Thumbs.db
+
+# Binaries
+/bin/
+.crates*
+
+# AI
+.claude
+
+# Misc
+/workbench
