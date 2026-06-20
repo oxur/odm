@@ -230,6 +230,7 @@ struct PartialConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
 
@@ -328,6 +329,7 @@ preserve_dustbin_structure = false
     }
 
     #[test]
+    #[serial]
     fn test_get_user_config_dir_with_xdg() {
         // Save original env vars
         let original_xdg = env::var("XDG_CONFIG_HOME").ok();
@@ -345,6 +347,7 @@ preserve_dustbin_structure = false
     }
 
     #[test]
+    #[serial]
     fn test_get_user_config_dir_with_home() {
         // Save original env vars
         let original_xdg = env::var("XDG_CONFIG_HOME").ok();
