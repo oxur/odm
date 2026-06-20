@@ -9,7 +9,7 @@
 > report) into the new repo alongside this file.
 >
 > _Authored 2026-06-19 by Claude (CDC/team-support thread) with Duncan, at the
-> close of a long pos-loyalty-svc session where the failure this tool fixes
+> close of a long project-x session where the failure this tool fixes
 > surfaced in the worst way._
 
 ---
@@ -36,7 +36,7 @@ Rust libraries already in hand: **petgraph** for the dependency DAG.
 
 ## 2. Why now — the failure this fixes
 
-This was born from a concrete, expensive failure. Over a long pos-loyalty-svc
+This was born from a concrete, expensive failure. Over a long project-x
 session, work was driven slice-by-slice with disciplined per-slice rigor — yet
 the *program-level* vision was lost and deployed state drifted invisibly. The
 worked example: **production had a Cloud SQL DB provisioned and migrated, but
@@ -220,7 +220,7 @@ Run the framework's own SDLC on `odm` itself (dogfood from line one):
   actualization.
 - This bootstrap.
 
-_After this is handed over, the original session returns to the pos-loyalty-svc
+_After this is handed over, the original session returns to the project-x
 plan to find the best make-do solution under current (tool-less) limitations —
 fully aware of the blind spots `odm` will eventually close: the prod-DB 503, the
 public-IP exposure, the staging/Phase-8.5/Phase-10 sequencing, and the env-parity

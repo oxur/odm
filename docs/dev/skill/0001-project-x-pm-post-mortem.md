@@ -1,9 +1,9 @@
-# PM Post-Mortem — pos-loyalty-svc: what went wrong, what to do instead
+# PM Post-Mortem — project-x: what went wrong, what to do instead
 
 > Fine-grained lessons-learned for two consumers: (1) the new **PM skill**
 > (LLM-collaboration planning conventions), and (2) the **`odm` SHOULD/SHOULDN'T
 > + GOOD/BAD example corpus**. Compiled 2026-06-19 by Claude (CDC/team-support
-> thread) from a long pos-loyalty-svc session. Companion to
+> thread) from a long project-x session. Companion to
 > `planning-system-research.md` and `odm-session-bootstrap.md`.
 >
 > **Stance:** this is a blameless engineering post-mortem. The project shipped a
