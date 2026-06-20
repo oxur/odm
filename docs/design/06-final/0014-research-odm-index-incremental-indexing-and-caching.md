@@ -6,7 +6,7 @@ component: All
 tags: [research, index, cache, incremental, change-detection, performance]
 created: 2026-06-20
 updated: 2026-06-20
-state: Draft
+state: Final
 supersedes: null
 superseded-by: null
 version: 1.0
