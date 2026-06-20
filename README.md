@@ -7,6 +7,8 @@
 
 [![][logo]][logo-large]
 
+<sup><em>Odim, the god of odd</em></sup>
+
 *The Odd Document Manager*
 
 `odm` is a command-line tool for managing design documents (ODDs — "Oxur Design
@@ -106,7 +108,7 @@ Licensed under either of Apache License, Version 2.0 or MIT license at your opti
 [//]: ---Named-Links---
 
 [logo]: assets/images/odim-x250.png
-[logo-large]: resources/images/odim-x1254.png
+[logo-large]: assets/images/odim-x1254.png
 [build]: https://github.com/oxur/odm/actions/workflows/ci.yml
 [build-badge]: https://github.com/oxur/odm/actions/workflows/ci.yml/badge.svg
 [crate]: https://crates.io/crates/oxur-odm

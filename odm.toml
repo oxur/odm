@@ -2,7 +2,7 @@
 # odm dogfoods itself to manage its own design documents.
 
 # Documentation directory
-docs_directory = "./docs"
+docs_directory = "./docs/design"
 
 # Development documents directory
 dev_directory = "./docs/dev"
