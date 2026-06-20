@@ -9,7 +9,7 @@ updated: 2026-06-20
 state: Final
 supersedes: null
 superseded-by: null
-version: 1.0
+version: 1.1
 ---
 
 # odm — Project Definition (v-major rebuild)
@@ -32,7 +32,7 @@ awareness from `odm orient` alone.
 
 ## Confirmed decisions (2026-06-19)
 
-1. **One unified node graph.** Work nodes (project → arc → slice → step) and
+1. **One unified node graph.** Work nodes (project → arc → slice) and
    document nodes (ODD/ADR/RFC) share ONE substrate — same stable-ID, typed-edge,
    and multi-gate-status machinery — differing only by `type` and gate-set.
    "Self-documenting AND self-tracking" then falls out of one mechanism.
@@ -43,7 +43,7 @@ awareness from `odm orient` alone.
 
 ## In scope
 
-- Hierarchy CRUD (project/arc/slice/step) + document-node CRUD, one node model.
+- Hierarchy CRUD (project/arc/slice) + document-node CRUD, one node model.
 - **Stable opaque IDs**, never reused/renumbered; human number/name is metadata.
 - **Typed edges** as first-class data: `depends_on`, `verifies`, `supersedes`,
   `consumes`, `part_of`, `blocked_by` → petgraph DAG.
@@ -59,6 +59,10 @@ awareness from `odm orient` alone.
   errors-name-the-fix, `check` as pre-commit/CI gate, idempotent describe-or-create,
   `--dry-run`/`--yes`, bare `odm` orients.
 - **Migrate importer** from the legacy on-disk format.
+- **Project-management skill overhaul** (`billosys/ai-engineering`) — extract the
+  framework's mechanical PM layer into a standalone skill of `odm`-command mappings
+  with BAD/DON'T-DO counter-examples; the framework references and defers to it.
+  (Added 1.1; see ODD-0013 §11.)
 
 ## Non-goals
 
@@ -80,6 +84,7 @@ Dependency / publish order top-to-bottom:
 | `odm-graph` | Pure DAG engine over abstract node-ids: typed edges, topo-sort, Kahn cycle detection + tears, ready/blocked/path/staleness queries. petgraph lives here. Minimal domain knowledge. |
 | `odm-core` | Domain model: node types, stable-ID allocation, front-matter schema (serde), edge semantics, multi-gate status vectors, desired-state-fact format, link-integrity. Depends on `odm-graph`. The heart. |
 | `odm-store` | Persistence: markdown/frontmatter parse+emit, file/dir layout, git integration, atomic writes, `odm.toml` config. "Files are the source." Reuses legacy git/config/filename/normalize/extract. |
+| `odm-index` | Incremental index/cache mini-infra: stat-based change detection, DB-free persisted index, filter/sort acceleration. No DB, no FTS. Research-gated (ODD-0014). |
 | `odm-reconcile` | Desired-vs-actual: probe trait, shell/freeze-harness probes, drift reporting, scheduled diff. Reuses the legacy checksum/mtime detector as one probe. |
 | `odm-migrate` | Legacy importer (number/dir ODDs → new model). Depends on `odm-store` + `odm-core`. |
 | `odm-cli` | clap surface: question-named commands, `--json`, errors-as-affordances, output (oxur-cli/tabled). Depends on all above. |
@@ -102,3 +107,19 @@ deleted = number-as-identity + reuse, directory-as-truth, dustbin machinery.
 4. Arc/slice breakdown — MVP arc: hierarchy + stable IDs + DAG + next/blocked/check
    + orient/rollup. Reconciler + gate-probes + migrate as following arcs.
 5. Build with a ledger; self-host in `odm` once the MVP can.
+
+## Version history
+
+- **1.1 (2026-06-20)** — Scope/decisions refined during design (ODD-0013):
+  - **Added workstream:** project-management skill overhaul in
+    `billosys/ai-engineering` (framework's mechanical PM layer → a standalone skill
+    deferring to `odm` commands; ODD-0013 §11).
+  - **Removed the `step` node** — hierarchy is project → arc → slice; drill-down
+    funnels to breadth, not depth.
+  - **Added the `odm-index` crate** — incremental index/cache mini-infra (no DB, no
+    FTS); research-gated via ODD-0014.
+  - Locked: ULID via `ulid`; `nodes/YYYY/MM/<ULID>.md` creation-time layout;
+    fully-configurable per-type gate-sets; git via `gix`; `supersedes` carries
+    `obsoletes`/`updates`; `provenance` split into `origin` + `reserved`;
+    decomposition/recomposition integrity adopted; `blocked_by` withholds from `next`.
+- **1.0 (2026-06-19/20)** — Initial agreed project definition.
