@@ -14,11 +14,27 @@ monorepo so it can be used independently by any project.
 
 ## Workspace Structure
 
-Cargo workspace (resolver v2, edition 2021, `max_width = 100`):
+Cargo workspace (resolver v2, edition 2024, MSRV 1.85, `max_width = 100`).
+Member crates, in dependency / publish order (see ODD-0013 §8):
 
 | Crate | Binary | Purpose |
 |-------|--------|---------|
-| **oxur-odm** | `odm` | The document manager: model, index, state machine, config, CLI |
+| **odm-graph** | — | Pure DAG/tree engine over abstract ids: edges, topo-sort, cycles, readiness. |
+| **odm-core** | — | Domain model: node types, ULID identity, frontmatter schema, edge & gate semantics. |
+| **odm-store** | — | Persistence: `nodes/YYYY/MM/<ULID>.md`, atomic writes, git (`gix`), `odm.toml`. |
+| **odm-cli** | — | clap command surface, `--json`, output (oxur-cli / tabled). |
+| **oxur-odm** | `odm` | Umbrella: publishes the `odm` binary; re-exports the library API. |
+
+> **v1.0.0 rebuild in progress.** These crates are currently stubs (the `odm`
+> binary reports `--version` only); real behavior lands slice by slice under
+> `docs/design-v1.0.0/`. The pre-rebuild crate is preserved at
+> `legacy/oxur-odm` (package `oxur-odm-legacy`), excluded from the workspace and
+> kept as the harvest source — do not delete it. `odm-index` / `odm-reconcile`
+> / `odm-migrate` are deferred to the arcs that need them (not yet created).
+
+Shared dependency versions live in `[workspace.dependencies]`; crate manifests
+reference them with `<dep>.workspace = true` (no version literals). Lints are
+centralized in `[workspace.lints]` and inherited via `[lints] workspace = true`.
 
 The only external Oxur dependency is **`oxur-cli`** (crates.io, ≥0.2.1), used
 with `default-features = false` for its library UI helpers only
@@ -49,9 +65,10 @@ make check          # build + lint + test
 - **Errors** carry source position; parse/build errors include `Position`.
 - **CLI output** uses `oxur_cli::common::output::{success, error, info, warning}`
   and `oxur_cli::table` for tables.
-- **Testing:** 95%+ coverage target; `proptest` for invariants (regressions in
-  `crates/oxur-odm/proptest-regressions/`); integration tests in
-  `crates/oxur-odm/tests/`. Test naming: `test_<function>_<scenario>_<expectation>`.
+- **Testing:** 95%+ coverage target; `proptest` for invariants (per-crate
+  `proptest-regressions/`); integration tests in each crate's `tests/`. Test
+  naming: `test_<function>_<scenario>_<expectation>`. Tests that mutate process
+  globals (env vars, cwd) must be `#[serial]` (`serial_test`).
 - **Cargo.lock is committed** — `odm` is a binary application.
 
 ## Rust Skill Guidelines

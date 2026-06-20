@@ -1,0 +1,12 @@
+[package]
+name = "odm-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Domain model for odm: node types, ULID identity, schema (stub; Arc 01 slices 02-03)"
+
+[lints]
+workspace = true

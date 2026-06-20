@@ -1,0 +1,12 @@
+[package]
+name = "odm-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Persistence for odm: layout, atomic writes, git, scan/load (stub; Arc 01 slice 04)"
+
+[lints]
+workspace = true

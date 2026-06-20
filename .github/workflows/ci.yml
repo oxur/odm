@@ -10,17 +10,18 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
-    name: Test
+  fmt:
+    name: Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: make test
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-  lint:
-    name: Linting
+  clippy:
+    name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,4 +29,13 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: make lint
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-features

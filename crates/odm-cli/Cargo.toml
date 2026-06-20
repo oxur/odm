@@ -1,0 +1,16 @@
+[package]
+name = "odm-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line surface for odm (stub; commands land in Arc 01 slices 05-06)"
+
+[dependencies]
+clap.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "odm-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure DAG/tree engine over abstract ids for odm (stub; Arc 02)"
+
+[lints]
+workspace = true

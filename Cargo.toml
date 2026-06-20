@@ -1,46 +1,68 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/oxur-odm",
+    "crates/odm-cli",
+    "crates/odm-core",
+    "crates/odm-store",
+    "crates/odm-graph",
+]
+# The pre-rebuild crate is preserved as the harvest source (see legacy/oxur-odm).
+# It is not a workspace member and is not built by CI.
+exclude = [
     "legacy/oxur-odm",
 ]
 
-# Workspace-wide dependencies (shared versions)
+# Package metadata shared by all member crates (inherited via `*.workspace = true`).
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Duncan McGreggor <duncan@example.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/oxur/odm"
+
+# Shared dependency versions. Member crates reference these with `<dep>.workspace
+# = true`; no version literals live in crate manifests. Some entries are declared
+# here for the v1.0.0 rebuild but are not yet referenced by any crate (slices
+# 02-06 wire them in) — declaring them now fixes one version per dependency.
 [workspace.dependencies]
-confyg = { version = "0.3" }
-clap = { version = "4.5", features = ["derive", "cargo"] }
+# Core / serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
 toml = "0.8"
+# Errors: thiserror in libraries, anyhow in the binary
 anyhow = "1.0"
 thiserror = "1.0"
+# Domain / infrastructure
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2.5"
-regex = "1.10"
 sha2 = "0.10"
-colored = "2.1"
-unicode-normalization = "0.1"
-glob = "0.3"
-uuid = { version = "1.10", features = ["v4"] }
+petgraph = "0.6"   # odm-graph: DAG/tree engine
+ulid = "1.1"       # odm-core: stable identity
+gix = "0.66"       # odm-store: pure-Rust git (Q-2)
+confyg = "0.3"     # odm-store: config
+# CLI / output
+clap = { version = "4.5", features = ["derive", "cargo"] }
 tabled = "0.17"
-
+colored = "2.1"
 # odm depends on oxur-cli only for library UI helpers (table styling, colored
-# output). default-features = false keeps the heavy `binary` feature deps
-# (oxur-lang, oxur-comp, oxur-repl, clap, tokio, reedline, ...) out of the tree.
+# output). default-features = false keeps the heavy `binary` feature deps out.
 oxur-cli = { version = "0.2.1", default-features = false }
 
-# Dev/test dependencies
+# Dev / test dependencies
 assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.10"
 proptest = "1.4"
-cargo-llvm-cov = "0.6"
 serial_test = "3.2"
+cargo-llvm-cov = "0.6"
 
-# Package metadata shared by all crates
-[workspace.package]
-version = "0.3.5"
-edition = "2021"
-authors = ["Duncan McGreggor <duncan@example.com>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/oxur/odm"
+# Centralized lints, inherited by every crate via `[lints] workspace = true`.
+# Note: `warnings = "deny"` is intentionally NOT set here (rust-guidelines AP-01:
+# blanket deny(warnings) in source breaks downstream/future builds). The
+# "-D warnings" enforcement lives in CI and the Makefile (`make lint`), the
+# guideline-blessed location, which ledger row F-3 verifies.
+[workspace.lints]
+rust.unsafe_code = "deny"
+clippy.all = "deny"

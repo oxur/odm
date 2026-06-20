@@ -19,9 +19,33 @@ It was originally developed inside the [Oxur](https://github.com/oxur/oxur)
 language project and now lives on its own so any project can adopt the same
 design-doc workflow independently.
 
-- **Binary:** `odm`
-- **Library:** `odm` (crate `oxur-odm` on crates.io) — the document model,
-  index, state machine, and config are usable programmatically via `use odm::…`.
+- **Binary:** `odm` (published by the `oxur-odm` umbrella crate).
+- **Library:** the document model, store, and graph engine are split across the
+  workspace crates below.
+
+> **Status — v1.0.0 rebuild in progress.** `odm` is being rebuilt from a single
+> crate into the multi-crate workspace described below. The workspace skeleton is
+> in place (the `odm` binary currently reports `--version` only); the command
+> examples further down describe the target / legacy behavior and are being
+> reimplemented slice by slice (see `docs/design-v1.0.0/`). The pre-rebuild
+> implementation is preserved under [`legacy/oxur-odm`](legacy/oxur-odm) as the
+> harvest source.
+
+## Workspace layout
+
+`odm` is a Cargo workspace (resolver 2, edition 2024, `max_width = 100`). Crates,
+in dependency / publish order:
+
+| Crate | Binary | Purpose |
+|-------|--------|---------|
+| **odm-graph** | — | Pure DAG/tree engine over abstract ids (edges, topo-sort, cycles, readiness). |
+| **odm-core** | — | Domain model: node types, ULID identity, frontmatter schema, edge & gate semantics. |
+| **odm-store** | — | Persistence: `nodes/YYYY/MM/<ULID>.md` layout, atomic writes, git (`gix`), `odm.toml`. |
+| **odm-cli** | — | The clap command surface (`--json`, output via oxur-cli/tabled). |
+| **oxur-odm** | `odm` | Umbrella: publishes the `odm` binary and re-exports the library API. |
+
+The pre-rebuild crate lives at `legacy/oxur-odm` (package `oxur-odm-legacy`); it
+is excluded from the workspace and kept only for harvesting.
 
 ## Installation
 
@@ -64,7 +88,8 @@ odm update-index
 
 A full command reference (all subcommands, flags, and aliases), the document
 state lifecycle, frontmatter format, and workflow examples live in the
-package README: [`crates/oxur-odm/README.md`](crates/oxur-odm/README.md).
+legacy package README: [`legacy/oxur-odm/README.md`](legacy/oxur-odm/README.md)
+(being migrated into the new crates).
 
 ## Configuration
 
@@ -99,7 +124,8 @@ make coverage     # coverage summary (cargo llvm-cov)
 make check        # build + lint + test
 ```
 
-The workspace targets the stable toolchain (edition 2021, `max_width = 100`).
+The workspace targets the stable toolchain (edition 2024, MSRV 1.85,
+`max_width = 100`).
 
 ## License
 

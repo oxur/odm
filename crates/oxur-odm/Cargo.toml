@@ -1,0 +1,19 @@
+[package]
+name = "oxur-odm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The odm umbrella crate: publishes the `odm` binary"
+
+[[bin]]
+name = "odm"
+path = "src/main.rs"
+
+[dependencies]
+odm-cli = { path = "../odm-cli" }
+
+[lints]
+workspace = true
