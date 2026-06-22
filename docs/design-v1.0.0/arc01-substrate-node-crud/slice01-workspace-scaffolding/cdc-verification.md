@@ -58,3 +58,11 @@ if green, the slice is fully CDC-closed and slice02 (identity core) may open.
 Nothing is on `main`; no risk while this completes.
 
 CDC: planning thread, 2026-06-20. Iterations used: 1.
+
+## Closure update (2026-06-22)
+
+**CI is green.** The previously-attested compile/test rows (F-1 build, F-3 clippy,
+F-4 fmt, F-5 test, F-9 binary-run, F-12 coverage) are now **reproduced** by an
+independent CI run. **Slice 01 is fully CDC-closed.** (CI-green taken on operator
+confirmation; CDC did not read the CI log directly — the reproduction is CI's, not
+a CDC re-run. Evidence level: `reproduced` via CI.)

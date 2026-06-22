@@ -55,3 +55,11 @@ but it is consciously built on attested (not reproduced) evidence until CI flips
 slices 01–02. The discipline makes that visible rather than silent.
 
 CDC: planning thread, 2026-06-22. Iterations used: 1.
+
+## Closure update (2026-06-22)
+
+**CI is green.** The previously-attested cargo rows (G-1/2/3/6/7/8/9/11/13 —
+proptests, classification, clippy, 100% coverage) are now **reproduced** by an
+independent CI run. **Slice 02 is fully CDC-closed**, and slice 03 opens with its
+dependency on slice 02 now satisfied at `reproduced` (no longer soft-satisfied).
+(CI-green taken on operator confirmation; CDC did not read the CI log directly.)

@@ -9,7 +9,7 @@ updated: 2026-06-20
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.5
+version: 1.6
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -98,6 +98,7 @@ edges:
   blocked_by: []
   verifies: [01J9...DOC]
   consumes: [01J9...OUT]
+  affects: []                        # decision/doc → the docs it touches (0001-C5)
   supersedes: null                   # or { node: 01J9...OLD, kind: updates } — kind ∈ {obsoletes (replace), updates (amend)}; reverse (superseded_by) derived
   tears: []                          # explicitly-broken dependency edges (see §4.3)
 status:                              # multi-gate vector; absent gate = not reached
@@ -111,7 +112,9 @@ desired_facts:                       # for the reconciler (§5)
 ```
 
 Frontmatter is **emitted in a canonical field order** (round-trip stable;
-`parse ∘ emit = identity` is a proptest invariant). Unknown keys are preserved,
+`parse ∘ emit = identity` is a proptest invariant) — including the edge sub-keys in
+the order shown above (`part_of, depends_on, blocked_by, verifies, consumes,
+affects, supersedes, tears`), which §3's table mirrors. Unknown keys are preserved,
 not dropped (forward-compat).
 
 ## 3. Edges
@@ -125,8 +128,8 @@ never stored, so there is exactly one place to edit.
 | `part_of` | containment; single parent | the **hierarchy tree** |
 | `depends_on` | needs target satisfied before this is ready | the **ordering DAG** |
 | `blocked_by` | hard external block, not a scope dependency; **withholds from `next`** | ordering gate |
-| `consumes` | uses a concrete output/artifact of target | ordering DAG |
 | `verifies` | this node (often a doc/test) verifies target | traceability |
+| `consumes` | uses a concrete output/artifact of target | ordering DAG |
 | `affects` | a decision/doc affects target docs; powers the stale-doc-vs-decision check (0001-C5) | traceability |
 | `supersedes` | lineage; carries `kind: obsoletes` (replace) or `updates` (amend); old node stays | lineage chain |
 | `tears` | a `depends_on` we have *deliberately* assumed (cycle break) | annotation |
