@@ -3,6 +3,7 @@
 use core::fmt;
 use core::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ulid::Ulid;
@@ -42,6 +43,18 @@ impl Id {
     #[must_use]
     pub fn new() -> Self {
         Self(Ulid::new())
+    }
+
+    /// The creation time encoded in the ULID, as a UTC timestamp.
+    ///
+    /// A ULID embeds the millisecond at which it was minted, so this needs no
+    /// stored field. The store uses it to derive a node's `nodes/YYYY/MM/` path
+    /// from the id alone (the path is a pure function of the id).
+    #[must_use]
+    pub fn created_at(&self) -> DateTime<Utc> {
+        // A ULID's 48-bit millisecond timestamp is always within chrono's
+        // representable range; the epoch fallback keeps this total (no panic).
+        DateTime::from_timestamp_millis(self.0.timestamp_ms() as i64).unwrap_or_default()
     }
 }
 

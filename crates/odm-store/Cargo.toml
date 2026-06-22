@@ -8,5 +8,18 @@ license.workspace = true
 repository.workspace = true
 description = "Persistence for odm: layout, atomic writes, git, scan/load (stub; Arc 01 slice 04)"
 
+[dependencies]
+odm-core = { path = "../odm-core" }
+gix.workspace = true
+confyg.workspace = true
+walkdir.workspace = true
+chrono.workspace = true
+serde = { workspace = true }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serial_test.workspace = true
+
 [lints]
 workspace = true

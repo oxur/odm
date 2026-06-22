@@ -1,13 +1,31 @@
-//! `odm-store` — persistence for odm.
+//! `odm-store` — persistence for odm: the node store is the source of truth.
 //!
-//! The `nodes/YYYY/MM/<ULID>.md` layout, atomic writes, git integration (via
-//! `gix`), `odm.toml`, and scan/load live here. This is a stub for the v1.0.0
-//! workspace skeleton (slice 01); the store lands in slice 04.
+//! Slice 04 implements:
+//!
+//! - [`layout`] — the `nodes/YYYY/MM/<ULID>.md` path, a pure function of the id
+//!   (so files never move on retitle/reparent and locate-by-id is O(1)).
+//! - [`atomic`] — crash-safe atomic writes (temp + fsync + rename + dir-fsync).
+//! - [`Store`] — persist a [`Document`](odm_core::frontmatter::Document) to its
+//!   id-derived path and load nodes back (single or full scan); self-heals a
+//!   missing `nodes/` directory.
+//! - [`git`] — `gix`-based commit/status (pure Rust, no shelling out).
+//! - [`StoreConfig`] — `odm.toml` via a layered search.
+//!
+//! The incremental index/cache (`odm-index`) is deliberately out of scope here;
+//! this slice full-scans. Edge semantics, CRUD commands, and `check` arrive in
+//! later slices.
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn smoke() {
-        assert_eq!(env!("CARGO_PKG_NAME"), "odm-store");
-    }
-}
+#![deny(missing_docs)]
+
+pub mod atomic;
+pub mod git;
+pub mod layout;
+
+mod config;
+mod error;
+mod store;
+
+pub use config::StoreConfig;
+pub use error::{Result, StoreError};
+pub use git::Repo;
+pub use store::Store;

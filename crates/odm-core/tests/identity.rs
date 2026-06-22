@@ -48,6 +48,16 @@ fn id_roundtrip_rejects_garbage() {
     );
 }
 
+#[test]
+fn id_created_at_matches_known_ulid_timestamp() {
+    use chrono::{Datelike, Timelike};
+    // 01ARZ3NDEKTSV4RRFFQ69G5FAV is the spec example: 2016-07-30T23:54:10.259Z.
+    let id = Id::from_str("01ARZ3NDEKTSV4RRFFQ69G5FAV").unwrap();
+    let t = id.created_at();
+    assert_eq!((t.year(), t.month(), t.day()), (2016, 7, 30));
+    assert_eq!((t.hour(), t.minute(), t.second()), (23, 54, 10));
+}
+
 // ----- Id: creation ordering (G-3) -----------------------------------------
 
 #[test]
