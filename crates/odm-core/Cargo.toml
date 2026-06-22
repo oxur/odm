@@ -10,3 +10,10 @@ description = "Domain model for odm: node types, ULID identity, schema (stub; Ar
 
 [lints]
 workspace = true
+
+[dependencies]
+ulid.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
