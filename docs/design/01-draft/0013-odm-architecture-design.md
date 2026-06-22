@@ -9,7 +9,7 @@ updated: 2026-06-20
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.4
+version: 1.5
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -163,6 +163,24 @@ active tears so assumed dependencies stay visible.
 An edge `A depends_on B` is **satisfied** when `B` has reached the gate named by
 the edge's `satisfied_at` (default: `B`'s type's **terminal** gate). `A` is
 **ready** when all its incoming dependency edges are satisfied.
+
+**Evidence-leveled satisfaction.** Satisfaction carries not only *whether* the
+satisfying gate was reached but *how well that is known* — the gate's evidence
+level (§5.1 / 0001-D3): `asserted < attested < reproduced < reconciled`. The graph
+**min-propagates** evidence along dependency chains: a node's effective confidence
+is the *minimum* evidence level across its transitive dependency path, so a chain
+is only as verified as its weakest link. A configurable **threshold** (default
+`reproduced`) defines trustworthy satisfaction; a dependency satisfied only *below*
+threshold is **soft-satisfied**:
+
+- `next` still lists the node but flags it (`⚠ dep X satisfied at evidence=attested`);
+- `blocked X` names the low-evidence dependency and how to raise it;
+- `check` warns on below-threshold satisfaction (and fails it in strict/CI mode).
+
+This never *blocks* proceeding on low evidence — it refuses to let the low
+confidence be *invisible*. It is the direct antidote to 0001 F2/G3 (building
+load-bearing work on a *relayed belief* — the prod-DB 503) and the internal
+counterpart of the cross-team guard in ODD-0017 §3.3.
 
 The **staleness guard**: advancing a node's gates (or editing it as "work") while
 any `depends_on` is unsatisfied emits a loud out-of-order warning (build-staleness
@@ -347,7 +365,8 @@ withholds from `next` (Q-3) · decomposition/recomposition integrity built (§4.
 Q-7) · the framework's mechanical PM layer is extracted into a standalone skill
 that defers to `odm` (§11) · evidence-level on gate transitions, an `affects` edge
 + stale-doc-vs-decision check, and a deferred re-entry predicate (from post-mortem
-0001 — D3/C5/E5).
+0001 — D3/C5/E5) · evidence-leveled satisfaction with a threshold + min-propagation
+(§4.4) — the internal counterpart of ODD-0017 §3.3.
 
 > **Terminology:** *provenance* is reserved for the **derived lineage** — git
 > history + the `supersedes` chain + gate-reached timestamps — never a stored
