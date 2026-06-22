@@ -11,13 +11,11 @@
 
 *The Odd Document Manager*
 
-`odm` is a command-line tool for managing design documents (ODDs — "Oxur Design
-Documents", or any design-doc workflow) with YAML frontmatter, a state
+`odm` is a command-line tool for managing our design documents (ODDs) --
+or any design-doc workflow, really -- with YAML frontmatter, a state
 lifecycle, git integration, and automatic indexing.
 
-It was originally developed inside the [Oxur](https://github.com/oxur/oxur)
-language project and now lives on its own so any project can adopt the same
-design-doc workflow independently.
+What's here:
 
 - **Binary:** `odm` (published by the `oxur-odm` umbrella crate).
 - **Library:** the document model, store, and graph engine are split across the
