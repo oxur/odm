@@ -3,6 +3,9 @@
 use core::fmt;
 use core::str::FromStr;
 
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 /// The type of a node — fixed at creation, never changed (a type change is
 /// modeled as supersession by a new node).
 ///
@@ -101,6 +104,20 @@ impl FromStr for NodeType {
             "note" => Ok(NodeType::Note),
             _ => Err(ParseNodeTypeError(s.to_owned())),
         }
+    }
+}
+
+// Serializes as the canonical lowercase name (`"slice"`, `"odd"`, …).
+impl Serialize for NodeType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for NodeType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
     }
 }
 

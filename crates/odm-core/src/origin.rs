@@ -3,6 +3,9 @@
 use core::fmt;
 use core::str::FromStr;
 
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 /// How a node came to exist — the planning provenance of the work, distinct
 /// from the [`reserved`](crate::Node::reserved) future-placeholder flag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -50,6 +53,20 @@ impl FromStr for Origin {
             "amendment" => Ok(Origin::Amendment),
             _ => Err(ParseOriginError(s.to_owned())),
         }
+    }
+}
+
+// Serializes as the canonical lowercase name (`"planned"`, …).
+impl Serialize for Origin {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for Origin {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
     }
 }
 

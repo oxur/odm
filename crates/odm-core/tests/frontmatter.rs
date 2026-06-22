@@ -1,0 +1,357 @@
+//! Tests for the frontmatter schema and its round-trip invariant.
+//!
+//! Integration tests (public API only), so library `src/` stays panic-free.
+//! Test names contain the substrings the ledger Verify commands filter on
+//! (`frontmatter_parse`, `schema_core_fields`, `schema_edges_block`,
+//! `frontmatter_roundtrip`, `unknown_keys_preserved`, `canonical_field_order`,
+//! `supersedes_kind`).
+
+use std::str::FromStr;
+
+use chrono::NaiveDate;
+use odm_core::frontmatter::{
+    Dependency, Document, Edges, Frontmatter, FrontmatterError, SupersedeKind, Supersedes,
+};
+use odm_core::{Id, NodeType, Origin};
+use proptest::prelude::*;
+
+const SAMPLE_ULID: &str = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+
+fn day(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).expect("valid test date")
+}
+
+fn minimal_doc_text(body: &str) -> String {
+    format!(
+        "---\n\
+         id: {SAMPLE_ULID}\n\
+         number: 7\n\
+         type: slice\n\
+         name: Store layer\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-21\n\
+         origin: planned\n\
+         reserved: false\n\
+         ---\n{body}"
+    )
+}
+
+// ----- I-1: parse splits frontmatter from body; errors are typed ------------
+
+#[test]
+fn frontmatter_parse_splits_block_and_body() {
+    let doc = Document::parse(&minimal_doc_text("# Title\n\nBody.\n")).expect("valid doc");
+    assert_eq!(doc.frontmatter().number(), 7);
+    assert_eq!(doc.body(), "# Title\n\nBody.\n");
+}
+
+#[test]
+fn frontmatter_parse_rejects_malformed() {
+    // No opening fence.
+    assert_eq!(Document::parse("no fence here"), Err(FrontmatterError::MissingOpen));
+    // Opening but no closing fence.
+    assert_eq!(Document::parse("---\nid: x\nnumber: 1\n"), Err(FrontmatterError::Unterminated));
+    // Closing fence but invalid YAML / schema (number is not an int).
+    let bad = "---\nid: x\nnumber: not-a-number\ntype: slice\nname: n\n\
+               created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\n---\n";
+    assert!(matches!(Document::parse(bad), Err(FrontmatterError::Yaml(_))));
+}
+
+// ----- I-2: core fields parse ----------------------------------------------
+
+#[test]
+fn schema_core_fields_parse() {
+    let text = format!(
+        "---\n\
+         id: {SAMPLE_ULID}\n\
+         number: 42\n\
+         type: odd\n\
+         name: Architecture\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-22\n\
+         tags: [arch, design]\n\
+         component: odm-core\n\
+         origin: discovered\n\
+         reserved: true\n\
+         ---\nbody\n"
+    );
+    let fm = Document::parse(&text).expect("valid").frontmatter().clone();
+    assert_eq!(fm.id(), Id::from_str(SAMPLE_ULID).unwrap());
+    assert_eq!(fm.number(), 42);
+    assert_eq!(fm.node_type(), NodeType::Odd);
+    assert_eq!(fm.name(), "Architecture");
+    assert_eq!(fm.created(), day(2026, 6, 20));
+    assert_eq!(fm.updated(), day(2026, 6, 22));
+    assert_eq!(fm.tags(), &["arch".to_string(), "design".to_string()]);
+    assert_eq!(fm.component(), Some("odm-core"));
+    assert_eq!(fm.origin(), Origin::Discovered);
+    assert!(fm.reserved());
+}
+
+// ----- I-3: edges block parses ---------------------------------------------
+
+#[test]
+fn schema_edges_block_parses_every_kind() {
+    let p = SAMPLE_ULID;
+    let text = format!(
+        "---\n\
+         id: {p}\n\
+         number: 1\n\
+         type: slice\n\
+         name: n\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-20\n\
+         origin: planned\n\
+         reserved: false\n\
+         edges:\n\
+        \x20 part_of: {p}\n\
+        \x20 depends_on:\n\
+        \x20   - {p}\n\
+        \x20   - {{ node: {p}, satisfied_at: tested }}\n\
+        \x20 blocked_by: [{p}]\n\
+        \x20 verifies: [{p}]\n\
+        \x20 consumes: [{p}]\n\
+        \x20 affects: [{p}]\n\
+        \x20 supersedes: {{ node: {p}, kind: obsoletes }}\n\
+        \x20 tears: [{p}]\n\
+         ---\nbody\n"
+    );
+    let fm = Document::parse(&text).expect("valid edges").frontmatter().clone();
+    let e = fm.edges();
+    let id = Id::from_str(p).unwrap();
+    assert_eq!(e.part_of, Some(id));
+    assert_eq!(e.depends_on.len(), 2);
+    assert_eq!(e.depends_on[0], Dependency::Bare(id));
+    assert_eq!(
+        e.depends_on[1],
+        Dependency::Qualified { node: id, satisfied_at: "tested".to_string() }
+    );
+    assert_eq!(e.blocked_by, vec![id]);
+    assert_eq!(e.verifies, vec![id]);
+    assert_eq!(e.consumes, vec![id]);
+    assert_eq!(e.affects, vec![id]);
+    assert_eq!(e.supersedes, Some(Supersedes { node: id, kind: SupersedeKind::Obsoletes }));
+    assert_eq!(e.tears, vec![Dependency::Bare(id)]);
+}
+
+// ----- I-6: canonical field order (snapshot) -------------------------------
+
+#[test]
+fn canonical_field_order_snapshot() {
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let fm = Frontmatter::new(
+        id,
+        7,
+        NodeType::Slice,
+        "Store layer",
+        day(2026, 6, 20),
+        day(2026, 6, 21),
+        Origin::Planned,
+    )
+    .with_tags(vec!["store".to_string()])
+    .with_component("odm-store")
+    .with_edges(Edges { part_of: Some(id), ..Edges::default() });
+
+    let emitted = Document::new(fm, "body\n").emit().expect("emit");
+    let expected = format!(
+        "---\n\
+         id: {SAMPLE_ULID}\n\
+         number: 7\n\
+         type: slice\n\
+         name: Store layer\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-21\n\
+         tags:\n\
+         - store\n\
+         component: odm-store\n\
+         origin: planned\n\
+         reserved: false\n\
+         edges:\n\
+        \x20 part_of: {SAMPLE_ULID}\n\
+         ---\nbody\n"
+    );
+    assert_eq!(emitted, expected);
+}
+
+// ----- I-7: supersedes kind ∈ {obsoletes, updates} -------------------------
+
+#[test]
+fn supersedes_kind_roundtrips_both_variants() {
+    for (kind, word) in
+        [(SupersedeKind::Obsoletes, "obsoletes"), (SupersedeKind::Updates, "updates")]
+    {
+        let id = Id::from_str(SAMPLE_ULID).unwrap();
+        let fm = Frontmatter::new(
+            id,
+            1,
+            NodeType::Adr,
+            "decision",
+            day(2026, 6, 20),
+            day(2026, 6, 20),
+            Origin::Planned,
+        )
+        .with_edges(Edges { supersedes: Some(Supersedes { node: id, kind }), ..Edges::default() });
+        let emitted = Document::new(fm.clone(), "").emit().expect("emit");
+        assert!(emitted.contains(&format!("kind: {word}")), "kind word in YAML");
+        let parsed = Document::parse(&emitted).expect("reparse");
+        assert_eq!(parsed.frontmatter().edges().supersedes.as_ref().unwrap().kind, kind);
+    }
+}
+
+// ----- I-5: unknown keys preserved -----------------------------------------
+
+#[test]
+fn unknown_keys_preserved_through_roundtrip() {
+    // `status` and `desired_facts` are not modeled yet; they must survive.
+    let text = format!(
+        "---\n\
+         id: {SAMPLE_ULID}\n\
+         number: 3\n\
+         type: slice\n\
+         name: n\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-20\n\
+         origin: planned\n\
+         reserved: false\n\
+         status:\n\
+        \x20 built:\n\
+        \x20   reached: 2026-06-12\n\
+        \x20   evidence: reproduced\n\
+         desired_facts:\n\
+        \x20 - id: db-wired\n\
+        \x20   describe: prod connects\n\
+         ---\nbody\n"
+    );
+    let doc = Document::parse(&text).expect("valid");
+    assert_eq!(doc.frontmatter().unknown_key_count(), 2);
+
+    let reparsed = Document::parse(&doc.emit().expect("emit")).expect("reparse");
+    assert_eq!(reparsed, doc, "unknown keys must survive a round-trip");
+    // And the keys are still literally present after emission.
+    let emitted = doc.emit().expect("emit");
+    assert!(emitted.contains("status:"));
+    assert!(emitted.contains("desired_facts:"));
+    assert!(emitted.contains("evidence: reproduced"));
+}
+
+// ----- I-4: parse ∘ emit == identity (proptest over typed fields) ----------
+
+prop_compose! {
+    fn arb_date()(
+        // Stay within chrono's always-valid range to avoid generating
+        // impossible calendar dates.
+        days in 0i64..40_000
+    ) -> NaiveDate {
+        day(1970, 1, 1) + chrono::Duration::days(days)
+    }
+}
+
+fn arb_node_type() -> impl Strategy<Value = NodeType> {
+    prop_oneof![
+        Just(NodeType::Project),
+        Just(NodeType::Arc),
+        Just(NodeType::Slice),
+        Just(NodeType::Odd),
+        Just(NodeType::Adr),
+        Just(NodeType::Note),
+    ]
+}
+
+fn arb_origin() -> impl Strategy<Value = Origin> {
+    prop_oneof![Just(Origin::Planned), Just(Origin::Discovered), Just(Origin::Amendment)]
+}
+
+// Plain, non-adversarial text: keeps generated YAML well-formed (no embedded
+// fences or control characters), matching "arbitrary valid nodes".
+fn arb_text() -> impl Strategy<Value = String> {
+    "[a-zA-Z0-9 ._-]{0,40}"
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(128))]
+    #[test]
+    fn frontmatter_roundtrip_identity(
+        number in any::<u32>(),
+        node_type in arb_node_type(),
+        name in arb_text(),
+        created in arb_date(),
+        updated in arb_date(),
+        origin in arb_origin(),
+        reserved in any::<bool>(),
+        tags in prop::collection::vec(arb_text(), 0..4),
+        component in prop::option::of(arb_text()),
+        has_parent in any::<bool>(),
+        n_deps in 0usize..3,
+        body_lines in prop::collection::vec(arb_text(), 0..4),
+    ) {
+        let id = Id::new();
+        let mut edges = Edges::default();
+        if has_parent {
+            edges.part_of = Some(Id::new());
+        }
+        for i in 0..n_deps {
+            // Mix bare and qualified dependencies.
+            if i % 2 == 0 {
+                edges.depends_on.push(Dependency::Bare(Id::new()));
+            } else {
+                edges.depends_on.push(Dependency::Qualified {
+                    node: Id::new(),
+                    satisfied_at: "tested".to_string(),
+                });
+            }
+        }
+
+        let mut fm = Frontmatter::new(id, number, node_type, name, created, updated, origin)
+            .with_tags(tags)
+            .with_reserved(reserved)
+            .with_edges(edges);
+        if let Some(c) = component {
+            fm = fm.with_component(c);
+        }
+
+        let doc = Document::new(fm, body_lines.join("\n"));
+        let emitted = doc.emit()?;
+        let reparsed = Document::parse(&emitted)?;
+        prop_assert_eq!(reparsed, doc);
+    }
+}
+
+// ----- I-5 (proptest form): arbitrary unknown scalar keys survive ----------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+    #[test]
+    fn unknown_keys_preserved_proptest(
+        extra_keys in prop::collection::hash_map(
+            "[a-z_]{3,12}",
+            prop_oneof![
+                "[a-zA-Z0-9 ]{0,20}".prop_map(|s| format!("\"{s}\"")),
+                any::<i64>().prop_map(|n| n.to_string()),
+                any::<bool>().prop_map(|b| b.to_string()),
+            ],
+            0..5,
+        )
+    ) {
+        // Skip keys that collide with modeled fields.
+        let modeled = ["id", "number", "type", "name", "created", "updated",
+                       "tags", "component", "origin", "reserved", "edges"];
+        let mut yaml = String::from(
+            "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\nnumber: 1\ntype: note\nname: n\n\
+             created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n",
+        );
+        let mut count = 0;
+        for (k, v) in &extra_keys {
+            if modeled.contains(&k.as_str()) {
+                continue;
+            }
+            yaml.push_str(&format!("{k}: {v}\n"));
+            count += 1;
+        }
+        yaml.push_str("---\nbody\n");
+
+        let doc = Document::parse(&yaml)?;
+        prop_assert_eq!(doc.frontmatter().unknown_key_count(), count);
+        let reparsed = Document::parse(&doc.emit()?)?;
+        prop_assert_eq!(reparsed, doc);
+    }
+}

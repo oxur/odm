@@ -11,12 +11,19 @@
 //! - [`Node`] — a minimal skeleton tying the above together with a human
 //!   `number`, `name`, and `reserved` flag.
 //!
-//! Serialization, the frontmatter schema, edges, status/gates, and persistence
-//! are explicitly **out of scope** here; they arrive in later slices. These
-//! types carry no `serde` derives — the on-disk format is slice 03's decision.
+//! Slice 03 adds the [`frontmatter`] module: the on-disk node format (a
+//! `---`-delimited YAML frontmatter block + markdown body) and its
+//! round-trip-stable parse/emit. The identity types gain `serde` impls (as
+//! their canonical string forms) so they can appear in that schema; the YAML
+//! backend itself is confined to the [`frontmatter`] module.
+//!
+//! Edge *semantics*, status/gates, persistence, and link-integrity remain out
+//! of scope (later slices) — though edge and status data round-trips through
+//! the schema already.
 
 #![deny(missing_docs)]
 
+pub mod frontmatter;
 mod id;
 mod node;
 mod node_type;

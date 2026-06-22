@@ -3,6 +3,8 @@
 use core::fmt;
 use core::str::FromStr;
 
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ulid::Ulid;
 
 /// A node's stable identity: a [ULID](https://github.com/ulid/spec) assigned
@@ -72,6 +74,22 @@ impl FromStr for Id {
             Err(ulid::DecodeError::InvalidLength) => Err(IdParseError::InvalidLength),
             Err(ulid::DecodeError::InvalidChar) => Err(IdParseError::InvalidChar),
         }
+    }
+}
+
+// An `Id` serializes as its canonical ULID string — the form that appears in
+// frontmatter and git diffs. This keeps the on-disk representation stable and
+// human-readable, and means no serde format ever sees the raw `u128`.
+impl Serialize for Id {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Id {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(D::Error::custom)
     }
 }
 

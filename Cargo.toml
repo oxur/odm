@@ -36,6 +36,11 @@ anyhow = "1.0"
 thiserror = "1.0"
 # Domain / infrastructure
 chrono = { version = "0.4", features = ["serde"] }
+# Frontmatter YAML (odm-core, isolated behind the `frontmatter` module).
+# slice-doc named serde_yaml_ng with a fall back to serde_norway if stale; the
+# maintenance check found serde_yaml_ng frozen at 2024-05 (>12mo), so we use the
+# more-actively-maintained fallback serde_norway. See slice03 closing-report.
+serde_norway = "0.9"
 walkdir = "2.5"
 sha2 = "0.10"
 petgraph = "0.6"   # odm-graph: DAG/tree engine
