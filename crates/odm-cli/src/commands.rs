@@ -1,10 +1,12 @@
 //! Command implementations over the [`Store`].
 //!
-//! Convention (per the slice constraints): query **results are data → stdout**
-//! (`println!`), while mutation confirmations, dry-run notices, and errors are
-//! **diagnostics → stderr** (`eprintln!`). Output stays plain so it is
-//! TTY-agnostic and stable under `assert_cmd`.
+//! Output is dependency-injected: query **results (data) are written to `out`**
+//! while mutation confirmations and dry-run notices (**diagnostics**) are
+//! written to `err`. `run` wires these to stdout/stderr; tests wire them to
+//! buffers and drive commands in-process. Output stays plain so it is
+//! TTY-agnostic and stable to assert on.
 
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context as _, anyhow, bail};
@@ -164,8 +166,15 @@ fn supersede_kind_str(kind: SupersedeKind) -> &'static str {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// `new <type> <name>` — idempotent describe-or-create.
-pub fn new(store: &Store, node_type: &str, name: &str, dry_run: bool) -> anyhow::Result<()> {
+/// `new <type> <name>` — idempotent describe-or-create. Confirmations go to
+/// `err` (diagnostics).
+pub fn new(
+    store: &Store,
+    node_type: &str,
+    name: &str,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
     let node_type: NodeType = node_type.parse().map_err(|_| {
         anyhow!("unknown type {node_type:?}; expected one of project|arc|slice|odd|adr|note")
     })?;
@@ -178,7 +187,7 @@ pub fn new(store: &Store, node_type: &str, name: &str, dry_run: bool) -> anyhow:
         .find(|d| d.frontmatter().node_type() == node_type && d.frontmatter().name() == name)
     {
         let fm = existing.frontmatter();
-        eprintln!("exists: {} #{} {:?} ({})", node_type.as_str(), fm.number(), name, fm.id());
+        writeln!(err, "exists: {} #{} {:?} ({})", node_type.as_str(), fm.number(), name, fm.id())?;
         return Ok(());
     }
 
@@ -189,12 +198,12 @@ pub fn new(store: &Store, node_type: &str, name: &str, dry_run: bool) -> anyhow:
     let doc = Document::new(fm, format!("# {name}\n"));
 
     if dry_run {
-        eprintln!("would create {} #{next_number} {name:?} ({id})", node_type.as_str());
+        writeln!(err, "would create {} #{next_number} {name:?} ({id})", node_type.as_str())?;
         return Ok(());
     }
 
     store.persist(&doc)?;
-    eprintln!("created {} #{next_number} {name:?} ({id})", node_type.as_str());
+    writeln!(err, "created {} #{next_number} {name:?} ({id})", node_type.as_str())?;
     Ok(())
 }
 
@@ -211,13 +220,14 @@ struct ListRow {
     id: String,
 }
 
-/// `list` — full scan with optional type/tag/component filters.
+/// `list` — full scan with optional type/tag/component filters. Data → `out`.
 pub fn list(
     store: &Store,
     type_filter: Option<&str>,
     tag: Option<&str>,
     component: Option<&str>,
     json: bool,
+    out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let type_filter = type_filter
         .map(|t| t.parse::<NodeType>().map_err(|_| anyhow!("unknown type {t:?}")))
@@ -234,12 +244,12 @@ pub fn list(
 
     if json {
         let view: Vec<NodeJson> = nodes.iter().map(NodeJson::from).collect();
-        println!("{}", serde_json::to_string_pretty(&view)?);
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
         return Ok(());
     }
 
     if nodes.is_empty() {
-        println!("(no nodes)");
+        writeln!(out, "(no nodes)")?;
         return Ok(());
     }
     let rows: Vec<ListRow> = nodes
@@ -254,12 +264,12 @@ pub fn list(
             }
         })
         .collect();
-    println!("{}", Table::new(rows).with(Style::sharp()));
+    writeln!(out, "{}", Table::new(rows).with(Style::sharp()))?;
     Ok(())
 }
 
-/// `show X` — node + edges + way-finding (parent and children) in one call.
-pub fn show(store: &Store, reference: &str, json: bool) -> anyhow::Result<()> {
+/// `show X` — node + edges + way-finding (parent and children). Data → `out`.
+pub fn show(store: &Store, reference: &str, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let doc = resolve(store, reference)?;
     let id = doc.frontmatter().id();
     let all = store.load_all()?;
@@ -267,40 +277,40 @@ pub fn show(store: &Store, reference: &str, json: bool) -> anyhow::Result<()> {
         all.iter().filter(|d| d.frontmatter().edges().part_of == Some(id)).collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&NodeJson::from(&doc))?);
+        writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&doc))?)?;
         return Ok(());
     }
 
     let fm = doc.frontmatter();
-    println!("{} #{} {}", fm.node_type().as_str(), fm.number(), fm.name());
-    println!("  id:        {id}");
-    println!("  origin:    {}", fm.origin().as_str());
-    println!("  created:   {}", fm.created());
-    println!("  updated:   {}", fm.updated());
+    writeln!(out, "{} #{} {}", fm.node_type().as_str(), fm.number(), fm.name())?;
+    writeln!(out, "  id:        {id}")?;
+    writeln!(out, "  origin:    {}", fm.origin().as_str())?;
+    writeln!(out, "  created:   {}", fm.created())?;
+    writeln!(out, "  updated:   {}", fm.updated())?;
     if !fm.tags().is_empty() {
-        println!("  tags:      {}", fm.tags().join(", "));
+        writeln!(out, "  tags:      {}", fm.tags().join(", "))?;
     }
     if let Some(component) = fm.component() {
-        println!("  component: {component}");
+        writeln!(out, "  component: {component}")?;
     }
     if let Some(retired) = fm.retired() {
-        println!("  retired:   {} ({})", retired.reason, retired.on);
+        writeln!(out, "  retired:   {} ({})", retired.reason, retired.on)?;
     }
     let edges = fm.edges();
     if let Some(parent) = edges.part_of {
-        println!("  part_of:   {parent}");
+        writeln!(out, "  part_of:   {parent}")?;
     }
     if let Some(s) = &edges.supersedes {
-        println!("  supersedes: {} ({})", s.node, supersede_kind_str(s.kind));
+        writeln!(out, "  supersedes: {} ({})", s.node, supersede_kind_str(s.kind))?;
     }
     // Way-finding: children in the containment tree.
     if children.is_empty() {
-        println!("  children:  (none)");
+        writeln!(out, "  children:  (none)")?;
     } else {
-        println!("  children:");
+        writeln!(out, "  children:")?;
         for child in children {
             let c = child.frontmatter();
-            println!("    - {} #{} {}", c.node_type().as_str(), c.number(), c.name());
+            writeln!(out, "    - {} #{} {}", c.node_type().as_str(), c.number(), c.name())?;
         }
     }
     Ok(())
@@ -308,39 +318,51 @@ pub fn show(store: &Store, reference: &str, json: bool) -> anyhow::Result<()> {
 
 /// `rename X <new-name>` — changes the name only; id and on-disk path are
 /// unchanged (the path is a pure function of the immutable id).
-pub fn rename(store: &Store, reference: &str, new_name: &str, dry_run: bool) -> anyhow::Result<()> {
+pub fn rename(
+    store: &Store,
+    reference: &str,
+    new_name: &str,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
     let mut doc = resolve(store, reference)?;
     let fm = doc.frontmatter();
     let (id, number, old_name) = (fm.id(), fm.number(), fm.name().to_string());
 
     if dry_run {
-        eprintln!("would rename #{number} {old_name:?} -> {new_name:?} ({id})");
+        writeln!(err, "would rename #{number} {old_name:?} -> {new_name:?} ({id})")?;
         return Ok(());
     }
 
     doc.frontmatter_mut().set_name(new_name);
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?; // same id => same path, file is rewritten in place
-    eprintln!("renamed #{number} {old_name:?} -> {new_name:?} ({id})");
+    writeln!(err, "renamed #{number} {old_name:?} -> {new_name:?} ({id})")?;
     Ok(())
 }
 
 /// `retire X --because <reason>` — marks the node withdrawn. The file is
 /// preserved (git keeps history); this is never a destructive delete.
-pub fn retire(store: &Store, reference: &str, reason: &str, dry_run: bool) -> anyhow::Result<()> {
+pub fn retire(
+    store: &Store,
+    reference: &str,
+    reason: &str,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
     let mut doc = resolve(store, reference)?;
     let fm = doc.frontmatter();
     let (id, number, name) = (fm.id(), fm.number(), fm.name().to_string());
 
     if dry_run {
-        eprintln!("would retire #{number} {name:?} ({id}): {reason}");
+        writeln!(err, "would retire #{number} {name:?} ({id}): {reason}")?;
         return Ok(());
     }
 
     doc.frontmatter_mut().retire(reason, today());
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?; // overwrites in place — file kept, not deleted
-    eprintln!("retired #{number} {name:?} ({id}): {reason}");
+    writeln!(err, "retired #{number} {name:?} ({id}): {reason}")?;
     Ok(())
 }
 
@@ -352,6 +374,7 @@ pub fn supersede(
     with_ref: &str,
     kind: SupersedeKind,
     dry_run: bool,
+    err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let old = resolve(store, old_ref)?;
     let mut new_doc = resolve(store, with_ref)?;
@@ -363,17 +386,22 @@ pub fn supersede(
     }
 
     if dry_run {
-        eprintln!(
+        writeln!(
+            err,
             "would record #{new_number} supersedes #{old_number} ({})",
             supersede_kind_str(kind)
-        );
+        )?;
         return Ok(());
     }
 
     new_doc.frontmatter_mut().edges_mut().supersedes = Some(Supersedes { node: old_id, kind });
     new_doc.frontmatter_mut().set_updated(today());
     store.persist(&new_doc)?;
-    eprintln!("recorded: #{new_number} supersedes #{old_number} ({})", supersede_kind_str(kind));
+    writeln!(
+        err,
+        "recorded: #{new_number} supersedes #{old_number} ({})",
+        supersede_kind_str(kind)
+    )?;
     Ok(())
 }
 
@@ -383,6 +411,7 @@ pub fn use_context(
     root: &Path,
     kind: UseKind,
     reference: &str,
+    err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let doc = resolve(store, reference)?;
     let fm = doc.frontmatter();
@@ -401,12 +430,12 @@ pub fn use_context(
         UseKind::Arc => ctx.arc = Some(fm.id()),
     }
     ctx.save(root)?;
-    eprintln!("context: {} = {} ({})", kind.label(), fm.name(), fm.id());
+    writeln!(err, "context: {} = {} ({})", kind.label(), fm.name(), fm.id())?;
     Ok(())
 }
 
-/// `context` — shows the current project/arc selection.
-pub fn context(store: &Store, root: &Path, json: bool) -> anyhow::Result<()> {
+/// `context` — shows the current project/arc selection. Data → `out`.
+pub fn context(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let ctx = Context::load(root)?;
     let project = ctx.project.and_then(|id| store.load(id).ok());
     let arc = ctx.arc.and_then(|id| store.load(id).ok());
@@ -416,27 +445,29 @@ pub fn context(store: &Store, root: &Path, json: bool) -> anyhow::Result<()> {
             "project": project.as_ref().map(NodeJson::from),
             "arc": arc.as_ref().map(NodeJson::from),
         });
-        println!("{}", serde_json::to_string_pretty(&view)?);
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
         return Ok(());
     }
 
     match &project {
-        Some(d) => println!(
+        Some(d) => writeln!(
+            out,
             "project: #{} {} ({})",
             d.frontmatter().number(),
             d.frontmatter().name(),
             d.frontmatter().id()
-        ),
-        None => println!("project: (none)"),
+        )?,
+        None => writeln!(out, "project: (none)")?,
     }
     match &arc {
-        Some(d) => println!(
+        Some(d) => writeln!(
+            out,
             "arc:     #{} {} ({})",
             d.frontmatter().number(),
             d.frontmatter().name(),
             d.frontmatter().id()
-        ),
-        None => println!("arc:     (none)"),
+        )?,
+        None => writeln!(out, "arc:     (none)")?,
     }
     Ok(())
 }

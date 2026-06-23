@@ -161,40 +161,63 @@ enum Command {
     },
 }
 
-/// Parses arguments and dispatches to the matching command.
-///
-/// The store is rooted at the current working directory.
+/// Parses arguments and dispatches, rooted at the current working directory,
+/// writing to the process's stdout/stderr.
 ///
 /// # Errors
 ///
-/// Returns an [`anyhow::Error`] if the command fails (e.g. an unknown
-/// reference, a type mismatch, or an I/O/store error). `clap` handles
+/// Returns an [`anyhow::Error`] if the command fails. `clap` handles
 /// argument-parse errors itself, exiting the process directly.
 pub fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let root = std::env::current_dir().context("determining the current directory")?;
-    let store = Store::open(&root);
+    dispatch(cli, &root, &mut std::io::stdout(), &mut std::io::stderr())
+}
+
+/// Dispatches a parsed [`Cli`] against a store rooted at `root`, writing query
+/// results to `out` and diagnostics to `err`.
+///
+/// This is the in-process entry point: [`run`] wires `out`/`err` to
+/// stdout/stderr, and tests wire them to buffers with an explicit `root` (no
+/// global current-directory mutation).
+///
+/// # Errors
+///
+/// Returns an [`anyhow::Error`] if the command fails (e.g. an unknown
+/// reference, a type mismatch, or an I/O/store error).
+pub fn dispatch(
+    cli: Cli,
+    root: &std::path::Path,
+    out: &mut dyn std::io::Write,
+    err: &mut dyn std::io::Write,
+) -> anyhow::Result<()> {
+    let store = Store::open(root);
 
     match cli.command {
         Command::New { node_type, name, dry_run, yes: _ } => {
-            commands::new(&store, &node_type, &name, dry_run)
+            commands::new(&store, &node_type, &name, dry_run, err)
         }
-        Command::List { node_type, tag, component, json } => {
-            commands::list(&store, node_type.as_deref(), tag.as_deref(), component.as_deref(), json)
-        }
-        Command::Show { reference, json } => commands::show(&store, &reference, json),
+        Command::List { node_type, tag, component, json } => commands::list(
+            &store,
+            node_type.as_deref(),
+            tag.as_deref(),
+            component.as_deref(),
+            json,
+            out,
+        ),
+        Command::Show { reference, json } => commands::show(&store, &reference, json, out),
         Command::Rename { reference, name, dry_run, yes: _ } => {
-            commands::rename(&store, &reference, &name, dry_run)
+            commands::rename(&store, &reference, &name, dry_run, err)
         }
         Command::Retire { reference, because, dry_run, yes: _ } => {
-            commands::retire(&store, &reference, &because, dry_run)
+            commands::retire(&store, &reference, &because, dry_run, err)
         }
         Command::Supersede { reference, with, kind, dry_run, yes: _ } => {
-            commands::supersede(&store, &reference, &with, kind.into(), dry_run)
+            commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)
         }
         Command::Use { kind, reference } => {
-            commands::use_context(&store, &root, kind.into(), &reference)
+            commands::use_context(&store, root, kind.into(), &reference, err)
         }
-        Command::Context { json } => commands::context(&store, &root, json),
+        Command::Context { json } => commands::context(&store, root, json, out),
     }
 }
