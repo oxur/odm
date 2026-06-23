@@ -14,7 +14,7 @@
 | H-6 | Status is a vector (multiple gates independently set), not a scalar | `cargo test -p odm-core status_is_multigate` → ok | serious | 0013 §5.1 / 0001 D1 | open | | |
 | H-7 | Default evidence is `asserted` when not specified (least-confident default) | `cargo test -p odm-core evidence_default_asserted` → ok | correctness | 0013 §4.4 | open | | |
 | H-8 | Clippy clean (`-D warnings`); no `unsafe` | `cargo clippy -p odm-core --all-targets -- -D warnings` → exit 0 AND `! grep -RnE '\bunsafe\b' crates/odm-core/src` | serious | CLAUDE.md | open | | |
-| H-9 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-core --summary-only` → ≥ 90% | correctness | CLAUDE.md | open | | |
+| H-9 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-core --summary-only --ignore-filename-regex '(odm-graph|odm-store|odm-cli)/'` → **line** ≥ 90% (target 95%) | correctness | CLAUDE.md | open | | |
 
 ## What Worked
 

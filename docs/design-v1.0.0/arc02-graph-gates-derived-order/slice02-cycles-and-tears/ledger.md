@@ -13,7 +13,7 @@
 | H-5 | Cycle-without-tear yields a hard error (consumed by `check` v2) | `cargo test -p odm-graph cycle_without_tear_errors` → ok | serious | 0013 §4.2/§4.3 | open | | |
 | H-6 | All active tears are enumerable (so assumed deps stay visible) | `cargo test -p odm-graph list_active_tears` → ok | correctness | 0013 §4.3 | open | | |
 | H-7 | Clippy clean (`-D warnings`); no `unsafe` | `cargo clippy -p odm-graph --all-targets -- -D warnings` → exit 0 AND `! grep -RnE '\bunsafe\b' crates/odm-graph/src` | serious | CLAUDE.md | open | | |
-| H-8 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-graph --summary-only` → ≥ 90% | correctness | CLAUDE.md | open | | |
+| H-8 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-graph --summary-only --ignore-filename-regex '(odm-core|odm-store|odm-cli)/'` → **line** ≥ 90% (target 95%) | correctness | CLAUDE.md | open | | |
 
 ## What Worked
 

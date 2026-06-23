@@ -14,7 +14,7 @@
 | H-5 | Forward/reverse accessors by edge kind (children/parents) | `cargo test -p odm-graph adjacency_by_kind` → ok | correctness | 0013 §4 | open | | |
 | H-6 | `odm-graph` is domain-agnostic: no node-type/gate names in its source | `! grep -REiq 'project\|arc\|slice\|odd\|adr\|gate' crates/odm-graph/src` | correctness | 0013 §8 | open | | |
 | H-7 | Clippy clean (`-D warnings`); no `unsafe` | `cargo clippy -p odm-graph -p odm-core --all-targets -- -D warnings` → exit 0 AND `! grep -RnE '\bunsafe\b' crates/odm-graph/src` | serious | CLAUDE.md | open | | |
-| H-8 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-graph -p odm-core --summary-only` → ≥ 90% | correctness | CLAUDE.md | open | | |
+| H-8 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-graph -p odm-core --summary-only --ignore-filename-regex '(odm-store|odm-cli)/'` → **line** ≥ 90% (target 95%) | correctness | CLAUDE.md | open | | |
 
 ## What Worked
 

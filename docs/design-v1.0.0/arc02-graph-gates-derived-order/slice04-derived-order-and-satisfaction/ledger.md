@@ -22,7 +22,7 @@
 | H-11 | Staleness guard: advancing a node with an unsatisfied `depends_on` warns | `cargo test -p odm-core staleness_guard` → ok | serious | 0013 §4.4, 0001 B3 | open | | |
 | H-12 | `--json` for `next`/`blocked`/`path` is stable + carries the evidence level | `cargo test -p odm-cli json_schema_derived_order` (snapshot) → ok | correctness | 0013 §7 | open | | |
 | H-13 | Clippy clean (`-D warnings`); no `unsafe`; no panics on public paths | `cargo clippy -p odm-graph -p odm-core --all-targets -- -D warnings` → exit 0 AND `! grep -RnE '\bunsafe\b' crates/odm-graph/src crates/odm-core/src` | serious | CLAUDE.md / rust-guidelines | open | | |
-| H-14 | Coverage ≥ 90% (target 95%) for the new graph/satisfaction code | `cargo llvm-cov -p odm-graph -p odm-core --summary-only` → ≥ 90% | correctness | CLAUDE.md | open | | |
+| H-14 | Coverage ≥ 90% (target 95%) for the new graph/satisfaction code | `cargo llvm-cov -p odm-graph -p odm-core --summary-only --ignore-filename-regex '(odm-store|odm-cli)/'` → **line** ≥ 90% (target 95%) | correctness | CLAUDE.md | open | | |
 
 ## What Worked
 

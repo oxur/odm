@@ -15,7 +15,7 @@
 | H-7 | Guard: a parent advanced toward done WITHOUT `decomposed: complete` is flagged | `cargo test -p odm-core advance_without_decomposition` → ok | correctness | 0013 §4.5 | open | | |
 | H-8 | Semantic missing-scope detection is NOT attempted (documented non-goal; no false "missing scope" claims) | `cargo test -p odm-core no_semantic_scope_guessing` (asserts the API only reports structural facts) → ok | correctness | 0013 §4.5 | open | | |
 | H-9 | Clippy clean (`-D warnings`); no `unsafe` | `cargo clippy -p odm-core --all-targets -- -D warnings` → exit 0 AND `! grep -RnE '\bunsafe\b' crates/odm-core/src` | serious | CLAUDE.md | open | | |
-| H-10 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-core --summary-only` → ≥ 90% | correctness | CLAUDE.md | open | | |
+| H-10 | Coverage ≥ 90% (target 95%) | `cargo llvm-cov -p odm-core --summary-only --ignore-filename-regex '(odm-graph|odm-store|odm-cli)/'` → **line** ≥ 90% (target 95%) | correctness | CLAUDE.md | open | | |
 
 ## What Worked
 

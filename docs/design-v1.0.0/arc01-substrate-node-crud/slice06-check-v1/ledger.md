@@ -14,7 +14,7 @@
 | L-6 | Exit codes: `0` clean, `1` violations, `2` usage error | `cargo test -p odm-cli check_exit_codes_v1` → ok | serious | 0013 §7 | open | | |
 | L-7 | Every finding names the exact fix command (errors-as-affordances) | `cargo test -p odm-cli check_errors_name_fix_v1` → ok | serious | 0013 §7 / 0001 | open | | |
 | L-8 | `--json` report with a stable, documented schema | `cargo test -p odm-cli check_json_v1` (snapshot) → ok | correctness | 0013 §7 | open | | |
-| L-9 | Clippy clean (`-D warnings`); no `unsafe`; coverage ≥ 90% | `cargo clippy -p odm-cli -p odm-core --all-targets -- -D warnings` → exit 0 AND `cargo llvm-cov -p odm-cli -p odm-core --summary-only` ≥ 90% | serious | CLAUDE.md | open | | |
+| L-9 | Clippy clean (`-D warnings`); no `unsafe`; coverage ≥ 90% | `cargo clippy -p odm-cli -p odm-core --all-targets -- -D warnings` → exit 0 AND `cargo llvm-cov -p odm-cli -p odm-core --summary-only --ignore-filename-regex '(odm-store|odm-graph)/'` → **line** ≥ 90% (target 95%) | serious | CLAUDE.md | open | | |
 
 ## What Worked
 

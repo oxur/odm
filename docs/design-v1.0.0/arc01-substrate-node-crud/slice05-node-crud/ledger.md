@@ -16,7 +16,7 @@
 | K-8 | `use [project\|arc] X` sets current context; `context` shows it (no `--project`/`--arc` needed after) | `cargo test -p odm-cli context_use_and_show` → ok | serious | 0025 §4a | open | | |
 | K-9 | `--dry-run` on mutators writes nothing; `--yes` runs non-interactively | `cargo test -p odm-cli dry_run_and_yes` → ok | correctness | 0013 §7 | open | | |
 | K-10 | `--json` on queries has a stable, documented schema | `cargo test -p odm-cli json_schema_crud` (snapshot) → ok | correctness | 0013 §7 | open | | |
-| K-11 | Clippy clean (`-D warnings`); no `unsafe`; coverage ≥ 90% | `cargo clippy -p odm-cli --all-targets -- -D warnings` → exit 0 AND `cargo llvm-cov -p odm-cli --summary-only` ≥ 90% | serious | CLAUDE.md | open | | |
+| K-11 | Clippy clean (`-D warnings`); no `unsafe`; coverage ≥ 90% | `cargo clippy -p odm-cli --all-targets -- -D warnings` → exit 0 AND `cargo llvm-cov -p odm-cli --summary-only --ignore-filename-regex '(odm-core|odm-store|odm-graph)/'` → **line** ≥ 90% (target 95%) | serious | CLAUDE.md | open | | |
 
 ## What Worked
 
