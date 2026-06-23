@@ -10,7 +10,8 @@ use std::str::FromStr;
 
 use chrono::NaiveDate;
 use odm_core::frontmatter::{
-    Dependency, Document, Edges, Frontmatter, FrontmatterError, SupersedeKind, Supersedes,
+    Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
+    Supersedes,
 };
 use odm_core::{Id, NodeType, Origin};
 use proptest::prelude::*;
@@ -196,6 +197,40 @@ fn supersedes_kind_roundtrips_both_variants() {
         let parsed = Document::parse(&emitted).expect("reparse");
         assert_eq!(parsed.frontmatter().edges().supersedes.as_ref().unwrap().kind, kind);
     }
+}
+
+// ----- mutators + retirement round-trip (slice05 additions) -----------------
+
+#[test]
+fn mutators_and_retirement_roundtrip() {
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Slice,
+        "Original",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    );
+    let mut doc = Document::new(fm, "body\n");
+
+    // In-place edits via frontmatter_mut.
+    let f = doc.frontmatter_mut();
+    f.set_name("Renamed");
+    f.set_updated(day(2026, 6, 23));
+    f.retire("folded into slice 6", day(2026, 6, 23));
+    assert_eq!(doc.frontmatter().name(), "Renamed");
+    assert_eq!(doc.frontmatter().updated(), day(2026, 6, 23));
+    assert_eq!(
+        doc.frontmatter().retired(),
+        Some(&Retirement { reason: "folded into slice 6".to_string(), on: day(2026, 6, 23) })
+    );
+
+    // The retirement marker survives a round-trip.
+    let reparsed = Document::parse(&doc.emit().unwrap()).unwrap();
+    assert_eq!(reparsed, doc);
+    assert!(reparsed.emit().unwrap().contains("retired:"));
 }
 
 // ----- I-5: unknown keys preserved -----------------------------------------

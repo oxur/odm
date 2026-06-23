@@ -75,6 +75,12 @@ impl Document {
         &self.body
     }
 
+    /// Mutable access to the frontmatter, for in-place edits (rename, retire,
+    /// supersede) that must preserve everything else — including unknown keys.
+    pub fn frontmatter_mut(&mut self) -> &mut Frontmatter {
+        &mut self.frontmatter
+    }
+
     /// Parses a node file into typed frontmatter plus its body.
     ///
     /// The text must begin with a `---` line, contain a closing `---` line, and
@@ -175,6 +181,10 @@ pub struct Frontmatter {
     /// Tentative future-work placeholder flag.
     #[serde(default)]
     reserved: bool,
+    /// Retirement marker, set by `odm retire`. Absent unless the node has been
+    /// withdrawn. (Not in the ODD-0013 §2.3 example yet — see slice05 report.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    retired: Option<Retirement>,
     /// The node's outgoing edges.
     #[serde(default, skip_serializing_if = "Edges::is_empty")]
     edges: Edges,
@@ -207,6 +217,7 @@ impl Frontmatter {
             component: None,
             origin,
             reserved: false,
+            retired: None,
             edges: Edges::default(),
             extra: Mapping::new(),
         }
@@ -306,11 +317,50 @@ impl Frontmatter {
         &self.edges
     }
 
+    /// The retirement marker, if the node has been retired.
+    #[must_use]
+    pub fn retired(&self) -> Option<&Retirement> {
+        self.retired.as_ref()
+    }
+
     /// The number of preserved-but-unmodeled top-level keys (e.g. `status`).
     #[must_use]
     pub fn unknown_key_count(&self) -> usize {
         self.extra.len()
     }
+
+    /// Changes the human label. Does not touch `id` or the on-disk path.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    /// Sets the last-updated date (bumped by edits).
+    pub fn set_updated(&mut self, updated: NaiveDate) {
+        self.updated = updated;
+    }
+
+    /// Mutable access to the outgoing edges (e.g. to record a `supersedes`).
+    pub fn edges_mut(&mut self) -> &mut Edges {
+        &mut self.edges
+    }
+
+    /// Marks the node retired with a reason and date. The node's file is kept;
+    /// retirement is recorded in frontmatter, never by deleting the file.
+    pub fn retire(&mut self, reason: impl Into<String>, on: NaiveDate) {
+        self.retired = Some(Retirement { reason: reason.into(), on });
+    }
+}
+
+/// A node's retirement marker (set by `odm retire`).
+///
+/// A retired node is withdrawn but its file is preserved — git keeps the
+/// history; retirement is never a destructive delete.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retirement {
+    /// Why the node was retired.
+    pub reason: String,
+    /// The date the node was retired.
+    pub on: NaiveDate,
 }
 
 /// A node's outgoing edges (ODD-0013 §3). Reverse edges are derived, never

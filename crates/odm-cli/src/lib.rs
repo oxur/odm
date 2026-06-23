@@ -1,41 +1,200 @@
-//! `odm-cli` — the clap command surface for odm.
+//! `odm-cli` — the clap command surface for odm's node CRUD.
 //!
-//! Stub for the v1.0.0 workspace skeleton (slice 01): it defines the top-level
-//! `odm` command so the umbrella binary can report `--version` and `--help`.
-//! Real subcommands (`new`/`list`/`show`/`rename`/`retire`/`supersede`, plus
-//! `use`/`context`) arrive in Arc 01 slices 05-06.
+//! Commands are named after the question, not the mechanism. Queries (`list`,
+//! `show`, `context`) print data to stdout and accept `--json`; mutators
+//! (`new`, `rename`, `retire`, `supersede`, `use`) accept `--dry-run` (write
+//! nothing) and `--yes` (run non-interactively), and report to stderr.
+//!
+//! The store root is the current working directory; `odm.toml` and the node
+//! tree are resolved from there.
 
-use clap::Parser;
+#![deny(missing_docs)]
+
+mod commands;
+mod context;
+
+use anyhow::Context as _;
+use clap::{Parser, Subcommand, ValueEnum};
+use odm_core::frontmatter::SupersedeKind;
+use odm_store::Store;
+
+use crate::commands::UseKind;
 
 /// The `odm` command-line interface.
 #[derive(Debug, Parser)]
 #[command(name = "odm", version, about = "The Odd Document Manager")]
-pub struct Cli {}
+pub struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
 
-/// Parse arguments and dispatch.
+/// The kind of node `use` selects.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum UseKindArg {
+    /// Select the current project.
+    Project,
+    /// Select the current arc.
+    Arc,
+}
+
+impl From<UseKindArg> for UseKind {
+    fn from(value: UseKindArg) -> Self {
+        match value {
+            UseKindArg::Project => UseKind::Project,
+            UseKindArg::Arc => UseKind::Arc,
+        }
+    }
+}
+
+/// The supersession kind for `supersede --kind`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum KindArg {
+    /// The old node is replaced.
+    Obsoletes,
+    /// The old node is amended (still relevant).
+    Updates,
+}
+
+impl From<KindArg> for SupersedeKind {
+    fn from(value: KindArg) -> Self {
+        match value {
+            KindArg::Obsoletes => SupersedeKind::Obsoletes,
+            KindArg::Updates => SupersedeKind::Updates,
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Create a node (idempotent: re-running describes rather than duplicating).
+    New {
+        /// Node type: project|arc|slice|odd|adr|note.
+        node_type: String,
+        /// Human-readable name.
+        name: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively (no confirmation prompt).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// List nodes, optionally filtered.
+    List {
+        /// Filter by node type.
+        #[arg(long = "type")]
+        node_type: Option<String>,
+        /// Filter by tag.
+        #[arg(long)]
+        tag: Option<String>,
+        /// Filter by component.
+        #[arg(long)]
+        component: Option<String>,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show a node, its edges, and its way-finding (parent + children).
+    Show {
+        /// A node id, number, or unique name prefix.
+        reference: String,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rename a node (name only — id and path are unchanged).
+    Rename {
+        /// A node id, number, or unique name prefix.
+        reference: String,
+        /// The new name.
+        name: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Retire a node (withdraw it; the file is preserved, never deleted).
+    Retire {
+        /// A node id, number, or unique name prefix.
+        reference: String,
+        /// Why the node is being retired.
+        #[arg(long)]
+        because: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Record that one node supersedes another.
+    Supersede {
+        /// The node being superseded (id, number, or name prefix).
+        reference: String,
+        /// The node that supersedes it (id, number, or name prefix).
+        #[arg(long = "with")]
+        with: String,
+        /// Whether the old node is obsoleted (replaced) or merely updated.
+        #[arg(long)]
+        kind: KindArg,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Set the current project or arc context.
+    Use {
+        /// Which slot to set.
+        kind: UseKindArg,
+        /// A node id, number, or unique name prefix.
+        reference: String,
+    },
+    /// Show the current project/arc context.
+    Context {
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+/// Parses arguments and dispatches to the matching command.
 ///
-/// Currently a stub: `clap` handles `--version` and `--help`; any other
-/// invocation parses to an empty command and returns `Ok(())`.
+/// The store is rooted at the current working directory.
 ///
 /// # Errors
 ///
-/// Returns [`anyhow::Error`] once subcommands add fallible work (slices 05-06).
-/// Argument-parse failures are handled by `clap`, which exits the process
-/// directly rather than returning here.
+/// Returns an [`anyhow::Error`] if the command fails (e.g. an unknown
+/// reference, a type mismatch, or an I/O/store error). `clap` handles
+/// argument-parse errors itself, exiting the process directly.
 pub fn run() -> anyhow::Result<()> {
-    let _cli = Cli::parse();
-    Ok(())
-}
+    let cli = Cli::parse();
+    let root = std::env::current_dir().context("determining the current directory")?;
+    let store = Store::open(&root);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::CommandFactory;
-
-    #[test]
-    fn smoke() {
-        // clap verifies the command tree is well-formed (no duplicate args,
-        // valid names, etc.). Fails loudly if the derive is misconfigured.
-        Cli::command().debug_assert();
+    match cli.command {
+        Command::New { node_type, name, dry_run, yes: _ } => {
+            commands::new(&store, &node_type, &name, dry_run)
+        }
+        Command::List { node_type, tag, component, json } => {
+            commands::list(&store, node_type.as_deref(), tag.as_deref(), component.as_deref(), json)
+        }
+        Command::Show { reference, json } => commands::show(&store, &reference, json),
+        Command::Rename { reference, name, dry_run, yes: _ } => {
+            commands::rename(&store, &reference, &name, dry_run)
+        }
+        Command::Retire { reference, because, dry_run, yes: _ } => {
+            commands::retire(&store, &reference, &because, dry_run)
+        }
+        Command::Supersede { reference, with, kind, dry_run, yes: _ } => {
+            commands::supersede(&store, &reference, &with, kind.into(), dry_run)
+        }
+        Command::Use { kind, reference } => {
+            commands::use_context(&store, &root, kind.into(), &reference)
+        }
+        Command::Context { json } => commands::context(&store, &root, json),
     }
 }
