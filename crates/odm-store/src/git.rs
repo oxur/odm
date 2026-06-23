@@ -29,7 +29,8 @@ impl Repo {
     ///
     /// Returns [`StoreError::Git`] if the repository cannot be created.
     pub fn init(path: &Path) -> Result<Self> {
-        let repo = gix::init(path).map_err(git_err)?;
+        let mut repo = gix::init(path).map_err(git_err)?;
+        ensure_identity(&mut repo)?;
         Ok(Self { repo })
     }
 
@@ -39,7 +40,8 @@ impl Repo {
     ///
     /// Returns [`StoreError::Git`] if `path` is not a repository.
     pub fn open(path: &Path) -> Result<Self> {
-        let repo = gix::open(path).map_err(git_err)?;
+        let mut repo = gix::open(path).map_err(git_err)?;
+        ensure_identity(&mut repo)?;
         Ok(Self { repo })
     }
 
@@ -138,6 +140,24 @@ impl Repo {
         let tree = Tree { entries };
         Ok(self.repo.write_object(&tree).map_err(git_err)?.detach())
     }
+}
+
+/// Ensures the repository has a committer identity in its (in-memory) config.
+///
+/// `commit_as` sets the author/committer on the *commit object* from the
+/// `SignatureRef` we pass, but updating `HEAD` also writes a **reflog** entry
+/// whose identity comes from `repo.committer()` — i.e. from git config
+/// (`user.name`/`user.email`), not from that signature. On a machine with no
+/// global gitconfig (notably CI), that identity is absent and the reflog write
+/// fails with "The reflog could not be created or updated". Seeding a default
+/// identity here makes commits work regardless of the ambient git config. The
+/// change is in-memory only; it never touches the repository's `.git/config`.
+fn ensure_identity(repo: &mut gix::Repository) -> Result<()> {
+    let mut config = repo.config_snapshot_mut();
+    config.set_value(&gix::config::tree::User::NAME, "odm").map_err(git_err)?;
+    config.set_value(&gix::config::tree::User::EMAIL, "odm@localhost").map_err(git_err)?;
+    config.commit().map_err(git_err)?;
+    Ok(())
 }
 
 /// Flattens any `gix` error into a [`StoreError::Git`] string, so the git
