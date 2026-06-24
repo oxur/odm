@@ -29,6 +29,46 @@ What's here:
 > implementation is preserved under [`legacy/oxur-odm`](legacy/oxur-odm) as the
 > harvest source.
 
+## What makes odm different
+
+> **Projected, post-arc6 truth.** The capabilities below describe `odm` at the
+> close of the v1.0.0 build (arcs 1–6), **not** today's skeleton. They are the
+> design target fixed in `docs/design/` (ODD-0012/0013/0015) and are landing
+> slice by slice — tracked here so the vision stays visible while the build
+> catches up.
+
+Most project tools are issue-oriented and built around a person moving a ticket
+across a board. `odm` is *slice-oriented* and built around dependency order and
+evidence. The features that set it apart from a conventional PM tool:
+
+- **Order is derived, not assigned.** `next` / `blocked` / `path` are computed
+  from the dependency DAG by topological sort — sequence is a function of edges,
+  not a hand-ranked backlog.
+- **Status carries epistemic confidence.** Every gate records an evidence level
+  (`asserted < attested < reproduced < reconciled`), and satisfaction
+  *min-propagates* along dependency chains, so a chain is only as verified as its
+  weakest link — a relayed "it's done" can never silently unblock critical work.
+- **Reconciliation — drift detection for plans.** Nodes declare `desired_facts`;
+  probes diff *declared* state against *observed reality* and report drift
+  (Terraform's lesson, lifted to project state).
+- **Mechanical plan-integrity checking.** `check` fails CI on cycles-without-tears,
+  out-of-order work, broken WBS recomposition, stale-doc-vs-decision, and dangling
+  references — the plan itself is validated, not just stored.
+- **Explicit tears.** A deliberately-assumed, cycle-breaking dependency is recorded
+  with a required rationale and stays visible — DSM "tearing" applied to plans.
+- **`orient`-first global state.** A fresh session reconstitutes full situational
+  awareness from one command — built for the context-reset tax of working with LLMs.
+- **Files are the source; git is the backend.** The plan lives in version control
+  beside the code and diffs in pull requests — no server, no database, no SaaS.
+- **Intent vs. emergence is first-class.** Each node records its `origin`
+  (planned / discovered / amendment), and the rollup shows original-vs-emergent scope.
+- **One substrate, self-documenting and self-tracking.** Design docs, decision
+  records, and units of work are all nodes with the same id / edge / gate
+  machinery — not a wiki bolted onto a tracker.
+- **LLM-native ergonomics.** `--json` everywhere with stable schemas,
+  question-named commands, errors that name the fix, idempotent describe-or-create,
+  and an implementer / independent-verifier split built into the workflow.
+
 ## Workspace layout
 
 `odm` is a Cargo workspace (resolver 2, edition 2024, `max_width = 100`). Crates,
