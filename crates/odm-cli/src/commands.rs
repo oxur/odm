@@ -6,16 +6,18 @@
 //! buffers and drive commands in-process. Output stays plain so it is
 //! TTY-agnostic and stable to assert on.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
 use odm_core::check::{Finding, Violation};
-use odm_core::frontmatter::{Document, Frontmatter, SupersedeKind, Supersedes};
+use odm_core::frontmatter::{Dependency, Document, Frontmatter, SupersedeKind, Supersedes};
 use odm_core::gates::GateSets;
-use odm_core::graph::{Block, NodeGraph};
-use odm_core::satisfaction::{Satisfaction, threshold_from_toml};
+use odm_core::graph::{Block, NodeGraph, Tear};
+use odm_core::recompose::{self, Issue};
+use odm_core::satisfaction::{Satisfaction, staleness_on_advance, threshold_from_toml};
 use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
@@ -483,25 +485,67 @@ pub fn context(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> a
 }
 
 // ---------------------------------------------------------------------------
-// check (v1)
+// check (v2) — the single mechanical gate: aggregates every graph-level
+// invariant (ODD-0013 §7, §4.3/§4.4/§4.5). It consumes the predicates built in
+// arc01 slice06 (schema + link-integrity), arc02 slice02 (cycles), slice04
+// (satisfaction/staleness), and slice05 (recomposition) — it does not
+// reimplement them.
 // ---------------------------------------------------------------------------
+
+/// The severity of a [`CheckEntry`]. **Errors** always fail the run (exit `1`);
+/// **warnings** fail only under `--strict` (ODD-0013 §4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Severity {
+    /// A hard violation: always fails the run.
+    Error,
+    /// A soft signal (staleness, soft-satisfaction): fails only under `--strict`.
+    Warning,
+}
+
+impl Severity {
+    fn as_str(self) -> &'static str {
+        match self {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        }
+    }
+}
+
+/// One aggregated check finding (internal; rendered to text or [`EntryJson`]).
+struct CheckEntry {
+    severity: Severity,
+    /// A stable, one-word code (e.g. `missing-field`, `cycle`, `orphan`).
+    code: &'static str,
+    /// The node the finding attaches to (a graph-spanning cycle attaches to its
+    /// first member); `None` only if no single node applies.
+    node: Option<Id>,
+    number: Option<u32>,
+    name: Option<String>,
+    detail: String,
+    /// The exact command or edit that resolves it (errors-as-affordances).
+    fix: String,
+}
 
 /// JSON shape of one `check` finding (stable schema for `check --json`).
 #[derive(Serialize)]
-struct FindingJson {
-    node: String,
-    number: u32,
-    name: String,
-    violation: String,
+struct EntryJson {
+    severity: String,
+    code: String,
+    node: Option<String>,
+    number: Option<u32>,
+    name: Option<String>,
     detail: String,
     fix: String,
 }
 
-/// JSON shape of the whole `check` report.
+/// JSON shape of the whole `check` report (stable, documented schema).
 #[derive(Serialize)]
 struct CheckReport {
+    /// Whether the run passed (no failing findings for the active mode).
     ok: bool,
-    findings: Vec<FindingJson>,
+    errors: usize,
+    warnings: usize,
+    findings: Vec<EntryJson>,
 }
 
 /// A one-word violation label (stable across the JSON schema and human output).
@@ -569,62 +613,277 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
     }
 }
 
-/// `check` — structural validation of the full corpus. Returns the exit code
-/// ([`EXIT_OK`] when clean, [`EXIT_VIOLATIONS`] when findings exist). The report
-/// is data → `out`.
+/// A short `#<number> <name>` label for a node id, falling back to the id.
+fn label_of(by_id: &HashMap<Id, &Frontmatter>, id: Id) -> String {
+    by_id.get(&id).map_or_else(|| id.to_string(), |f| format!("#{} {}", f.number(), f.name()))
+}
+
+/// The torn ordering edges declared in frontmatter (`edges.tears`). The schema
+/// does not yet carry a tear *rationale* (deferred — see slices 04/05); the
+/// engine's [`Tear`] requires one, so a placeholder is synthesized purely to let
+/// the cycle detector exclude the edge. (Flagged in the slice report.)
+fn frontmatter_tears(frontmatters: &[Frontmatter]) -> Vec<Tear<Id>> {
+    let mut tears = Vec::new();
+    for fm in frontmatters {
+        let from = fm.id();
+        for dep in &fm.edges().tears {
+            let to = dependency_target(dep);
+            if let Ok(t) = Tear::new(from, to, "declared in frontmatter `edges.tears`") {
+                tears.push(t);
+            }
+        }
+    }
+    tears
+}
+
+/// The target id of a dependency edge (bare or gate-qualified).
+fn dependency_target(dep: &Dependency) -> Id {
+    match dep {
+        Dependency::Bare(id) => *id,
+        Dependency::Qualified { node, .. } => *node,
+    }
+}
+
+/// Whether a node has *advanced* past its initial (planning) gate — the trigger
+/// for the staleness check. Unjudgeable (so `false`) when its type has no
+/// configured gate-set.
+fn has_advanced(fm: &Frontmatter, gates: &GateSets) -> bool {
+    gates.for_type(fm.node_type()).is_some_and(|gset| {
+        gset.sequence().iter().enumerate().any(|(i, gate)| i > 0 && fm.status().has_reached(gate))
+    })
+}
+
+/// Renders a recomposition finding to `(code, detail, fix)`.
+fn recompose_render(store: &Store, f: &recompose::Finding) -> (&'static str, String, String) {
+    let file = store.path_of(f.node);
+    let file = file.display();
+    match &f.issue {
+        Issue::Orphan => (
+            "orphan",
+            "no resolvable containment parent (recomposition is not total)".to_string(),
+            format!("edit {file}: set `edges.part_of` to its container (or `odm new` the parent)"),
+        ),
+        Issue::UndevelopedStub { gate } => (
+            "undeveloped-stub",
+            format!("advanced to gate {gate:?} with zero children"),
+            format!("decompose it (`odm new` its children) or hold its gate at planning in {file}"),
+        ),
+        Issue::DecompositionDrift { added, removed } => (
+            "decomposition-drift",
+            format!(
+                "children changed since `decomposed` was affirmed (added {}, removed {})",
+                added.len(),
+                removed.len()
+            ),
+            format!("re-affirm `decomposed` in {file} after the child-set change"),
+        ),
+        Issue::AdvancedWithoutDecomposition => (
+            "advanced-without-decomposition",
+            "reached its terminal gate without affirming `decomposed: complete`".to_string(),
+            format!("affirm `decomposed` in {file} before completing it"),
+        ),
+        _ => (
+            "recomposition",
+            "structural decomposition issue".to_string(),
+            format!("inspect {file}"),
+        ),
+    }
+}
+
+/// Aggregates every graph-level invariant over the whole corpus into a single
+/// ordered list of findings: schema + link-integrity (v1), cycles-without-tears,
+/// recomposition (orphan/stub/drift/advance-without), out-of-order/staleness,
+/// and below-threshold (soft-satisfied) dependencies.
+fn aggregate(store: &Store, root: &Path, docs: &[Document]) -> anyhow::Result<Vec<CheckEntry>> {
+    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
+    let by_id: HashMap<Id, &Frontmatter> = frontmatters.iter().map(|f| (f.id(), f)).collect();
+    let (gates, threshold) = load_gate_config(root)?;
+    let graph = NodeGraph::build(&frontmatters);
+    let satisfaction = Satisfaction::compute(&frontmatters, &gates, threshold);
+
+    let mut entries = Vec::new();
+
+    // (a) schema + link-integrity + supersession (v1) — hard errors.
+    for f in odm_core::check::check(&frontmatters) {
+        entries.push(CheckEntry {
+            severity: Severity::Error,
+            code: violation_label(&f.violation),
+            node: Some(f.node),
+            number: Some(f.number),
+            name: Some(f.name.clone()),
+            detail: violation_detail(&f.violation),
+            fix: violation_fix(store, &f),
+        });
+    }
+
+    // (b) cycle-without-tear (slice02) — a hard error; passes once torn.
+    let tears = frontmatter_tears(&frontmatters);
+    if let Err(cycle) = graph.topological_order(&tears) {
+        let members = cycle.members();
+        let chain: Vec<String> = members.iter().map(|&id| label_of(&by_id, id)).collect();
+        let head = members.first().copied();
+        let fix = match (members.first(), members.get(1)) {
+            (Some(a), Some(b)) => {
+                format!("`odm tear {a} depends_on {b} --because \"<reason>\"` to break the cycle")
+            }
+            _ => "break the dependency cycle by tearing one edge".to_string(),
+        };
+        entries.push(CheckEntry {
+            severity: Severity::Error,
+            code: "cycle",
+            node: head,
+            number: head.and_then(|id| by_id.get(&id).map(|f| f.number())),
+            name: head.and_then(|id| by_id.get(&id).map(|f| f.name().to_string())),
+            detail: format!("ordering cycle (depends_on/consumes): {}", chain.join(" -> ")),
+            fix,
+        });
+    }
+
+    // (c) recomposition (slice05) — orphan/stub/drift/advance-without: errors.
+    for f in recompose::integrity(&frontmatters, &gates) {
+        let (code, detail, fix) = recompose_render(store, &f);
+        entries.push(CheckEntry {
+            severity: Severity::Error,
+            code,
+            node: Some(f.node),
+            number: Some(f.number),
+            name: Some(f.name.clone()),
+            detail,
+            fix,
+        });
+    }
+
+    // (d) soft-satisfaction + (e) out-of-order/staleness (slice04) — warnings.
+    // Walk nodes in id order for deterministic output.
+    let mut ordered: Vec<&Frontmatter> = frontmatters.iter().collect();
+    ordered.sort_by_key(|f| f.id());
+    for fm in ordered {
+        let reasons = graph.blocked(fm.id(), &satisfaction);
+
+        for reason in &reasons {
+            if let Block::SoftSatisfied { dep, evidence, threshold } = reason {
+                entries.push(CheckEntry {
+                    severity: Severity::Warning,
+                    code: "soft-satisfied",
+                    node: Some(fm.id()),
+                    number: Some(fm.number()),
+                    name: Some(fm.name().to_string()),
+                    detail: format!(
+                        "dependency {} satisfied only at evidence={} (threshold {})",
+                        label_of(&by_id, *dep),
+                        evidence.as_str(),
+                        threshold.as_str()
+                    ),
+                    fix: format!(
+                        "raise {}'s evidence to {} (re-run its verification)",
+                        label_of(&by_id, *dep),
+                        threshold.as_str()
+                    ),
+                });
+            }
+        }
+
+        // Staleness: a node advanced past planning while a dependency is
+        // unsatisfied — out of order.
+        if has_advanced(fm, &gates) {
+            let unsatisfied: Vec<Id> = reasons
+                .iter()
+                .filter_map(|r| match r {
+                    Block::Unsatisfied { dep } => Some(*dep),
+                    _ => None,
+                })
+                .collect();
+            if let Some(stale) = staleness_on_advance(fm.id(), unsatisfied) {
+                let deps: Vec<String> =
+                    stale.unsatisfied.iter().map(|&id| label_of(&by_id, id)).collect();
+                entries.push(CheckEntry {
+                    severity: Severity::Warning,
+                    code: "staleness",
+                    node: Some(fm.id()),
+                    number: Some(fm.number()),
+                    name: Some(fm.name().to_string()),
+                    detail: format!(
+                        "advanced while dependencies are unsatisfied: {}",
+                        deps.join(", ")
+                    ),
+                    fix: format!(
+                        "satisfy {} before advancing, or `odm tear` the edge if intentional",
+                        deps.join(", ")
+                    ),
+                });
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+/// `check` — the single mechanical gate: aggregates every graph-level invariant
+/// over the full corpus. Returns the exit code ([`EXIT_OK`] when the run passes,
+/// [`EXIT_VIOLATIONS`] when it fails). The report is data → `out`.
+///
+/// Errors always fail. Warnings (staleness, soft-satisfaction) fail only under
+/// `strict` (the CI mode). A clean corpus prints `check: ok`.
 ///
 /// # Errors
 ///
-/// Returns an error (which the caller maps to a usage/operational exit code) if
-/// the corpus cannot be loaded.
-pub fn check(store: &Store, json: bool, out: &mut dyn Write) -> anyhow::Result<u8> {
+/// Returns an error (which the caller maps to exit code `2`) if the corpus
+/// cannot be loaded or the gate config is invalid.
+pub fn check(
+    store: &Store,
+    root: &Path,
+    strict: bool,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<u8> {
     let docs = store.load_all().context("loading the corpus to check")?;
-    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
-    let findings = odm_core::check::check(&frontmatters);
+    let entries = aggregate(store, root, &docs)?;
+
+    let errors = entries.iter().filter(|e| e.severity == Severity::Error).count();
+    let warnings = entries.iter().filter(|e| e.severity == Severity::Warning).count();
+    let failed = errors > 0 || (strict && warnings > 0);
+    let code = if failed { EXIT_VIOLATIONS } else { EXIT_OK };
 
     if json {
         let report = CheckReport {
-            ok: findings.is_empty(),
-            findings: findings
+            ok: !failed,
+            errors,
+            warnings,
+            findings: entries
                 .iter()
-                .map(|f| FindingJson {
-                    node: f.node.to_string(),
-                    number: f.number,
-                    name: f.name.clone(),
-                    violation: violation_label(&f.violation).to_string(),
-                    detail: violation_detail(&f.violation),
-                    fix: violation_fix(store, f),
+                .map(|e| EntryJson {
+                    severity: e.severity.as_str().to_string(),
+                    code: e.code.to_string(),
+                    node: e.node.map(|id| id.to_string()),
+                    number: e.number,
+                    name: e.name.clone(),
+                    detail: e.detail.clone(),
+                    fix: e.fix.clone(),
                 })
                 .collect(),
         };
         writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
-        return Ok(exit_code(&findings));
+        return Ok(code);
     }
 
-    if findings.is_empty() {
-        writeln!(out, "check: ok ({} node(s), no problems)", frontmatters.len())?;
+    if entries.is_empty() {
+        writeln!(out, "check: ok ({} node(s), no problems)", docs.len())?;
         return Ok(EXIT_OK);
     }
 
-    writeln!(out, "check: {} problem(s) found", findings.len())?;
-    for f in &findings {
-        writeln!(
-            out,
-            "  #{} {:?} ({}): [{}] {}",
-            f.number,
-            f.name,
-            f.node,
-            violation_label(&f.violation),
-            violation_detail(&f.violation)
-        )?;
-        writeln!(out, "    fix: {}", violation_fix(store, f))?;
+    writeln!(out, "check: {errors} error(s), {warnings} warning(s)")?;
+    for e in &entries {
+        let who = match (e.number, &e.name, e.node) {
+            (Some(n), Some(name), Some(id)) => format!("#{n} {name:?} ({id})"),
+            _ => "(corpus)".to_string(),
+        };
+        writeln!(out, "  [{}] {who}: [{}] {}", e.severity.as_str(), e.code, e.detail)?;
+        writeln!(out, "    fix: {}", e.fix)?;
     }
-    Ok(EXIT_VIOLATIONS)
-}
-
-/// Maps a finding set to the `check` exit code.
-fn exit_code(findings: &[Finding]) -> u8 {
-    if findings.is_empty() { EXIT_OK } else { EXIT_VIOLATIONS }
+    if !strict && warnings > 0 && errors == 0 {
+        writeln!(out, "(warnings do not fail; run with --strict to enforce)")?;
+    }
+    Ok(code)
 }
 
 // ---------------------------------------------------------------------------

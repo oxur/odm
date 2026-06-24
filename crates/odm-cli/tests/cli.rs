@@ -485,12 +485,24 @@ fn check_supersession_chain_is_flagged() {
 #[test]
 fn check_clean_passes() {
     let dir = TempDir::new().unwrap();
-    // A valid parent + child (part_of resolves).
-    run(dir.path(), &["new", "arc", "Parent"]);
-    // Child seeded with part_of pointing at the parent's id.
-    let parent_id = md_paths(dir.path())[0].file_stem().unwrap().to_string_lossy().to_string();
-    seed_slice(dir.path(), 2, "Child", |fm| {
-        fm.edges_mut().part_of = Some(Id::from_str(&parent_id).unwrap());
+    // A total tree: project <- arc <- slice (every non-root resolves to a
+    // parent). v2 recomposition is stricter than v1 — a top-level arc with no
+    // project parent is now an orphan, so the corpus must be a real tree.
+    let mut project_id = Id::new();
+    seed(dir.path(), |id| {
+        project_id = id;
+        let fm = Frontmatter::new(id, 1, NodeType::Project, "Odm", day(), day(), Origin::Planned);
+        Document::new(fm, "body\n")
+    });
+    let mut arc_id = Id::new();
+    seed(dir.path(), |id| {
+        arc_id = id;
+        let mut fm = Frontmatter::new(id, 2, NodeType::Arc, "Arc", day(), day(), Origin::Planned);
+        fm.edges_mut().part_of = Some(project_id);
+        Document::new(fm, "body\n")
+    });
+    seed_slice(dir.path(), 3, "Child", |fm| {
+        fm.edges_mut().part_of = Some(arc_id);
     });
     let r = run(dir.path(), &["check"]);
     assert_eq!(r.code, Some(0));
@@ -524,26 +536,27 @@ fn check_errors_name_fix_v1() {
     assert!(r.out.contains("odm rename"), "empty-name fix is a real command; out: {}", r.out);
 }
 
-// ----- L-8: --json report stable schema -------------------------------------
+// ----- L-8: --json report stable schema (v2 envelope) -----------------------
 
 #[test]
 fn check_json_v1() {
     let dir = TempDir::new().unwrap();
-    seed_slice(dir.path(), 1, "Orphan", |fm| {
+    seed_slice(dir.path(), 1, "Detached", |fm| {
         fm.edges_mut().part_of = Some(Id::from_str(MISSING_ID).unwrap());
     });
     let r = run(dir.path(), &["check", "--json"]);
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
     assert_eq!(value["ok"], false);
+    assert!(value["errors"].as_u64().unwrap() >= 1);
     let findings = value["findings"].as_array().expect("findings array");
-    assert_eq!(findings.len(), 1);
+    // Each finding carries the stable v2 keys.
     let f = &findings[0];
     let mut keys: Vec<&String> = f.as_object().unwrap().keys().collect();
     keys.sort();
-    assert_eq!(keys, ["detail", "fix", "name", "node", "number", "violation"]);
-    assert_eq!(f["violation"], "dangling-part_of");
-    assert_eq!(f["number"], 1);
+    assert_eq!(keys, ["code", "detail", "fix", "name", "node", "number", "severity"]);
+    // The dangling-part_of violation is present (a v1 link-integrity finding).
+    assert!(findings.iter().any(|f| f["code"] == "dangling-part_of" && f["severity"] == "error"));
 
     // A clean corpus reports ok=true, empty findings.
     let clean = TempDir::new().unwrap();
@@ -551,6 +564,8 @@ fn check_json_v1() {
     assert_eq!(cr.code, Some(0));
     let cv: serde_json::Value = serde_json::from_str(&cr.out).unwrap();
     assert_eq!(cv["ok"], true);
+    assert_eq!(cv["errors"], 0);
+    assert_eq!(cv["warnings"], 0);
     assert!(cv["findings"].as_array().unwrap().is_empty());
 }
 
@@ -627,4 +642,312 @@ fn json_schema_derived_order() {
     // Human output also surfaces the soft flag.
     let next_human = run(dir.path(), &["next"]);
     assert!(next_human.out.contains("⚠ dep") && next_human.out.contains("evidence=attested"));
+}
+
+// ===========================================================================
+// check v2: aggregate every graph-level invariant (M-1 .. M-9)
+// ===========================================================================
+
+const V2_TOML: &str = "\
+[gates.project]
+sequence = [\"planned\", \"in-progress\", \"complete\"]
+
+[gates.arc]
+sequence = [\"planned\", \"in-progress\", \"complete\"]
+
+[gates.slice]
+sequence = [\"planned\", \"built\", \"tested\"]
+
+[satisfaction]
+threshold = \"reproduced\"
+";
+
+fn fmn(id: Id, number: u32, ty: NodeType, name: &str) -> Frontmatter {
+    Frontmatter::new(id, number, ty, name, day(), day(), Origin::Planned)
+}
+
+/// Persists a fully-built frontmatter (controlled id) to the store.
+fn put(root: &Path, fm: Frontmatter) {
+    Store::open(root).persist(&Document::new(fm, "body\n")).unwrap();
+}
+
+/// The slice gate-set from [`V2_TOML`], for stamping status in tests.
+fn slice_gset() -> odm_core::gates::GateSet {
+    GateSets::from_toml_str(V2_TOML).unwrap().for_type(NodeType::Slice).unwrap().clone()
+}
+
+/// Seeds a minimal total tree project(1) <- arc(2) and returns (project, arc).
+fn tree(root: &Path) -> (Id, Id) {
+    let p = Id::new();
+    let a = Id::new();
+    put(root, fmn(p, 1, NodeType::Project, "Project"));
+    let mut arc = fmn(a, 2, NodeType::Arc, "Arc");
+    arc.edges_mut().part_of = Some(p);
+    put(root, arc);
+    (p, a)
+}
+
+// ----- M-1: aggregate schema + link-integrity (v1) --------------------------
+
+#[test]
+fn check_schema_and_links() {
+    let dir = TempDir::new().unwrap();
+    let (_p, a) = tree(dir.path());
+    // A blank-name slice (missing-field) and a slice with a dangling depends_on.
+    let mut blank = fmn(Id::new(), 3, NodeType::Slice, "   ");
+    blank.edges_mut().part_of = Some(a);
+    put(dir.path(), blank);
+    let mut dangling = fmn(Id::new(), 4, NodeType::Slice, "Dep");
+    dangling.edges_mut().part_of = Some(a);
+    dangling.edges_mut().depends_on = vec![Dependency::Bare(Id::from_str(MISSING_ID).unwrap())];
+    put(dir.path(), dangling);
+
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("missing-field"), "schema check aggregated; out: {}", r.out);
+    assert!(r.out.contains("dangling-edge"), "link-integrity aggregated; out: {}", r.out);
+}
+
+// ----- M-2: cycle-without-tear fails; passes once torn ----------------------
+
+#[test]
+fn check_cycle_requires_tear() {
+    let dir = TempDir::new().unwrap();
+    let (p, a) = tree(dir.path());
+    let x = Id::new();
+    let y = Id::new();
+    let slice_with = |id, num, name, dep, tear: Option<Id>| {
+        let mut fm = fmn(id, num, NodeType::Slice, name);
+        fm.edges_mut().part_of = Some(a);
+        fm.edges_mut().depends_on = vec![Dependency::Bare(dep)];
+        if let Some(t) = tear {
+            fm.edges_mut().tears = vec![Dependency::Bare(t)];
+        }
+        fm
+    };
+    let _ = p;
+    // X depends_on Y and Y depends_on X — an ordering cycle.
+    put(dir.path(), slice_with(x, 3, "X", y, None));
+    put(dir.path(), slice_with(y, 4, "Y", x, None));
+
+    let cyclic = run(dir.path(), &["check"]);
+    assert_eq!(cyclic.code, Some(1));
+    assert!(cyclic.out.contains("cycle"), "cycle reported; out: {}", cyclic.out);
+
+    // Tear X -> Y: the cycle is broken, the corpus passes.
+    put(dir.path(), slice_with(x, 3, "X", y, Some(y)));
+    let torn = run(dir.path(), &["check"]);
+    assert_eq!(torn.code, Some(0), "torn cycle passes; out: {}", torn.out);
+}
+
+// ----- M-3: out-of-order / staleness ----------------------------------------
+
+#[test]
+fn check_staleness() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let (_p, a) = tree(dir.path());
+    let y = Id::new();
+    let x = Id::new();
+    // Y: an unsatisfied dependency (no terminal gate reached).
+    let mut y_fm = fmn(y, 4, NodeType::Slice, "Y");
+    y_fm.edges_mut().part_of = Some(a);
+    put(dir.path(), y_fm);
+    // X: advanced to `built` while depending on the unsatisfied Y → stale.
+    let mut x_fm = fmn(x, 3, NodeType::Slice, "X");
+    x_fm.edges_mut().part_of = Some(a);
+    x_fm.edges_mut().depends_on = vec![Dependency::Bare(y)];
+    x_fm.status_mut().set_gate(&slice_gset(), "built", None, Evidence::Reproduced, day()).unwrap();
+    put(dir.path(), x_fm);
+
+    let r = run(dir.path(), &["check"]);
+    // Warning-only ⇒ exit 0 in normal mode, but the staleness is reported.
+    assert_eq!(r.code, Some(0), "out: {}", r.out);
+    assert!(r.out.contains("staleness"), "out: {}", r.out);
+}
+
+// ----- M-4: recomposition (orphan/stub/decomposition drift) -----------------
+
+#[test]
+fn check_recomposition() {
+    let dir = TempDir::new().unwrap();
+    // A slice with no containment parent: an orphan (recomposition not total).
+    put(dir.path(), fmn(Id::new(), 1, NodeType::Slice, "Lonely"));
+
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("orphan"), "recomposition aggregated; out: {}", r.out);
+}
+
+// ----- M-4b: the other recomposition variants (stub/drift/advance-without) --
+
+#[test]
+fn check_recomposition_variants() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let arc_gset =
+        GateSets::from_toml_str(V2_TOML).unwrap().for_type(NodeType::Arc).unwrap().clone();
+
+    let p = Id::new();
+    put(dir.path(), fmn(p, 1, NodeType::Project, "P"));
+
+    // Q: an arc advanced to `in-progress` with zero children → undeveloped stub.
+    let q = Id::new();
+    let mut q_fm = fmn(q, 2, NodeType::Arc, "Q");
+    q_fm.edges_mut().part_of = Some(p);
+    q_fm.status_mut()
+        .set_gate(&arc_gset, "in-progress", None, Evidence::Reproduced, day())
+        .unwrap();
+    put(dir.path(), q_fm);
+
+    // R: an arc that reached terminal `complete` with a child but never affirmed
+    // `decomposed` → advanced-without-decomposition.
+    let r = Id::new();
+    let mut r_fm = fmn(r, 3, NodeType::Arc, "R");
+    r_fm.edges_mut().part_of = Some(p);
+    r_fm.status_mut().set_gate(&arc_gset, "complete", None, Evidence::Reproduced, day()).unwrap();
+    put(dir.path(), r_fm);
+    let s = Id::new();
+    let mut s_fm = fmn(s, 4, NodeType::Slice, "S");
+    s_fm.edges_mut().part_of = Some(r);
+    put(dir.path(), s_fm);
+
+    // T: an arc that affirmed `decomposed` against a child that is not present,
+    // while a different child is → decomposition drift (added U, removed Z).
+    let t = Id::new();
+    let mut t_fm = fmn(t, 5, NodeType::Arc, "T");
+    t_fm.edges_mut().part_of = Some(p);
+    t_fm.affirm_decomposed(vec![Id::from_str(MISSING_ID).unwrap()], day());
+    put(dir.path(), t_fm);
+    let u = Id::new();
+    let mut u_fm = fmn(u, 6, NodeType::Slice, "U");
+    u_fm.edges_mut().part_of = Some(t);
+    put(dir.path(), u_fm);
+
+    let out = run(dir.path(), &["check"]);
+    assert_eq!(out.code, Some(1));
+    assert!(out.out.contains("undeveloped-stub"), "out: {}", out.out);
+    assert!(out.out.contains("advanced-without-decomposition"), "out: {}", out.out);
+    assert!(out.out.contains("decomposition-drift"), "out: {}", out.out);
+}
+
+// ----- M-5: below-threshold (soft-satisfied) dependencies -------------------
+
+/// Seeds a total tree with A (#4) depends_on B (#3), where B reached its
+/// terminal gate only at `attested` (below the `reproduced` threshold).
+fn seed_soft_tree(root: &Path) -> (Id, Id) {
+    std::fs::write(root.join("odm.toml"), V2_TOML).unwrap();
+    let (_p, a) = tree(root);
+    let b = Id::new();
+    let mut b_fm = fmn(b, 3, NodeType::Slice, "B");
+    b_fm.edges_mut().part_of = Some(a);
+    b_fm.status_mut().set_gate(&slice_gset(), "tested", None, Evidence::Attested, day()).unwrap();
+    put(root, b_fm);
+    let aa = Id::new();
+    let mut a_fm = fmn(aa, 4, NodeType::Slice, "A");
+    a_fm.edges_mut().part_of = Some(a);
+    a_fm.edges_mut().depends_on = vec![Dependency::Bare(b)];
+    put(root, a_fm);
+    (aa, b)
+}
+
+#[test]
+fn check_soft_satisfied() {
+    let dir = TempDir::new().unwrap();
+    seed_soft_tree(dir.path());
+
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(0), "warning-only ⇒ passes in normal mode; out: {}", r.out);
+    assert!(r.out.contains("soft-satisfied"), "out: {}", r.out);
+}
+
+// ----- M-6: exit codes 0 / 1 / 2 --------------------------------------------
+
+#[test]
+fn check_exit_codes() {
+    let dir = TempDir::new().unwrap();
+    // 0: a clean total tree.
+    tree(dir.path());
+    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+
+    // 1: an error (an orphan slice).
+    let bad = TempDir::new().unwrap();
+    put(bad.path(), fmn(Id::new(), 1, NodeType::Slice, "Orphan"));
+    assert_eq!(run(bad.path(), &["check"]).code, Some(1));
+
+    // 2: a usage error is clap's domain (rejected before dispatch; the binary
+    // then exits 2). Verified in-process: odm-cli is library-only, so there is
+    // no binary to spawn — `dispatch` returns the exact code `run` maps to
+    // `ExitCode`. (Deviation from the cc-prompt's `assert_cmd` note — flagged.)
+    assert!(Cli::try_parse_from(["odm", "check", "--bogus"]).is_err());
+}
+
+// ----- M-7: --strict promotes warnings to failures --------------------------
+
+#[test]
+fn check_strict_mode() {
+    let dir = TempDir::new().unwrap();
+    seed_soft_tree(dir.path()); // warning-only corpus (soft-satisfied)
+
+    // Normal mode: warnings do not fail.
+    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+    // Strict mode: the same warning fails the run.
+    let strict = run(dir.path(), &["check", "--strict"]);
+    assert_eq!(strict.code, Some(1), "out: {}", strict.out);
+    assert!(strict.out.contains("soft-satisfied"));
+}
+
+// ----- M-8: every finding names the exact fix -------------------------------
+
+#[test]
+fn check_errors_name_fix() {
+    let dir = TempDir::new().unwrap();
+    // A mix: an orphan (error) and a soft-satisfied dep (warning).
+    seed_soft_tree(dir.path());
+    put(dir.path(), fmn(Id::new(), 9, NodeType::Slice, "Stray")); // orphan
+
+    let r = run(dir.path(), &["check", "--json"]);
+    assert_eq!(r.code, Some(1));
+    let value: serde_json::Value = serde_json::from_str(&r.out).unwrap();
+    let findings = value["findings"].as_array().unwrap();
+    assert!(findings.len() >= 2);
+    for f in findings {
+        let fix = f["fix"].as_str().expect("fix string");
+        assert!(!fix.trim().is_empty(), "every finding names a fix: {f}");
+    }
+    // Human output prints a `fix:` line per finding too.
+    assert!(run(dir.path(), &["check"]).out.contains("fix:"));
+}
+
+// ----- M-9: --json report, stable schema ------------------------------------
+
+#[test]
+fn check_json_schema() {
+    let dir = TempDir::new().unwrap();
+    seed_soft_tree(dir.path()); // a warning
+    put(dir.path(), fmn(Id::new(), 9, NodeType::Slice, "Stray")); // an error (orphan)
+
+    let r = run(dir.path(), &["check", "--json"]);
+    assert_eq!(r.code, Some(1));
+    let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+
+    // Stable envelope.
+    let mut top: Vec<&String> = value.as_object().unwrap().keys().collect();
+    top.sort();
+    assert_eq!(top, ["errors", "findings", "ok", "warnings"]);
+    assert_eq!(value["ok"], false);
+    assert!(value["errors"].as_u64().unwrap() >= 1);
+    assert!(value["warnings"].as_u64().unwrap() >= 1);
+
+    // Stable per-finding schema.
+    let findings = value["findings"].as_array().unwrap();
+    for f in findings {
+        let mut keys: Vec<&String> = f.as_object().unwrap().keys().collect();
+        keys.sort();
+        assert_eq!(keys, ["code", "detail", "fix", "name", "node", "number", "severity"]);
+        assert!(f["severity"] == "error" || f["severity"] == "warning");
+    }
+    // Both families are present and labeled by severity.
+    assert!(findings.iter().any(|f| f["code"] == "orphan" && f["severity"] == "error"));
+    assert!(findings.iter().any(|f| f["code"] == "soft-satisfied" && f["severity"] == "warning"));
 }

@@ -166,8 +166,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Validate the corpus structure (completeness, links, supersession).
+    /// Validate the whole graph: schema, links, cycles, recomposition, order.
     Check {
+        /// CI mode: promote warnings (staleness, soft-satisfaction) to failures.
+        #[arg(long)]
+        strict: bool,
         /// Emit JSON.
         #[arg(long)]
         json: bool,
@@ -270,7 +273,7 @@ pub fn dispatch(
         }
         Command::Context { json } => commands::context(&store, root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
-        Command::Check { json } => return commands::check(&store, json, out),
+        Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
         Command::Next { json } => commands::next(&store, root, json, out)?,
         Command::Blocked { reference, json } => {
             commands::blocked(&store, root, &reference, json, out)?;
