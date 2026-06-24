@@ -50,11 +50,22 @@ impl Evidence {
     }
 }
 
-/// The record for one reached gate: when, by whom (optional), and at what
-/// evidence level.
+/// The record for one reached gate: when, by whom (optional), at what evidence
+/// level, and — optionally — the date each evidence level was *first* reached.
+///
+/// `reached`/`by`/`evidence` are the current reach (overwritten on a raise, as
+/// before). `evidence_dates` is the durable verification-latency signal
+/// (`workbench/forecasting-telemetry.md` §6): the first-reached date *per*
+/// level, preserved across raises so an `attested → reproduced` transition's
+/// timing is not lost. It is omitted on the wire when empty, so nodes written
+/// before this field existed round-trip byte-identically.
+///
+/// Evidence **regression** (recording a lower level after a higher one) is out
+/// of scope here — `evidence_dates` records first-reach per level only; it does
+/// not model or flag a downgrade.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GateRecord {
-    /// The date the gate was reached.
+    /// The date the gate was reached (the current reach; overwritten on a raise).
     pub reached: NaiveDate,
     /// Who recorded reaching it, if known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -62,6 +73,10 @@ pub struct GateRecord {
     /// How well the reach is known (defaults to `asserted` when absent).
     #[serde(default)]
     pub evidence: Evidence,
+    /// The date each evidence level was *first* reached for this gate, in
+    /// evidence order. Populated by [`Status::set_gate`]; omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence_dates: BTreeMap<Evidence, NaiveDate>,
 }
 
 /// A node's status: the gates it has reached, each with its record.
@@ -82,8 +97,11 @@ impl Status {
     }
 
     /// Records that `gate` was reached, validating it against `gate_set` first.
-    /// Re-recording a gate overwrites its previous record (e.g. raising the
-    /// evidence level).
+    /// Re-recording a gate overwrites `reached`/`by`/`evidence` (e.g. raising the
+    /// evidence level) but **preserves** the per-level first-reached dates: the
+    /// reached level's date is recorded only if that level has not been seen
+    /// before, so a raise keeps earlier levels' dates and re-recording the same
+    /// level keeps its original date.
     ///
     /// # Errors
     ///
@@ -102,7 +120,18 @@ impl Status {
                 allowed: gate_set.sequence().to_vec(),
             });
         }
-        self.gates.insert(gate.to_string(), GateRecord { reached, by, evidence });
+        let record = self.gates.entry(gate.to_string()).or_insert_with(|| GateRecord {
+            reached,
+            by: by.clone(),
+            evidence,
+            evidence_dates: BTreeMap::new(),
+        });
+        // First-reach per level: never overwrite an earlier level's date.
+        record.evidence_dates.entry(evidence).or_insert(reached);
+        // The current reach overwrites, as before.
+        record.reached = reached;
+        record.by = by;
+        record.evidence = evidence;
         Ok(())
     }
 
