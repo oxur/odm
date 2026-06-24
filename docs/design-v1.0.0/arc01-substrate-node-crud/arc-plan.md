@@ -41,3 +41,12 @@ empty crates for far-off arcs.
 
 Ledger per slice; CC implements, CDC verifies every row independently before close;
 five-iteration cap. Each slice's five-document set lives in its directory.
+
+## Build status (2026-06-22)
+
+All six slices **built, CDC-verified, and CI-green — Arc 01 COMPLETE (2026-06-22).**
+01 scaffolding, 02 identity, 03 frontmatter, 04 store (+CI reflog fix), 05 node-CRUD
+(in-process dispatch), 06 `check` v1. Every row `reproduced` (CI). `odm` can
+create/list/show/rename/retire/supersede git-tracked nodes with stable ULID ids and
+a structural `check` — "files are the source" proven end-to-end. Arc 02 builds the
+graph engine + `check` v2 on top (extending `odm_core::check`).
