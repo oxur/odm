@@ -23,6 +23,7 @@
 
 #![deny(missing_docs)]
 
+pub mod check;
 pub mod frontmatter;
 mod id;
 mod node;

@@ -13,12 +13,19 @@
 mod commands;
 mod context;
 
+use std::process::ExitCode;
+
 use anyhow::Context as _;
 use clap::{Parser, Subcommand, ValueEnum};
 use odm_core::frontmatter::SupersedeKind;
 use odm_store::Store;
 
-use crate::commands::UseKind;
+use crate::commands::{EXIT_OK, UseKind};
+
+/// Exit code for a usage or operational error (clap also uses `2` for argument
+/// errors). Distinct from `1`, which `check` reserves for "ran, found
+/// violations".
+const EXIT_ERROR: u8 = 2;
 
 /// The `odm` command-line interface.
 #[derive(Debug, Parser)]
@@ -159,23 +166,41 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Validate the corpus structure (completeness, links, supersession).
+    Check {
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
-/// writing to the process's stdout/stderr.
+/// writing to the process's stdout/stderr, and returns the process exit code.
 ///
-/// # Errors
-///
-/// Returns an [`anyhow::Error`] if the command fails. `clap` handles
-/// argument-parse errors itself, exiting the process directly.
-pub fn run() -> anyhow::Result<()> {
+/// Exit codes: `0` success (and, for `check`, a clean corpus); `1` `check`
+/// found violations; `2` an operational error (or, via `clap`, an argument
+/// error).
+pub fn run() -> ExitCode {
     let cli = Cli::parse();
-    let root = std::env::current_dir().context("determining the current directory")?;
-    dispatch(cli, &root, &mut std::io::stdout(), &mut std::io::stderr())
+    let root = match std::env::current_dir().context("determining the current directory") {
+        Ok(root) => root,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            return ExitCode::from(EXIT_ERROR);
+        }
+    };
+    match dispatch(cli, &root, &mut std::io::stdout(), &mut std::io::stderr()) {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            ExitCode::from(EXIT_ERROR)
+        }
+    }
 }
 
 /// Dispatches a parsed [`Cli`] against a store rooted at `root`, writing query
-/// results to `out` and diagnostics to `err`.
+/// results to `out` and diagnostics to `err`, and returns the intended exit
+/// code (`0` ok / clean, `1` `check` violations).
 ///
 /// This is the in-process entry point: [`run`] wires `out`/`err` to
 /// stdout/stderr, and tests wire them to buffers with an explicit `root` (no
@@ -183,19 +208,20 @@ pub fn run() -> anyhow::Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an [`anyhow::Error`] if the command fails (e.g. an unknown
-/// reference, a type mismatch, or an I/O/store error).
+/// Returns an [`anyhow::Error`] (which [`run`] maps to exit code `2`) if the
+/// command fails — e.g. an unknown reference, a type mismatch, or an I/O/store
+/// error.
 pub fn dispatch(
     cli: Cli,
     root: &std::path::Path,
     out: &mut dyn std::io::Write,
     err: &mut dyn std::io::Write,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<u8> {
     let store = Store::open(root);
 
     match cli.command {
         Command::New { node_type, name, dry_run, yes: _ } => {
-            commands::new(&store, &node_type, &name, dry_run, err)
+            commands::new(&store, &node_type, &name, dry_run, err)?;
         }
         Command::List { node_type, tag, component, json } => commands::list(
             &store,
@@ -204,20 +230,23 @@ pub fn dispatch(
             component.as_deref(),
             json,
             out,
-        ),
-        Command::Show { reference, json } => commands::show(&store, &reference, json, out),
+        )?,
+        Command::Show { reference, json } => commands::show(&store, &reference, json, out)?,
         Command::Rename { reference, name, dry_run, yes: _ } => {
-            commands::rename(&store, &reference, &name, dry_run, err)
+            commands::rename(&store, &reference, &name, dry_run, err)?;
         }
         Command::Retire { reference, because, dry_run, yes: _ } => {
-            commands::retire(&store, &reference, &because, dry_run, err)
+            commands::retire(&store, &reference, &because, dry_run, err)?;
         }
         Command::Supersede { reference, with, kind, dry_run, yes: _ } => {
-            commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)
+            commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)?;
         }
         Command::Use { kind, reference } => {
-            commands::use_context(&store, root, kind.into(), &reference, err)
+            commands::use_context(&store, root, kind.into(), &reference, err)?;
         }
-        Command::Context { json } => commands::context(&store, root, json, out),
+        Command::Context { json } => commands::context(&store, root, json, out)?,
+        // `check` returns its own exit code (0 clean / 1 violations).
+        Command::Check { json } => return commands::check(&store, json, out),
     }
+    Ok(EXIT_OK)
 }

@@ -9,6 +9,7 @@
 //! `json_schema_crud`).
 
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use chrono::NaiveDate;
 use clap::Parser;
@@ -21,6 +22,9 @@ use tempfile::TempDir;
 /// The result of one in-process command run.
 struct Run {
     ok: bool,
+    /// The exit code dispatch returned, or `None` if it errored (which `run`
+    /// maps to exit code 2).
+    code: Option<u8>,
     out: String,
     /// The diagnostics stream, mirroring what the user sees: the `err` buffer
     /// plus, on failure, the returned error rendered as `run` would print it.
@@ -38,7 +42,12 @@ fn run(root: &Path, args: &[&str]) -> Run {
     if let Err(e) = &result {
         err_text.push_str(&format!("error: {e:#}"));
     }
-    Run { ok: result.is_ok(), out: String::from_utf8(out).unwrap(), err: err_text }
+    Run {
+        ok: result.is_ok(),
+        code: result.as_ref().ok().copied(),
+        out: String::from_utf8(out).unwrap(),
+        err: err_text,
+    }
 }
 
 fn day() -> NaiveDate {
@@ -397,4 +406,150 @@ fn context_corrupt_file_errors() {
     std::fs::create_dir_all(dir.path().join(".odm")).unwrap();
     std::fs::write(dir.path().join(".odm").join("context.json"), b"{ not json").unwrap();
     assert!(!run(dir.path(), &["context"]).ok);
+}
+
+// ===========================================================================
+// check v1
+// ===========================================================================
+
+const MISSING_ID: &str = "01ARZ3NDEKTSV4RRFFQ69G5FZZ";
+
+/// Seeds a single slice node with the given number/name and edge tweaks.
+fn seed_slice(root: &Path, number: u32, name: &str, edit: impl FnOnce(&mut Frontmatter)) {
+    seed(root, |id| {
+        let mut fm =
+            Frontmatter::new(id, number, NodeType::Slice, name, day(), day(), Origin::Planned);
+        edit(&mut fm);
+        Document::new(fm, "body\n")
+    });
+}
+
+// ----- L-1: missing required field ------------------------------------------
+
+#[test]
+fn check_missing_field_is_flagged() {
+    let dir = TempDir::new().unwrap();
+    seed_slice(dir.path(), 1, "   ", |_| {}); // whitespace-only name
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("missing-field"), "out: {}", r.out);
+}
+
+// ----- L-2: dangling part_of ------------------------------------------------
+
+#[test]
+fn check_dangling_part_of_is_flagged() {
+    let dir = TempDir::new().unwrap();
+    seed_slice(dir.path(), 1, "Orphan", |fm| {
+        fm.edges_mut().part_of = Some(Id::from_str(MISSING_ID).unwrap());
+    });
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("dangling-part_of"), "out: {}", r.out);
+}
+
+// ----- L-3: dangling edge ---------------------------------------------------
+
+#[test]
+fn check_dangling_edge_is_flagged() {
+    let dir = TempDir::new().unwrap();
+    seed_slice(dir.path(), 1, "Node", |fm| {
+        fm.edges_mut().supersedes = Some(Supersedes {
+            node: Id::from_str(MISSING_ID).unwrap(),
+            kind: SupersedeKind::Obsoletes,
+        });
+    });
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("dangling-edge"), "out: {}", r.out);
+}
+
+// ----- L-4: supersession-chain integrity ------------------------------------
+
+#[test]
+fn check_supersession_chain_is_flagged() {
+    let dir = TempDir::new().unwrap();
+    // Self-supersede: edges.supersedes points at the node's own id.
+    seed(dir.path(), |id| {
+        let mut fm = Frontmatter::new(id, 1, NodeType::Odd, "Loop", day(), day(), Origin::Planned);
+        fm.edges_mut().supersedes = Some(Supersedes { node: id, kind: SupersedeKind::Updates });
+        Document::new(fm, "body\n")
+    });
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("self-supersede"), "out: {}", r.out);
+}
+
+// ----- L-5: clean corpus passes with exit 0 ---------------------------------
+
+#[test]
+fn check_clean_passes() {
+    let dir = TempDir::new().unwrap();
+    // A valid parent + child (part_of resolves).
+    run(dir.path(), &["new", "arc", "Parent"]);
+    // Child seeded with part_of pointing at the parent's id.
+    let parent_id = md_paths(dir.path())[0].file_stem().unwrap().to_string_lossy().to_string();
+    seed_slice(dir.path(), 2, "Child", |fm| {
+        fm.edges_mut().part_of = Some(Id::from_str(&parent_id).unwrap());
+    });
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(0));
+    assert!(r.out.contains("check: ok"), "out: {}", r.out);
+}
+
+// ----- L-6: exit codes 0 / 1 / 2 --------------------------------------------
+
+#[test]
+fn check_exit_codes_v1() {
+    let dir = TempDir::new().unwrap();
+    // 0: clean (empty corpus is clean).
+    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+    // 1: violations.
+    seed_slice(dir.path(), 1, "", |_| {});
+    assert_eq!(run(dir.path(), &["check"]).code, Some(1));
+    // 2: a usage error is clap's domain — it rejects unknown flags before
+    // dispatch is ever reached (the binary then exits 2).
+    assert!(Cli::try_parse_from(["odm", "check", "--bogus"]).is_err());
+}
+
+// ----- L-7: errors-as-affordances -------------------------------------------
+
+#[test]
+fn check_errors_name_fix_v1() {
+    let dir = TempDir::new().unwrap();
+    seed_slice(dir.path(), 1, "", |_| {}); // empty name → fixable with `odm rename`
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(1));
+    assert!(r.out.contains("fix:"), "every finding names a fix; out: {}", r.out);
+    assert!(r.out.contains("odm rename"), "empty-name fix is a real command; out: {}", r.out);
+}
+
+// ----- L-8: --json report stable schema -------------------------------------
+
+#[test]
+fn check_json_v1() {
+    let dir = TempDir::new().unwrap();
+    seed_slice(dir.path(), 1, "Orphan", |fm| {
+        fm.edges_mut().part_of = Some(Id::from_str(MISSING_ID).unwrap());
+    });
+    let r = run(dir.path(), &["check", "--json"]);
+    assert_eq!(r.code, Some(1));
+    let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    assert_eq!(value["ok"], false);
+    let findings = value["findings"].as_array().expect("findings array");
+    assert_eq!(findings.len(), 1);
+    let f = &findings[0];
+    let mut keys: Vec<&String> = f.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["detail", "fix", "name", "node", "number", "violation"]);
+    assert_eq!(f["violation"], "dangling-part_of");
+    assert_eq!(f["number"], 1);
+
+    // A clean corpus reports ok=true, empty findings.
+    let clean = TempDir::new().unwrap();
+    let cr = run(clean.path(), &["check", "--json"]);
+    assert_eq!(cr.code, Some(0));
+    let cv: serde_json::Value = serde_json::from_str(&cr.out).unwrap();
+    assert_eq!(cv["ok"], true);
+    assert!(cv["findings"].as_array().unwrap().is_empty());
 }

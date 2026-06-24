@@ -11,6 +11,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
+use odm_core::check::{Finding, Violation};
 use odm_core::frontmatter::{Document, Frontmatter, SupersedeKind, Supersedes};
 use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
@@ -18,6 +19,11 @@ use serde::Serialize;
 use tabled::{Table, Tabled, settings::Style};
 
 use crate::context::Context;
+
+/// Exit code: the command succeeded (and, for `check`, the corpus is clean).
+pub const EXIT_OK: u8 = 0;
+/// Exit code: `check` ran and found violations.
+pub const EXIT_VIOLATIONS: u8 = 1;
 
 /// Which context slot `use` sets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -470,4 +476,149 @@ pub fn context(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> a
         None => writeln!(out, "arc:     (none)")?,
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// check (v1)
+// ---------------------------------------------------------------------------
+
+/// JSON shape of one `check` finding (stable schema for `check --json`).
+#[derive(Serialize)]
+struct FindingJson {
+    node: String,
+    number: u32,
+    name: String,
+    violation: String,
+    detail: String,
+    fix: String,
+}
+
+/// JSON shape of the whole `check` report.
+#[derive(Serialize)]
+struct CheckReport {
+    ok: bool,
+    findings: Vec<FindingJson>,
+}
+
+/// A one-word violation label (stable across the JSON schema and human output).
+fn violation_label(v: &Violation) -> &'static str {
+    match v {
+        Violation::MissingField { .. } => "missing-field",
+        Violation::DanglingPartOf { .. } => "dangling-part_of",
+        Violation::DanglingEdge { .. } => "dangling-edge",
+        Violation::SelfSupersede => "self-supersede",
+        Violation::SupersessionCycle { .. } => "supersession-cycle",
+        // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
+        // generically rather than failing the build when they appear.
+        _ => "violation",
+    }
+}
+
+/// A human-readable detail line for a violation.
+fn violation_detail(v: &Violation) -> String {
+    match v {
+        Violation::MissingField { field } => format!("required field {field:?} is empty"),
+        Violation::DanglingPartOf { target } => {
+            format!("`part_of` references {target}, which is not in the corpus")
+        }
+        Violation::DanglingEdge { edge, target } => {
+            format!("`{edge}` references {target}, which is not in the corpus")
+        }
+        Violation::SelfSupersede => "`supersedes` points at the node itself".to_string(),
+        Violation::SupersessionCycle { cycle } => {
+            let ids: Vec<String> = cycle.iter().map(ToString::to_string).collect();
+            format!("`supersedes` forms a cycle: {}", ids.join(" -> "))
+        }
+        _ => "structural violation".to_string(),
+    }
+}
+
+/// The exact fix affordance for a finding (errors-as-affordances). Where an
+/// Arc-01 command can fix it, the command is named; otherwise the precise file
+/// edit is named (the `link`/`unlink` commands that would set edges arrive in
+/// Arc 02).
+fn violation_fix(store: &Store, finding: &Finding) -> String {
+    let file = store.path_of(finding.node);
+    let file = file.display();
+    match &finding.violation {
+        Violation::MissingField { field: "name" } => {
+            format!("run `odm rename {} \"<a name>\"`", finding.node)
+        }
+        Violation::MissingField { field } => {
+            format!("set `{field}` in {file}")
+        }
+        Violation::DanglingPartOf { .. } => {
+            format!(
+                "edit {file}: repoint `edges.part_of` at an existing node (or `odm new` its parent)"
+            )
+        }
+        Violation::DanglingEdge { edge, .. } => {
+            format!("edit {file}: repoint `edges.{edge}` at an existing node")
+        }
+        Violation::SelfSupersede => {
+            format!("edit {file}: remove the self-referential `edges.supersedes`")
+        }
+        Violation::SupersessionCycle { .. } => {
+            format!("edit {file}: break the `supersedes` cycle by removing one link")
+        }
+        _ => format!("inspect {file}"),
+    }
+}
+
+/// `check` — structural validation of the full corpus. Returns the exit code
+/// ([`EXIT_OK`] when clean, [`EXIT_VIOLATIONS`] when findings exist). The report
+/// is data → `out`.
+///
+/// # Errors
+///
+/// Returns an error (which the caller maps to a usage/operational exit code) if
+/// the corpus cannot be loaded.
+pub fn check(store: &Store, json: bool, out: &mut dyn Write) -> anyhow::Result<u8> {
+    let docs = store.load_all().context("loading the corpus to check")?;
+    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
+    let findings = odm_core::check::check(&frontmatters);
+
+    if json {
+        let report = CheckReport {
+            ok: findings.is_empty(),
+            findings: findings
+                .iter()
+                .map(|f| FindingJson {
+                    node: f.node.to_string(),
+                    number: f.number,
+                    name: f.name.clone(),
+                    violation: violation_label(&f.violation).to_string(),
+                    detail: violation_detail(&f.violation),
+                    fix: violation_fix(store, f),
+                })
+                .collect(),
+        };
+        writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
+        return Ok(exit_code(&findings));
+    }
+
+    if findings.is_empty() {
+        writeln!(out, "check: ok ({} node(s), no problems)", frontmatters.len())?;
+        return Ok(EXIT_OK);
+    }
+
+    writeln!(out, "check: {} problem(s) found", findings.len())?;
+    for f in &findings {
+        writeln!(
+            out,
+            "  #{} {:?} ({}): [{}] {}",
+            f.number,
+            f.name,
+            f.node,
+            violation_label(&f.violation),
+            violation_detail(&f.violation)
+        )?;
+        writeln!(out, "    fix: {}", violation_fix(store, f))?;
+    }
+    Ok(EXIT_VIOLATIONS)
+}
+
+/// Maps a finding set to the `check` exit code.
+fn exit_code(findings: &[Finding]) -> u8 {
+    if findings.is_empty() { EXIT_OK } else { EXIT_VIOLATIONS }
 }
