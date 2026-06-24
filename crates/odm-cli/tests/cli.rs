@@ -951,3 +951,371 @@ fn check_json_schema() {
     assert!(findings.iter().any(|f| f["code"] == "orphan" && f["severity"] == "error"));
     assert!(findings.iter().any(|f| f["code"] == "soft-satisfied" && f["severity"] == "warning"));
 }
+
+// ===========================================================================
+// slice07: CLI graph mutators — link / unlink / set-gate / tear (M-1 .. M-13)
+// ===========================================================================
+
+/// The on-disk content of the node with the given human `number`.
+fn file_for(root: &Path, number: u32) -> String {
+    for p in md_paths(root) {
+        let c = std::fs::read_to_string(&p).unwrap();
+        if c.contains(&format!("number: {number}\n")) {
+            return c;
+        }
+    }
+    panic!("no node #{number} on disk");
+}
+
+/// The ULID of the node with the given human `number` (via `show --json`).
+fn id_of(root: &Path, number: u32) -> String {
+    let r = run(root, &["show", &number.to_string(), "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&r.out).expect("show --json");
+    v["id"].as_str().unwrap().to_string()
+}
+
+// ----- M-1: link adds the edge on the source; reverse is derived ------------
+
+#[test]
+fn link_adds_edge() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+
+    let r = run(dir.path(), &["link", "1", "depends_on", "2"]);
+    assert!(r.ok && r.err.contains("linked"), "err: {}", r.err);
+
+    // The edge is written on the source A (#1)...
+    let a = file_for(dir.path(), 1);
+    assert!(a.contains("depends_on") && a.contains(&id_of(dir.path(), 2)));
+    // ...and NOT mirrored onto the target B (#2): reverse edges stay derived.
+    let b = file_for(dir.path(), 2);
+    assert!(!b.contains("depends_on"), "reverse edge must not be written; B: {b}");
+}
+
+// ----- M-2: link covers every source-stored edge kind -----------------------
+
+#[test]
+fn link_edge_kinds() {
+    let dir = TempDir::new().unwrap();
+    for (n, ty, name) in [
+        (1, "slice", "Src"),
+        (2, "slice", "Dep"),
+        (3, "slice", "Block"),
+        (4, "slice", "Out"),
+        (5, "odd", "Doc"),
+        (6, "odd", "Affected"),
+        (7, "arc", "Parent"),
+    ] {
+        let _ = n;
+        run(dir.path(), &["new", ty, name]);
+    }
+
+    assert!(run(dir.path(), &["link", "1", "depends_on", "2", "--satisfied-at", "tested"]).ok);
+    assert!(run(dir.path(), &["link", "1", "blocked_by", "3"]).ok);
+    assert!(run(dir.path(), &["link", "1", "consumes", "4"]).ok);
+    assert!(run(dir.path(), &["link", "1", "verifies", "5"]).ok);
+    assert!(run(dir.path(), &["link", "1", "affects", "6"]).ok);
+    assert!(run(dir.path(), &["link", "1", "part_of", "7"]).ok);
+
+    let src = file_for(dir.path(), 1);
+    for field in ["depends_on", "blocked_by", "consumes", "verifies", "affects", "part_of"] {
+        assert!(src.contains(field), "missing `{field}` in source; file:\n{src}");
+    }
+    // `--satisfied-at` is recorded as a qualified dependency.
+    assert!(src.contains("satisfied_at") && src.contains("tested"));
+}
+
+// ----- M-3: part_of is single-parent (replace, not append) ------------------
+
+#[test]
+fn link_part_of_single_parent() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "Child"]);
+    run(dir.path(), &["new", "arc", "P1"]);
+    run(dir.path(), &["new", "arc", "P2"]);
+
+    assert!(run(dir.path(), &["link", "1", "part_of", "2"]).ok);
+    assert!(run(dir.path(), &["link", "1", "part_of", "3"]).ok); // replaces
+
+    // show --json exposes a single parent; it is P2 (#3), not P1 (#2).
+    let r = run(dir.path(), &["show", "1", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&r.out).unwrap();
+    assert_eq!(v["part_of"], id_of(dir.path(), 3));
+    // The old parent's id is gone from the file (replaced, not appended).
+    assert!(!file_for(dir.path(), 1).contains(&id_of(dir.path(), 2)));
+}
+
+// ----- M-4: unlink removes the edge; absent edge is a clear no-op ------------
+
+#[test]
+fn unlink_removes_edge() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["link", "1", "depends_on", "2"]);
+
+    let r = run(dir.path(), &["unlink", "1", "depends_on", "2"]);
+    assert!(r.ok && r.err.contains("unlinked"));
+    assert!(!file_for(dir.path(), 1).contains("depends_on"));
+
+    // Unlinking again is a clear no-op (not an error).
+    let again = run(dir.path(), &["unlink", "1", "depends_on", "2"]);
+    assert!(again.ok && again.err.contains("no-op"), "err: {}", again.err);
+}
+
+// ----- M-5: endpoint resolution by id | number | name-prefix ----------------
+
+#[test]
+fn mutator_ref_resolution() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "Alpha"]);
+    run(dir.path(), &["new", "slice", "Beta"]);
+
+    // By unique name-prefix, by number, and by full id — all resolve.
+    assert!(run(dir.path(), &["link", "Alph", "depends_on", "Bet"]).ok);
+    assert!(run(dir.path(), &["unlink", "1", "depends_on", "2"]).ok);
+    let id2 = id_of(dir.path(), 2);
+    assert!(run(dir.path(), &["link", &id_of(dir.path(), 1), "depends_on", &id2]).ok);
+
+    // An unresolvable endpoint fails with an affordance.
+    let bad = run(dir.path(), &["link", "1", "depends_on", "99"]);
+    assert!(!bad.ok && bad.err.contains("no node with number 99") && bad.err.contains("odm list"));
+}
+
+// ----- M-6: set-gate via Status::set_gate -----------------------------------
+
+#[test]
+fn set_gate_cli() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+
+    // Default evidence is `asserted`; the first-reach date is recorded.
+    let r = run(dir.path(), &["set-gate", "1", "built"]);
+    assert!(r.ok && r.err.contains("set gate \"built\"=asserted"), "err: {}", r.err);
+    let f = file_for(dir.path(), 1);
+    assert!(f.contains("built:") && f.contains("evidence: asserted"));
+    assert!(f.contains("evidence_dates"), "slice05.1 first-reach recorded; file:\n{f}");
+
+    // An out-of-set gate is rejected with an affordance.
+    let bad = run(dir.path(), &["set-gate", "1", "deployed"]);
+    assert!(!bad.ok && bad.err.contains("unknown gate"));
+    assert!(bad.err.contains("allowed") && bad.err.contains("odm set-gate"));
+
+    // Explicit evidence + actor are recorded.
+    assert!(
+        run(dir.path(), &["set-gate", "1", "tested", "--evidence", "reproduced", "--by", "ci"]).ok
+    );
+    let f = file_for(dir.path(), 1);
+    assert!(f.contains("evidence: reproduced") && f.contains("ci"));
+}
+
+// ----- M-7: tear via Tear::new ----------------------------------------------
+
+#[test]
+fn tear_cli() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+
+    let r = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "assumed for now"]);
+    assert!(r.ok && r.err.contains("tore"), "err: {}", r.err);
+    assert!(file_for(dir.path(), 1).contains("tears:"));
+
+    // An empty rationale is rejected with an affordance.
+    let bad = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "   "]);
+    assert!(!bad.ok && bad.err.contains("needs a rationale") && bad.err.contains("--because"));
+}
+
+// ----- M-8: new --parent sets part_of ---------------------------------------
+
+#[test]
+fn new_with_parent() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "project", "Odm"]);
+    let r = run(dir.path(), &["new", "arc", "Substrate", "--parent", "1"]);
+    assert!(r.ok && r.err.contains("part_of"), "err: {}", r.err);
+
+    let shown = run(dir.path(), &["show", "2", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["part_of"], id_of(dir.path(), 1));
+}
+
+// ----- M-8b: decomposed affirms (wraps affirm_decomposed) -------------------
+
+#[test]
+fn decomposed_cli() {
+    let dir = TempDir::new().unwrap();
+    // project P(1) <- arc Q(2) <- slice S(3).
+    run(dir.path(), &["new", "project", "P"]);
+    run(dir.path(), &["new", "arc", "Q", "--parent", "1"]);
+    run(dir.path(), &["new", "slice", "S", "--parent", "2"]);
+
+    // Affirm Q's decomposition against an explicit child set; records + persists.
+    let r = run(dir.path(), &["decomposed", "2", "--children", "3"]);
+    assert!(r.ok && r.err.contains("affirmed decomposition"), "err: {}", r.err);
+    let q = file_for(dir.path(), 2);
+    assert!(q.contains("decomposed:") && q.contains(&id_of(dir.path(), 3)));
+
+    // With no --children, it affirms against the current containment children.
+    run(dir.path(), &["new", "slice", "S2", "--parent", "2"]); // #4, a second child
+    let r2 = run(dir.path(), &["decomposed", "2"]);
+    assert!(r2.ok && r2.err.contains("2 child(ren)"), "err: {}", r2.err);
+
+    // --dry-run announces but writes nothing new.
+    assert!(run(dir.path(), &["decomposed", "2", "--dry-run"]).err.contains("would affirm"));
+
+    // A non-parent-capable node (a slice) cannot be decomposed.
+    let bad = run(dir.path(), &["decomposed", "3"]);
+    assert!(!bad.ok && bad.err.contains("only a project or arc"));
+}
+
+// ----- M-9: --dry-run writes nothing; --yes runs ----------------------------
+
+#[test]
+fn mutators_dry_run_and_yes() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+
+    // link --dry-run: announced, but nothing written.
+    let dry = run(dir.path(), &["link", "1", "depends_on", "2", "--dry-run"]);
+    assert!(dry.ok && dry.err.contains("would link"));
+    assert!(!file_for(dir.path(), 1).contains("depends_on"));
+
+    // --yes runs (non-interactive); the edge is written.
+    assert!(run(dir.path(), &["link", "1", "depends_on", "2", "--yes"]).ok);
+    assert!(file_for(dir.path(), 1).contains("depends_on"));
+
+    // set-gate / tear --dry-run write nothing either.
+    assert!(run(dir.path(), &["set-gate", "1", "built", "--dry-run"]).ok);
+    assert!(!file_for(dir.path(), 1).contains("built:"));
+    assert!(run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "x", "--dry-run"]).ok);
+    assert!(!file_for(dir.path(), 1).contains("tears:"));
+}
+
+// ----- M-10: mutations persist atomically and round-trip on reload ----------
+
+#[test]
+fn mutation_roundtrip() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    run(dir.path(), &["new", "arc", "Parent"]);
+    run(dir.path(), &["new", "slice", "Leaf"]);
+
+    run(dir.path(), &["link", "2", "part_of", "1"]);
+    run(dir.path(), &["link", "2", "depends_on", "1", "--satisfied-at", "complete"]);
+    run(dir.path(), &["set-gate", "2", "built", "--evidence", "reproduced"]);
+
+    // A fresh dispatch reloads from disk: every mutation survives the round-trip
+    // and the file still parses (queries succeed, `check` does not choke).
+    let shown = run(dir.path(), &["show", "2", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["part_of"], id_of(dir.path(), 1));
+    let f = file_for(dir.path(), 2);
+    assert!(f.contains("satisfied_at: complete") && f.contains("built:"));
+    assert!(run(dir.path(), &["list"]).ok); // reload parses cleanly
+}
+
+// ----- M-11: a CLI-built graph answers next/blocked (self-host smoke) -------
+
+#[test]
+fn cli_built_graph_queries() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+
+    // Build the graph purely through the CLI: A depends_on B.
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+    assert!(run(dir.path(), &["link", "1", "depends_on", "2"]).ok);
+
+    // B is ready (no deps); A is blocked on the unsatisfied B.
+    let next1 = run(dir.path(), &["next"]);
+    assert!(next1.out.contains('B') && !next1.out.contains("A\n"), "next: {}", next1.out);
+    let blocked1 = run(dir.path(), &["blocked", "1"]);
+    assert!(blocked1.out.contains("unsatisfied dependency"), "blocked: {}", blocked1.out);
+
+    // Satisfy B by recording its terminal gate at the threshold evidence.
+    assert!(run(dir.path(), &["set-gate", "2", "tested", "--evidence", "reproduced"]).ok);
+
+    // Now B is complete (out of `next`) and A is ready (its dep is satisfied).
+    let next2 = run(dir.path(), &["next"]);
+    assert!(next2.out.contains("A") && !next2.out.contains('B'), "next: {}", next2.out);
+    let blocked2 = run(dir.path(), &["blocked", "1"]);
+    assert!(blocked2.out.contains("nothing holding"), "blocked: {}", blocked2.out);
+}
+
+// ----- M-12: every mutator failure names the exact fix ----------------------
+
+#[test]
+fn mutator_errors_name_fix() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+
+    // Unresolvable endpoint → names `odm list`.
+    let r1 = run(dir.path(), &["link", "1", "depends_on", "404"]);
+    assert!(!r1.ok && r1.err.contains("odm list"));
+
+    // Out-of-set gate → names `odm set-gate`.
+    let r2 = run(dir.path(), &["set-gate", "1", "shipped"]);
+    assert!(!r2.ok && r2.err.contains("odm set-gate"));
+
+    // Empty tear rationale → names `odm tear ... --because`.
+    run(dir.path(), &["new", "slice", "B"]);
+    let r3 = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", ""]);
+    assert!(!r3.ok && r3.err.contains("--because"));
+}
+
+// ----- mutator edge cases (error/dry-run branches) --------------------------
+
+#[test]
+fn mutator_edge_cases() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+
+    // Self-link is rejected (both the generic and the `part_of` phrasings).
+    assert!(
+        run(dir.path(), &["link", "1", "depends_on", "1"]).err.contains("cannot link to itself")
+    );
+    assert!(run(dir.path(), &["link", "1", "part_of", "1"]).err.contains("be `part_of` itself"));
+
+    // `--satisfied-at` only applies to `depends_on`.
+    let bad = run(dir.path(), &["link", "1", "blocked_by", "2", "--satisfied-at", "tested"]);
+    assert!(!bad.ok && bad.err.contains("--satisfied-at"));
+
+    // unlink --dry-run announces but writes nothing.
+    run(dir.path(), &["link", "1", "depends_on", "2"]);
+    assert!(
+        run(dir.path(), &["unlink", "1", "depends_on", "2", "--dry-run"])
+            .err
+            .contains("would unlink")
+    );
+    assert!(file_for(dir.path(), 1).contains("depends_on"), "dry-run unlink must not remove");
+
+    // set-gate / tear dry-run messages.
+    assert!(
+        run(dir.path(), &["set-gate", "1", "built", "--dry-run"]).err.contains("would set gate")
+    );
+    assert!(
+        run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "x", "--dry-run"])
+            .err
+            .contains("would tear")
+    );
+
+    // new --parent --dry-run notes the parent and writes nothing.
+    let np = run(dir.path(), &["new", "slice", "Z", "--parent", "2", "--dry-run"]);
+    assert!(np.err.contains("would create") && np.err.contains("part_of"));
+
+    // set-gate on a type with no configured gate-set → affordance.
+    run(dir.path(), &["new", "note", "N"]);
+    let ng = run(dir.path(), &["set-gate", "3", "anything"]);
+    assert!(!ng.ok && ng.err.contains("no gate-set"));
+
+    // new --parent with an unresolvable parent fails before writing.
+    assert!(!run(dir.path(), &["new", "slice", "Orphan", "--parent", "404"]).ok);
+}

@@ -18,9 +18,10 @@ use std::process::ExitCode;
 use anyhow::Context as _;
 use clap::{Parser, Subcommand, ValueEnum};
 use odm_core::frontmatter::SupersedeKind;
+use odm_core::status::Evidence;
 use odm_store::Store;
 
-use crate::commands::{EXIT_OK, UseKind};
+use crate::commands::{EXIT_OK, LinkEdge, UseKind};
 
 /// Exit code for a usage or operational error (clap also uses `2` for argument
 /// errors). Distinct from `1`, which `check` reserves for "ran, found
@@ -71,6 +72,75 @@ impl From<KindArg> for SupersedeKind {
     }
 }
 
+/// The edge kind `link`/`unlink` operates on (the source-stored edges; reverse
+/// edges are derived, never written, so they are not selectable here).
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LinkEdgeArg {
+    /// Ordering dependency (optionally `--satisfied-at <gate>`).
+    #[value(name = "depends_on")]
+    DependsOn,
+    /// Hard external block.
+    #[value(name = "blocked_by")]
+    BlockedBy,
+    /// Consumes a concrete output/artifact.
+    #[value(name = "consumes")]
+    Consumes,
+    /// Verifies the target.
+    #[value(name = "verifies")]
+    Verifies,
+    /// Affects the target's docs.
+    #[value(name = "affects")]
+    Affects,
+    /// Containment parent (single-parent: replaces any existing parent).
+    #[value(name = "part_of")]
+    PartOf,
+}
+
+impl From<LinkEdgeArg> for LinkEdge {
+    fn from(value: LinkEdgeArg) -> Self {
+        match value {
+            LinkEdgeArg::DependsOn => LinkEdge::DependsOn,
+            LinkEdgeArg::BlockedBy => LinkEdge::BlockedBy,
+            LinkEdgeArg::Consumes => LinkEdge::Consumes,
+            LinkEdgeArg::Verifies => LinkEdge::Verifies,
+            LinkEdgeArg::Affects => LinkEdge::Affects,
+            LinkEdgeArg::PartOf => LinkEdge::PartOf,
+        }
+    }
+}
+
+/// The edge kind `tear` operates on (only `depends_on` is tearable — §4.3).
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum TearEdgeArg {
+    /// The only tearable edge kind.
+    #[value(name = "depends_on")]
+    DependsOn,
+}
+
+/// The evidence level for `set-gate --evidence`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum EvidenceArg {
+    /// Claimed, no verification (the default).
+    Asserted,
+    /// Someone else's verification, relayed.
+    Attested,
+    /// Independently reproduced.
+    Reproduced,
+    /// Reconciled against observed reality.
+    Reconciled,
+}
+
+impl From<EvidenceArg> for Evidence {
+    fn from(value: EvidenceArg) -> Self {
+        match value {
+            EvidenceArg::Asserted => Evidence::Asserted,
+            EvidenceArg::Attested => Evidence::Attested,
+            EvidenceArg::Reproduced => Evidence::Reproduced,
+            EvidenceArg::Reconciled => Evidence::Reconciled,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Create a node (idempotent: re-running describes rather than duplicating).
@@ -79,6 +149,9 @@ enum Command {
         node_type: String,
         /// Human-readable name.
         name: String,
+        /// Set `part_of` to this parent (id, number, or unique name prefix).
+        #[arg(long)]
+        parent: Option<String>,
         /// Show what would happen without writing.
         #[arg(long)]
         dry_run: bool,
@@ -199,6 +272,90 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Add an edge on the source node (reverse is derived, never written).
+    Link {
+        /// The source node (id, number, or unique name prefix).
+        source: String,
+        /// The edge kind.
+        edge: LinkEdgeArg,
+        /// The target node (id, number, or unique name prefix).
+        target: String,
+        /// For `depends_on`: the gate at which the dependency is satisfied.
+        #[arg(long = "satisfied-at")]
+        satisfied_at: Option<String>,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Remove an edge from the source node (absent edge → a clear no-op).
+    Unlink {
+        /// The source node (id, number, or unique name prefix).
+        source: String,
+        /// The edge kind.
+        edge: LinkEdgeArg,
+        /// The target node (id, number, or unique name prefix).
+        target: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Record that a node has reached a gate (validated against its gate-set).
+    SetGate {
+        /// The node (id, number, or unique name prefix).
+        reference: String,
+        /// The gate name (must be in the node type's gate-set).
+        gate: String,
+        /// Who recorded reaching it.
+        #[arg(long)]
+        by: Option<String>,
+        /// The evidence level (defaults to `asserted`).
+        #[arg(long, default_value = "asserted")]
+        evidence: EvidenceArg,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Affirm that a parent's children fully account for its scope (§4.5).
+    Decomposed {
+        /// The parent node (id, number, or unique name prefix).
+        reference: String,
+        /// The affirmed children; if omitted, the node's current children.
+        #[arg(long, num_args = 1.., value_name = "REF")]
+        children: Vec<String>,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Declare a deliberately-assumed dependency edge (breaks a cycle).
+    Tear {
+        /// The source node (id, number, or unique name prefix).
+        source: String,
+        /// The edge kind (only `depends_on` is tearable).
+        edge: TearEdgeArg,
+        /// The target node (id, number, or unique name prefix).
+        target: String,
+        /// Why the dependency is being assumed (required).
+        #[arg(long)]
+        because: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
@@ -247,8 +404,8 @@ pub fn dispatch(
     let store = Store::open(root);
 
     match cli.command {
-        Command::New { node_type, name, dry_run, yes: _ } => {
-            commands::new(&store, &node_type, &name, dry_run, err)?;
+        Command::New { node_type, name, parent, dry_run, yes: _ } => {
+            commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
         }
         Command::List { node_type, tag, component, json } => commands::list(
             &store,
@@ -280,6 +437,30 @@ pub fn dispatch(
         }
         Command::Path { reference, to, json } => {
             commands::path(&store, root, &reference, to.as_deref(), json, out)?;
+        }
+        Command::Link { source, edge, target, satisfied_at, dry_run, yes: _ } => {
+            commands::link(
+                &store,
+                &source,
+                edge.into(),
+                &target,
+                satisfied_at.as_deref(),
+                dry_run,
+                err,
+            )?;
+        }
+        Command::Unlink { source, edge, target, dry_run, yes: _ } => {
+            commands::unlink(&store, &source, edge.into(), &target, dry_run, err)?;
+        }
+        Command::SetGate { reference, gate, by, evidence, dry_run, yes: _ } => {
+            let reach = commands::GateReach { gate: &gate, by, evidence: evidence.into() };
+            commands::set_gate(&store, root, &reference, reach, dry_run, err)?;
+        }
+        Command::Tear { source, edge: _, target, because, dry_run, yes: _ } => {
+            commands::tear(&store, &source, &target, &because, dry_run, err)?;
+        }
+        Command::Decomposed { reference, children, dry_run, yes: _ } => {
+            commands::decomposed(&store, &reference, &children, dry_run, err)?;
         }
     }
     Ok(EXIT_OK)

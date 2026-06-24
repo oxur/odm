@@ -178,18 +178,23 @@ fn supersede_kind_str(kind: SupersedeKind) -> &'static str {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// `new <type> <name>` — idempotent describe-or-create. Confirmations go to
-/// `err` (diagnostics).
+/// `new <type> <name> [--parent <ref>]` — idempotent describe-or-create.
+/// Confirmations go to `err` (diagnostics).
 pub fn new(
     store: &Store,
     node_type: &str,
     name: &str,
+    parent: Option<&str>,
     dry_run: bool,
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let node_type: NodeType = node_type.parse().map_err(|_| {
         anyhow!("unknown type {node_type:?}; expected one of project|arc|slice|odd|adr|note")
     })?;
+
+    // Resolve the parent (if any) up front, so an unresolvable ref fails before
+    // anything is written.
+    let parent_id = parent.map(|p| resolve(store, p)).transpose()?.map(|d| d.frontmatter().id());
 
     let all = store.load_all()?;
 
@@ -206,16 +211,25 @@ pub fn new(
     let next_number = all.iter().map(|d| d.frontmatter().number()).max().map_or(1, |m| m + 1);
     let id = Id::new();
     let created = id.created_at().date_naive();
-    let fm = Frontmatter::new(id, next_number, node_type, name, created, created, Origin::Planned);
+    let mut fm =
+        Frontmatter::new(id, next_number, node_type, name, created, created, Origin::Planned);
+    if let Some(parent_id) = parent_id {
+        fm.edges_mut().part_of = Some(parent_id);
+    }
     let doc = Document::new(fm, format!("# {name}\n"));
 
+    let parent_note = parent_id.map(|p| format!(" (part_of {p})")).unwrap_or_default();
     if dry_run {
-        writeln!(err, "would create {} #{next_number} {name:?} ({id})", node_type.as_str())?;
+        writeln!(
+            err,
+            "would create {} #{next_number} {name:?} ({id}){parent_note}",
+            node_type.as_str()
+        )?;
         return Ok(());
     }
 
     store.persist(&doc)?;
-    writeln!(err, "created {} #{next_number} {name:?} ({id})", node_type.as_str())?;
+    writeln!(err, "created {} #{next_number} {name:?} ({id}){parent_note}", node_type.as_str())?;
     Ok(())
 }
 
@@ -414,6 +428,324 @@ pub fn supersede(
         "recorded: #{new_number} supersedes #{old_number} ({})",
         supersede_kind_str(kind)
     )?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// graph mutators: link / unlink / set-gate / tear (ODD-0013 §3, §4.3, §5.1)
+//
+// These wire the existing odm-core ops (`edges_mut`, `Status::set_gate`,
+// `Tear::new`) to the CLI and persist atomically via odm-store. Edges are
+// stored on the **source**; reverse edges stay derived (never written).
+// ---------------------------------------------------------------------------
+
+/// The edge kind `link`/`unlink` operates on (source-stored edges only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkEdge {
+    /// Ordering dependency.
+    DependsOn,
+    /// Hard external block.
+    BlockedBy,
+    /// Consumes a concrete output.
+    Consumes,
+    /// Verifies the target.
+    Verifies,
+    /// Affects the target's docs.
+    Affects,
+    /// Containment parent (single-parent).
+    PartOf,
+}
+
+impl LinkEdge {
+    fn as_str(self) -> &'static str {
+        match self {
+            LinkEdge::DependsOn => "depends_on",
+            LinkEdge::BlockedBy => "blocked_by",
+            LinkEdge::Consumes => "consumes",
+            LinkEdge::Verifies => "verifies",
+            LinkEdge::Affects => "affects",
+            LinkEdge::PartOf => "part_of",
+        }
+    }
+}
+
+/// `link X <edge> Y` — adds the edge on the source X. `depends_on` may carry a
+/// `--satisfied-at <gate>`. `part_of` enforces a single parent (it replaces any
+/// existing parent rather than appending). Re-linking is idempotent.
+pub fn link(
+    store: &Store,
+    source_ref: &str,
+    edge: LinkEdge,
+    target_ref: &str,
+    satisfied_at: Option<&str>,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mut src = resolve(store, source_ref)?;
+    let target_id = resolve(store, target_ref)?.frontmatter().id();
+    let src_id = src.frontmatter().id();
+    let (number, name) = (src.frontmatter().number(), src.frontmatter().name().to_string());
+
+    if src_id == target_id {
+        bail!(
+            "a node cannot {} itself; pick a different target",
+            match edge {
+                LinkEdge::PartOf => "be `part_of`",
+                _ => "link to",
+            }
+        );
+    }
+    if satisfied_at.is_some() && edge != LinkEdge::DependsOn {
+        bail!("`--satisfied-at` applies only to `depends_on` (got `{}`)", edge.as_str());
+    }
+
+    if dry_run {
+        writeln!(err, "would link #{number} {name:?} {} {target_id}", edge.as_str())?;
+        return Ok(());
+    }
+
+    let edges = src.frontmatter_mut().edges_mut();
+    match edge {
+        LinkEdge::DependsOn => {
+            // Replace any existing dependency on the same target (so re-linking
+            // can update `satisfied_at`), then add the new one.
+            edges.depends_on.retain(|d| dependency_target(d) != target_id);
+            let dep = match satisfied_at {
+                Some(gate) => {
+                    Dependency::Qualified { node: target_id, satisfied_at: gate.to_string() }
+                }
+                None => Dependency::Bare(target_id),
+            };
+            edges.depends_on.push(dep);
+        }
+        LinkEdge::BlockedBy => push_unique(&mut edges.blocked_by, target_id),
+        LinkEdge::Consumes => push_unique(&mut edges.consumes, target_id),
+        LinkEdge::Verifies => push_unique(&mut edges.verifies, target_id),
+        LinkEdge::Affects => push_unique(&mut edges.affects, target_id),
+        LinkEdge::PartOf => edges.part_of = Some(target_id), // single-parent: replace
+    }
+    src.frontmatter_mut().set_updated(today());
+    store.persist(&src)?;
+    writeln!(err, "linked #{number} {name:?} {} {target_id}", edge.as_str())?;
+    Ok(())
+}
+
+/// Pushes `id` onto `v` only if absent (idempotent edge add).
+fn push_unique(v: &mut Vec<Id>, id: Id) {
+    if !v.contains(&id) {
+        v.push(id);
+    }
+}
+
+/// `unlink X <edge> Y` — removes the edge from X. Removing an absent edge is a
+/// clear no-op (reported, not an error).
+pub fn unlink(
+    store: &Store,
+    source_ref: &str,
+    edge: LinkEdge,
+    target_ref: &str,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mut src = resolve(store, source_ref)?;
+    let target_id = resolve(store, target_ref)?.frontmatter().id();
+    let (number, name) = (src.frontmatter().number(), src.frontmatter().name().to_string());
+
+    let present = {
+        let edges = src.frontmatter().edges();
+        match edge {
+            LinkEdge::DependsOn => {
+                edges.depends_on.iter().any(|d| dependency_target(d) == target_id)
+            }
+            LinkEdge::BlockedBy => edges.blocked_by.contains(&target_id),
+            LinkEdge::Consumes => edges.consumes.contains(&target_id),
+            LinkEdge::Verifies => edges.verifies.contains(&target_id),
+            LinkEdge::Affects => edges.affects.contains(&target_id),
+            LinkEdge::PartOf => edges.part_of == Some(target_id),
+        }
+    };
+    if !present {
+        writeln!(err, "no-op: #{number} {name:?} has no `{}` edge to {target_id}", edge.as_str())?;
+        return Ok(());
+    }
+
+    if dry_run {
+        writeln!(err, "would unlink #{number} {name:?} {} {target_id}", edge.as_str())?;
+        return Ok(());
+    }
+
+    let edges = src.frontmatter_mut().edges_mut();
+    match edge {
+        LinkEdge::DependsOn => edges.depends_on.retain(|d| dependency_target(d) != target_id),
+        LinkEdge::BlockedBy => edges.blocked_by.retain(|&id| id != target_id),
+        LinkEdge::Consumes => edges.consumes.retain(|&id| id != target_id),
+        LinkEdge::Verifies => edges.verifies.retain(|&id| id != target_id),
+        LinkEdge::Affects => edges.affects.retain(|&id| id != target_id),
+        LinkEdge::PartOf => edges.part_of = None,
+    }
+    src.frontmatter_mut().set_updated(today());
+    store.persist(&src)?;
+    writeln!(err, "unlinked #{number} {name:?} {} {target_id}", edge.as_str())?;
+    Ok(())
+}
+
+/// The details recorded by [`set_gate`]: the gate name, who recorded it, and at
+/// what evidence level.
+pub struct GateReach<'a> {
+    /// The gate name (must be in the node type's gate-set).
+    pub gate: &'a str,
+    /// Who recorded reaching it, if known.
+    pub by: Option<String>,
+    /// The evidence level.
+    pub evidence: Evidence,
+}
+
+/// `set-gate X <gate> [--by] [--evidence]` — records a reached gate via
+/// [`odm_core::status::Status::set_gate`], validating it against the node type's
+/// gate-set. Records the slice05.1 per-level first-reach automatically.
+pub fn set_gate(
+    store: &Store,
+    root: &Path,
+    reference: &str,
+    reach: GateReach<'_>,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let GateReach { gate, by, evidence } = reach;
+    let mut doc = resolve(store, reference)?;
+    let node_type = doc.frontmatter().node_type();
+    let (number, name) = (doc.frontmatter().number(), doc.frontmatter().name().to_string());
+
+    let (gates, _threshold) = load_gate_config(root)?;
+    let gate_set = gates.for_type(node_type).ok_or_else(|| {
+        anyhow!(
+            "no gate-set for type `{}`; add a `[gates.{}]` sequence to odm.toml",
+            node_type.as_str(),
+            node_type.as_str()
+        )
+    })?;
+
+    if dry_run {
+        writeln!(err, "would set gate {gate:?}={} on #{number} {name:?}", evidence.as_str())?;
+        return Ok(());
+    }
+
+    doc.frontmatter_mut()
+        .status_mut()
+        .set_gate(gate_set, gate, by, evidence, today())
+        .map_err(|e| {
+            anyhow!(
+                "unknown gate {:?} for type `{}`; allowed: {}. Run `odm set-gate {reference} <one-of-those>`",
+                e.gate,
+                node_type.as_str(),
+                e.allowed.join(", ")
+            )
+        })?;
+    doc.frontmatter_mut().set_updated(today());
+    store.persist(&doc)?;
+    writeln!(err, "set gate {gate:?}={} on #{number} {name:?}", evidence.as_str())?;
+    Ok(())
+}
+
+/// `tear X depends_on Y --because <r>` — declares a deliberately-assumed
+/// dependency edge. The rationale is validated via [`Tear::new`] (empty →
+/// rejected); the torn edge is recorded in `edges.tears` on X.
+///
+/// Note: the on-disk `tears` schema (a `Vec<Dependency>`) does not yet carry the
+/// rationale text, so `--because` is *validated* but not persisted (the
+/// tear-rationale schema gap, deferred since slice04 — see the slice report).
+pub fn tear(
+    store: &Store,
+    source_ref: &str,
+    target_ref: &str,
+    because: &str,
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mut src = resolve(store, source_ref)?;
+    let target_id = resolve(store, target_ref)?.frontmatter().id();
+    let src_id = src.frontmatter().id();
+    let (number, name) = (src.frontmatter().number(), src.frontmatter().name().to_string());
+
+    // Validate the rationale through the model (empty/whitespace → rejected).
+    Tear::new(src_id, target_id, because).map_err(|_| {
+        anyhow!(
+            "a tear needs a rationale; run `odm tear {source_ref} depends_on {target_ref} --because \"<why>\"`"
+        )
+    })?;
+
+    if dry_run {
+        writeln!(err, "would tear #{number} {name:?} depends_on {target_id}")?;
+        return Ok(());
+    }
+
+    let edges = src.frontmatter_mut().edges_mut();
+    if !edges.tears.iter().any(|d| dependency_target(d) == target_id) {
+        edges.tears.push(Dependency::Bare(target_id));
+    }
+    src.frontmatter_mut().set_updated(today());
+    store.persist(&src)?;
+    writeln!(err, "tore #{number} {name:?} depends_on {target_id} (because: {because})")?;
+    Ok(())
+}
+
+/// `decomposed X [--children <ref…>]` — affirms that X's children fully account
+/// for its scope (ODD-0013 §4.5), via [`Frontmatter::affirm_decomposed`]. With
+/// `--children`, affirms against those explicit nodes; without, against X's
+/// current containment children (reverse `part_of`) — the form that clears a
+/// `check` drift / advanced-without-decomposition finding.
+///
+/// Only parent-capable nodes (`project`/`arc`) can be decomposed.
+pub fn decomposed(
+    store: &Store,
+    reference: &str,
+    children: &[String],
+    dry_run: bool,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mut doc = resolve(store, reference)?;
+    let node_type = doc.frontmatter().node_type();
+    let id = doc.frontmatter().id();
+    let (number, name) = (doc.frontmatter().number(), doc.frontmatter().name().to_string());
+
+    if node_type.valid_child_types().is_empty() {
+        bail!(
+            "only a project or arc can be `decomposed`; #{number} {name:?} is a {}",
+            node_type.as_str()
+        );
+    }
+
+    // Resolve the child set: the explicit `--children`, or X's current
+    // containment children (derived reverse `part_of`) when none are given.
+    let child_ids: Vec<Id> = if children.is_empty() {
+        store
+            .load_all()?
+            .iter()
+            .filter(|d| d.frontmatter().edges().part_of == Some(id))
+            .map(|d| d.frontmatter().id())
+            .collect()
+    } else {
+        let mut ids = Vec::new();
+        for c in children {
+            ids.push(resolve(store, c)?.frontmatter().id());
+        }
+        ids
+    };
+
+    if dry_run {
+        writeln!(
+            err,
+            "would affirm decomposition of #{number} {name:?} ({} child(ren))",
+            child_ids.len()
+        )?;
+        return Ok(());
+    }
+
+    let count = child_ids.len();
+    doc.frontmatter_mut().affirm_decomposed(child_ids, today());
+    doc.frontmatter_mut().set_updated(today());
+    store.persist(&doc)?;
+    writeln!(err, "affirmed decomposition of #{number} {name:?} ({count} child(ren))")?;
     Ok(())
 }
 
