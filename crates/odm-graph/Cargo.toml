@@ -6,7 +6,13 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Pure DAG/tree engine over abstract ids for odm (stub; Arc 02)"
+description = "Pure DAG/tree engine over abstract ids for odm"
+
+[dependencies]
+petgraph.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

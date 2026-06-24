@@ -25,6 +25,7 @@
 
 pub mod check;
 pub mod frontmatter;
+pub mod graph;
 mod id;
 mod node;
 mod node_type;

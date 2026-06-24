@@ -12,6 +12,7 @@ description = "Domain model for odm: node types, ULID identity, schema (stub; Ar
 workspace = true
 
 [dependencies]
+odm-graph = { path = "../odm-graph" }
 ulid.workspace = true
 thiserror.workspace = true
 serde = { workspace = true }
