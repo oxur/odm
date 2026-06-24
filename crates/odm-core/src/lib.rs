@@ -25,11 +25,13 @@
 
 pub mod check;
 pub mod frontmatter;
+pub mod gates;
 pub mod graph;
 mod id;
 mod node;
 mod node_type;
 mod origin;
+pub mod status;
 
 pub use id::{Id, IdParseError};
 pub use node::Node;
