@@ -9,7 +9,7 @@ updated: 2026-06-20
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.6
+version: 1.7
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -116,6 +116,11 @@ Frontmatter is **emitted in a canonical field order** (round-trip stable;
 the order shown above (`part_of, depends_on, blocked_by, verifies, consumes,
 affects, supersedes, tears`), which §3's table mirrors. Unknown keys are preserved,
 not dropped (forward-compat).
+
+A node may also carry an optional **`retired: { reason, on }`** marker, set by
+`odm retire` — the node is withdrawn but its file is *kept* (supersede-don't-delete;
+git preserves history), absent until retired. (Added in build slice A1.5; Arc 02
+may fold retirement into the gate model — see Q-10.)
 
 ## 3. Edges
 
@@ -398,6 +403,9 @@ that defers to `odm` (§11) · evidence-level on gate transitions, an `affects` 
   DB-free persistent index format, dependency-aware invalidation of derived views,
   and filter/sort acceleration with **no FTS dependency**. Forthcoming research ODD
   (proposed **0014**) before implementation.
+- **Q-10** Retirement representation — currently an optional top-level `retired: {
+  reason, on }` field (build slice A1.5, since gates don't exist yet). Arc 02 may
+  fold it into the gate model (a `withdrawn`/`retired` gate). Decide when gates land.
 
 ## 11. Scope beyond the engine, and next SDLC step
 
