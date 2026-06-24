@@ -153,9 +153,10 @@ impl Document {
 ///
 /// Fields are declared — and therefore emitted — in canonical order: `id`,
 /// `number`, `type`, `name`, `created`, `updated`, `tags`, `component`,
-/// `origin`, `reserved`, `edges`. Any keys not modeled here (e.g. `status`,
-/// `desired_facts`) are captured in a hidden catch-all and re-emitted after
-/// `edges`, so they survive a round-trip until their owning slices model them.
+/// `origin`, `reserved`, `retired`, `edges`, `status`, `decomposed`. Any keys
+/// not modeled here (e.g. `desired_facts`) are captured in a hidden catch-all
+/// and re-emitted last, so they survive a round-trip until their owning slices
+/// model them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frontmatter {
     /// Stable ULID identity.
@@ -192,6 +193,11 @@ pub struct Frontmatter {
     /// Typed since arc02 slice04 (previously preserved as an unknown key).
     #[serde(default, skip_serializing_if = "crate::status::Status::is_empty")]
     status: crate::status::Status,
+    /// The guarded "decomposition complete" assertion (ODD-0013 §4.5), set when
+    /// a parent affirms its child set fully accounts for its scope. Absent until
+    /// affirmed. Typed since arc02 slice05.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    decomposed: Option<Decomposition>,
     /// Keys not yet modeled, preserved verbatim across a round-trip (forward
     /// compatibility for `desired_facts`, …).
     #[serde(flatten)]
@@ -224,6 +230,7 @@ impl Frontmatter {
             retired: None,
             edges: Edges::default(),
             status: crate::status::Status::new(),
+            decomposed: None,
             extra: Mapping::new(),
         }
     }
@@ -339,6 +346,24 @@ impl Frontmatter {
         &mut self.status
     }
 
+    /// The guarded "decomposition complete" assertion, if the node has affirmed
+    /// it (ODD-0013 §4.5).
+    #[must_use]
+    pub fn decomposed(&self) -> Option<&Decomposition> {
+        self.decomposed.as_ref()
+    }
+
+    /// Affirms (or re-affirms) that `children` fully account for this node's
+    /// scope as of `on` — "no missing, no extra" (ODD-0013 §4.5). The child set
+    /// is sorted and de-duplicated so a later add/remove is detectable as drift
+    /// (see [`crate::recompose`]).
+    pub fn affirm_decomposed(&mut self, children: Vec<Id>, on: NaiveDate) {
+        let mut children = children;
+        children.sort_unstable();
+        children.dedup();
+        self.decomposed = Some(Decomposition { on, children });
+    }
+
     /// The number of preserved-but-unmodeled top-level keys (e.g.
     /// `desired_facts`).
     #[must_use]
@@ -366,6 +391,24 @@ impl Frontmatter {
     pub fn retire(&mut self, reason: impl Into<String>, on: NaiveDate) {
         self.retired = Some(Retirement { reason: reason.into(), on });
     }
+}
+
+/// A parent's guarded "decomposition complete" assertion (ODD-0013 §4.5):
+/// "these children fully account for my scope — no missing, no extra".
+///
+/// The affirmed child set is recorded so a later add/remove is detectable as
+/// drift ([`crate::recompose`]). This is a deliberate enrichment of the bare
+/// `decomposed: complete` scalar shown in §2.3, which cannot support the
+/// drift-guard (it carries no record of *what* was affirmed). See the slice05
+/// report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Decomposition {
+    /// The date the decomposition was affirmed complete.
+    pub on: NaiveDate,
+    /// The child ids affirmed against, sorted and de-duplicated. A difference
+    /// from the node's current children is drift (re-affirmation needed).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<Id>,
 }
 
 /// A node's retirement marker (set by `odm retire`).

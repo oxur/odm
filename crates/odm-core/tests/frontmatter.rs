@@ -411,9 +411,12 @@ proptest! {
             0..5,
         )
     ) {
-        // Skip keys that collide with modeled fields.
+        // Skip keys that collide with modeled fields (now-typed `status`,
+        // `retired`, `decomposed` included — a scalar value on those would fail
+        // to deserialize into their typed shapes rather than land in `extra`).
         let modeled = ["id", "number", "type", "name", "created", "updated",
-                       "tags", "component", "origin", "reserved", "edges"];
+                       "tags", "component", "origin", "reserved", "retired",
+                       "edges", "status", "decomposed"];
         let mut yaml = String::from(
             "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\nnumber: 1\ntype: note\nname: n\n\
              created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n",
