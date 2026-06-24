@@ -172,6 +172,30 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Show the ready frontier (nodes whose dependencies are satisfied).
+    Next {
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Explain why a node is blocked or low-confidence.
+    Blocked {
+        /// A node id, number, or unique name prefix.
+        reference: String,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show a dependency path: the critical chain from X, or a path X → Y.
+    Path {
+        /// The start node (id, number, or unique name prefix).
+        reference: String,
+        /// Optional destination node.
+        to: Option<String>,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
@@ -247,6 +271,13 @@ pub fn dispatch(
         Command::Context { json } => commands::context(&store, root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { json } => return commands::check(&store, json, out),
+        Command::Next { json } => commands::next(&store, root, json, out)?,
+        Command::Blocked { reference, json } => {
+            commands::blocked(&store, root, &reference, json, out)?;
+        }
+        Command::Path { reference, to, json } => {
+            commands::path(&store, root, &reference, to.as_deref(), json, out)?;
+        }
     }
     Ok(EXIT_OK)
 }

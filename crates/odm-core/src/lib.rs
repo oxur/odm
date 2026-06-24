@@ -31,6 +31,7 @@ mod id;
 mod node;
 mod node_type;
 mod origin;
+pub mod satisfaction;
 pub mod status;
 
 pub use id::{Id, IdParseError};

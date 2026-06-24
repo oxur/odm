@@ -15,7 +15,9 @@
 #![deny(missing_docs)]
 
 mod cycle;
+mod order;
 pub use cycle::{Cycle, MissingRationale, Tear};
+pub use order::{Block, OrderInputs, Ready, SoftDep};
 
 use std::collections::HashMap;
 use std::hash::Hash;

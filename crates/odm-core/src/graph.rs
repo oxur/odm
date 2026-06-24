@@ -13,6 +13,14 @@ use odm_graph::Graph;
 
 use crate::Id;
 use crate::frontmatter::{Dependency, Frontmatter};
+use crate::satisfaction::Satisfaction;
+use crate::status::Evidence;
+// Re-export the engine's derived-order types so downstream crates use the
+// domain interface (odm-core) without depending on odm-graph directly.
+pub use odm_graph::{Block, Cycle, Ready, SoftDep, Tear};
+
+/// The edge kinds that form the ordering DAG (`depends_on ∪ consumes`).
+pub(crate) const ORDERING_KINDS: [EdgeKind; 2] = [EdgeKind::DependsOn, EdgeKind::Consumes];
 
 /// The kind of an edge between two nodes (ODD-0013 §3). This is the edge-weight
 /// type the abstract engine is instantiated with.
@@ -150,5 +158,50 @@ impl NodeGraph {
     #[must_use]
     pub fn backlinks(&self, node: Id, kind: EdgeKind) -> Vec<Id> {
         self.graph.predecessors(&node, &kind)
+    }
+
+    // --- derived order (ODD-0013 §4.1/§4.4) ---------------------------------
+
+    /// A topological order over the ordering DAG, or the cycle if one exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Cycle`] if the ordering relation has one.
+    pub fn topological_order(&self, tears: &[Tear<Id>]) -> Result<Vec<Id>, Cycle<Id>> {
+        self.graph.topological_order(&ORDERING_KINDS, tears)
+    }
+
+    /// The ready frontier (`next`): not-complete nodes whose ordering deps are
+    /// satisfied (soft counts) and which have no active block. Soft deps are
+    /// flagged on each [`Ready`], never used to withhold the node.
+    #[must_use]
+    pub fn next(&self, satisfaction: &Satisfaction) -> Vec<Ready<Id, Evidence>> {
+        self.graph.next(&satisfaction.inputs())
+    }
+
+    /// Why `node` is blocked or low-confidence (unsatisfied deps, soft-satisfied
+    /// deps with the threshold to reach, and active blocks).
+    #[must_use]
+    pub fn blocked(&self, node: Id, satisfaction: &Satisfaction) -> Vec<Block<Id, Evidence>> {
+        self.graph.blocked(&node, &satisfaction.inputs())
+    }
+
+    /// A dependency path: the critical chain from `node` (`to = None`), or a
+    /// path from `node` to `to`.
+    #[must_use]
+    pub fn path(&self, node: Id, to: Option<Id>, tears: &[Tear<Id>]) -> Option<Vec<Id>> {
+        self.graph.path(&node, to.as_ref(), &ORDERING_KINDS, tears)
+    }
+
+    /// `node`'s effective evidence: the minimum across its transitive satisfied
+    /// dependency path.
+    #[must_use]
+    pub fn min_evidence(&self, node: Id, satisfaction: &Satisfaction) -> Option<Evidence> {
+        self.graph.min_evidence(
+            &node,
+            &ORDERING_KINDS,
+            satisfaction.tears(),
+            satisfaction.satisfied_map(),
+        )
     }
 }

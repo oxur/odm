@@ -188,8 +188,12 @@ pub struct Frontmatter {
     /// The node's outgoing edges.
     #[serde(default, skip_serializing_if = "Edges::is_empty")]
     edges: Edges,
-    /// Keys not yet modeled by this slice, preserved verbatim across a
-    /// round-trip (forward compatibility for `status`, `desired_facts`, …).
+    /// The multi-gate, evidence-tagged status vector (ODD-0013 §2.3/§5.1).
+    /// Typed since arc02 slice04 (previously preserved as an unknown key).
+    #[serde(default, skip_serializing_if = "crate::status::Status::is_empty")]
+    status: crate::status::Status,
+    /// Keys not yet modeled, preserved verbatim across a round-trip (forward
+    /// compatibility for `desired_facts`, …).
     #[serde(flatten)]
     extra: Mapping,
 }
@@ -219,6 +223,7 @@ impl Frontmatter {
             reserved: false,
             retired: None,
             edges: Edges::default(),
+            status: crate::status::Status::new(),
             extra: Mapping::new(),
         }
     }
@@ -323,7 +328,19 @@ impl Frontmatter {
         self.retired.as_ref()
     }
 
-    /// The number of preserved-but-unmodeled top-level keys (e.g. `status`).
+    /// The node's status vector (the gates it has reached).
+    #[must_use]
+    pub fn status(&self) -> &crate::status::Status {
+        &self.status
+    }
+
+    /// Mutable access to the status vector (e.g. to record a reached gate).
+    pub fn status_mut(&mut self) -> &mut crate::status::Status {
+        &mut self.status
+    }
+
+    /// The number of preserved-but-unmodeled top-level keys (e.g.
+    /// `desired_facts`).
     #[must_use]
     pub fn unknown_key_count(&self) -> usize {
         self.extra.len()

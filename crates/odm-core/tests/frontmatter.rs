@@ -13,6 +13,8 @@ use odm_core::frontmatter::{
     Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
     Supersedes,
 };
+use odm_core::gates::GateSets;
+use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
 use proptest::prelude::*;
 
@@ -237,7 +239,9 @@ fn mutators_and_retirement_roundtrip() {
 
 #[test]
 fn unknown_keys_preserved_through_roundtrip() {
-    // `status` and `desired_facts` are not modeled yet; they must survive.
+    // `status` became a typed field in arc02 slice04, so it is no longer an
+    // "unknown" key; `desired_facts` is still unmodeled and must survive. Both
+    // still round-trip — one typed, one preserved.
     let text = format!(
         "---\n\
          id: {SAMPLE_ULID}\n\
@@ -258,15 +262,55 @@ fn unknown_keys_preserved_through_roundtrip() {
          ---\nbody\n"
     );
     let doc = Document::parse(&text).expect("valid");
-    assert_eq!(doc.frontmatter().unknown_key_count(), 2);
+    // Only `desired_facts` is unknown now; `status` is typed.
+    assert_eq!(doc.frontmatter().unknown_key_count(), 1);
+    assert!(doc.frontmatter().status().has_reached("built"));
 
     let reparsed = Document::parse(&doc.emit().expect("emit")).expect("reparse");
-    assert_eq!(reparsed, doc, "unknown keys must survive a round-trip");
-    // And the keys are still literally present after emission.
+    assert_eq!(reparsed, doc, "typed status and unknown keys both survive a round-trip");
+    // Both keys are still literally present after emission.
     let emitted = doc.emit().expect("emit");
     assert!(emitted.contains("status:"));
     assert!(emitted.contains("desired_facts:"));
     assert!(emitted.contains("evidence: reproduced"));
+}
+
+// ----- H-15 (arc02 s04): typed Status field on Frontmatter ------------------
+
+#[test]
+fn status_typed_field_round_trips() {
+    use std::str::FromStr;
+    let gates =
+        GateSets::from_toml_str("[gates.slice]\nsequence = [\"planned\", \"built\"]").unwrap();
+    let gset = gates.for_type(NodeType::Slice).unwrap();
+
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let mut fm = Frontmatter::new(
+        id,
+        7,
+        NodeType::Slice,
+        "Store layer",
+        day(2026, 6, 20),
+        day(2026, 6, 21),
+        Origin::Planned,
+    );
+    // Record a reached gate on the *typed* status field (not a preserved key).
+    fm.status_mut()
+        .set_gate(gset, "built", Some("duncan".into()), Evidence::Reproduced, day(2026, 6, 22))
+        .unwrap();
+    let doc = Document::new(fm, "body\n");
+
+    // The typed status survives a round-trip and is not counted as unknown.
+    let reparsed = Document::parse(&doc.emit().unwrap()).unwrap();
+    assert_eq!(reparsed, doc);
+    let record = reparsed.frontmatter().status().gate("built").expect("typed status read back");
+    assert_eq!(record.evidence, Evidence::Reproduced);
+    assert_eq!(
+        reparsed.frontmatter().unknown_key_count(),
+        0,
+        "status is typed, not preserved-unknown"
+    );
+    assert!(reparsed.emit().unwrap().contains("status:"));
 }
 
 // ----- I-4: parse ∘ emit == identity (proptest over typed fields) ----------

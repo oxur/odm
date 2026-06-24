@@ -553,3 +553,78 @@ fn check_json_v1() {
     assert_eq!(cv["ok"], true);
     assert!(cv["findings"].as_array().unwrap().is_empty());
 }
+
+// ===========================================================================
+// derived order: next / blocked / path --json (H-12)
+// ===========================================================================
+
+use odm_core::frontmatter::Dependency;
+use odm_core::gates::GateSets;
+use odm_core::status::Evidence;
+
+const DERIVED_TOML: &str = "\
+[gates.slice]
+sequence = [\"planned\", \"built\", \"tested\"]
+
+[satisfaction]
+threshold = \"reproduced\"
+";
+
+/// Seeds A (#1) depends_on B (#2); B has reached its terminal gate but only at
+/// `attested` (below the `reproduced` threshold ⇒ soft-satisfied).
+fn seed_derived(root: &Path) {
+    std::fs::write(root.join("odm.toml"), DERIVED_TOML).unwrap();
+    let gates = GateSets::from_toml_str(DERIVED_TOML).unwrap();
+    let gset = gates.for_type(NodeType::Slice).unwrap().clone();
+
+    let mut b_id = Id::new();
+    seed(root, |id| {
+        b_id = id;
+        let mut fm = Frontmatter::new(id, 2, NodeType::Slice, "B", day(), day(), Origin::Planned);
+        fm.status_mut().set_gate(&gset, "tested", None, Evidence::Attested, day()).unwrap();
+        Document::new(fm, "body\n")
+    });
+    seed(root, |id| {
+        let mut fm = Frontmatter::new(id, 1, NodeType::Slice, "A", day(), day(), Origin::Planned);
+        fm.edges_mut().depends_on = vec![Dependency::Bare(b_id)];
+        Document::new(fm, "body\n")
+    });
+}
+
+#[test]
+fn json_schema_derived_order() {
+    let dir = TempDir::new().unwrap();
+    seed_derived(dir.path());
+
+    // next --json: A is ready (B complete), soft-flagged at attested.
+    let next = run(dir.path(), &["next", "--json"]);
+    assert_eq!(next.code, Some(0));
+    let value: serde_json::Value = serde_json::from_str(&next.out).expect("valid JSON");
+    let arr = value.as_array().expect("array");
+    let a = arr.iter().find(|n| n["number"] == 1).expect("A in next");
+    let mut keys: Vec<&String> = a.as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["effective_evidence", "node", "number", "soft"]);
+    assert_eq!(a["effective_evidence"], "attested"); // carries the evidence level
+    assert_eq!(a["soft"][0]["evidence"], "attested");
+    assert!(!arr.iter().any(|n| n["number"] == 2), "B is complete, not in next");
+
+    // blocked 1 --json: the low-evidence dependency, with threshold.
+    let blocked = run(dir.path(), &["blocked", "1", "--json"]);
+    assert_eq!(blocked.code, Some(0));
+    let value: serde_json::Value = serde_json::from_str(&blocked.out).unwrap();
+    let reason = &value.as_array().unwrap()[0];
+    assert_eq!(reason["kind"], "soft-satisfied");
+    assert_eq!(reason["evidence"], "attested");
+    assert_eq!(reason["threshold"], "reproduced");
+
+    // path 1 2 --json: the dependency path A -> B.
+    let path = run(dir.path(), &["path", "1", "2", "--json"]);
+    assert_eq!(path.code, Some(0));
+    let value: serde_json::Value = serde_json::from_str(&path.out).unwrap();
+    assert_eq!(value["path"].as_array().unwrap().len(), 2);
+
+    // Human output also surfaces the soft flag.
+    let next_human = run(dir.path(), &["next"]);
+    assert!(next_human.out.contains("⚠ dep") && next_human.out.contains("evidence=attested"));
+}

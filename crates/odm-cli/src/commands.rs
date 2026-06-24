@@ -13,6 +13,10 @@ use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
 use odm_core::check::{Finding, Violation};
 use odm_core::frontmatter::{Document, Frontmatter, SupersedeKind, Supersedes};
+use odm_core::gates::GateSets;
+use odm_core::graph::{Block, NodeGraph};
+use odm_core::satisfaction::{Satisfaction, threshold_from_toml};
+use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 use serde::Serialize;
@@ -621,4 +625,225 @@ pub fn check(store: &Store, json: bool, out: &mut dyn Write) -> anyhow::Result<u
 /// Maps a finding set to the `check` exit code.
 fn exit_code(findings: &[Finding]) -> u8 {
     if findings.is_empty() { EXIT_OK } else { EXIT_VIOLATIONS }
+}
+
+// ---------------------------------------------------------------------------
+// derived order: next / blocked / path (ODD-0013 §4.1/§4.4)
+// ---------------------------------------------------------------------------
+
+/// Loads the gate-sets and satisfaction threshold from `<root>/odm.toml`
+/// (absent file ⇒ empty gate-sets and the default threshold).
+fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidence)> {
+    let text = std::fs::read_to_string(root.join("odm.toml")).unwrap_or_default();
+    let gates = GateSets::from_toml_str(&text).map_err(|e| anyhow!("gate config: {e}"))?;
+    let threshold = threshold_from_toml(&text).map_err(|e| anyhow!("satisfaction config: {e}"))?;
+    Ok((gates, threshold))
+}
+
+/// The corpus, graph, and satisfaction needed by every derived-order query.
+struct Derived {
+    docs: Vec<Document>,
+    graph: NodeGraph,
+    satisfaction: Satisfaction,
+}
+
+impl Derived {
+    fn load(store: &Store, root: &Path) -> anyhow::Result<Self> {
+        let docs = store.load_all()?;
+        let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
+        let (gates, threshold) = load_gate_config(root)?;
+        let graph = NodeGraph::build(&frontmatters);
+        let satisfaction = Satisfaction::compute(&frontmatters, &gates, threshold);
+        Ok(Self { docs, graph, satisfaction })
+    }
+
+    /// A short `#<number> <name>` label for a node id (falls back to the id).
+    fn label(&self, id: Id) -> String {
+        self.docs.iter().find(|d| d.frontmatter().id() == id).map_or_else(
+            || id.to_string(),
+            |d| format!("#{} {}", d.frontmatter().number(), d.frontmatter().name()),
+        )
+    }
+
+    fn number(&self, id: Id) -> Option<u32> {
+        self.docs.iter().find(|d| d.frontmatter().id() == id).map(|d| d.frontmatter().number())
+    }
+}
+
+#[derive(Serialize)]
+struct SoftDepJson {
+    dep: String,
+    number: Option<u32>,
+    evidence: String,
+}
+
+#[derive(Serialize)]
+struct ReadyJson {
+    node: String,
+    number: Option<u32>,
+    effective_evidence: Option<String>,
+    soft: Vec<SoftDepJson>,
+}
+
+/// `next` — the ready frontier, soft-satisfied deps flagged. Data → `out`.
+pub fn next(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+    let derived = Derived::load(store, root)?;
+    let ready = derived.graph.next(&derived.satisfaction);
+
+    if json {
+        let view: Vec<ReadyJson> = ready
+            .iter()
+            .map(|r| ReadyJson {
+                node: r.node.to_string(),
+                number: derived.number(r.node),
+                effective_evidence: derived
+                    .graph
+                    .min_evidence(r.node, &derived.satisfaction)
+                    .map(|e| e.as_str().to_string()),
+                soft: r
+                    .soft
+                    .iter()
+                    .map(|s| SoftDepJson {
+                        dep: s.dep.to_string(),
+                        number: derived.number(s.dep),
+                        evidence: s.evidence.as_str().to_string(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    if ready.is_empty() {
+        writeln!(out, "next: (nothing ready)")?;
+        return Ok(());
+    }
+    for r in &ready {
+        writeln!(out, "{}", derived.label(r.node))?;
+        for soft in &r.soft {
+            writeln!(
+                out,
+                "  ⚠ dep {} satisfied at evidence={}",
+                derived.label(soft.dep),
+                soft.evidence.as_str()
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct BlockJson {
+    kind: String,
+    node: String,
+    number: Option<u32>,
+    evidence: Option<String>,
+    threshold: Option<String>,
+}
+
+/// `blocked X` — the unsatisfied / soft-satisfied / externally-blocked reasons.
+pub fn blocked(
+    store: &Store,
+    root: &Path,
+    reference: &str,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let derived = Derived::load(store, root)?;
+    let target = resolve(store, reference)?;
+    let reasons = derived.graph.blocked(target.frontmatter().id(), &derived.satisfaction);
+
+    if json {
+        let view: Vec<BlockJson> = reasons.iter().map(block_json).collect();
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    if reasons.is_empty() {
+        writeln!(out, "blocked: nothing holding {}", derived.label(target.frontmatter().id()))?;
+        return Ok(());
+    }
+    for reason in &reasons {
+        match reason {
+            Block::Unsatisfied { dep } => {
+                writeln!(out, "  unsatisfied dependency {}", derived.label(*dep))?;
+            }
+            Block::SoftSatisfied { dep, evidence, threshold } => {
+                writeln!(
+                    out,
+                    "  low-evidence dependency {} at evidence={} (raise to {})",
+                    derived.label(*dep),
+                    evidence.as_str(),
+                    threshold.as_str()
+                )?;
+            }
+            Block::ExternallyBlocked { by } => {
+                writeln!(out, "  blocked by {}", derived.label(*by))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn block_json(reason: &Block<Id, Evidence>) -> BlockJson {
+    match reason {
+        Block::Unsatisfied { dep } => BlockJson {
+            kind: "unsatisfied".to_string(),
+            node: dep.to_string(),
+            number: None,
+            evidence: None,
+            threshold: None,
+        },
+        Block::SoftSatisfied { dep, evidence, threshold } => BlockJson {
+            kind: "soft-satisfied".to_string(),
+            node: dep.to_string(),
+            number: None,
+            evidence: Some(evidence.as_str().to_string()),
+            threshold: Some(threshold.as_str().to_string()),
+        },
+        Block::ExternallyBlocked { by } => BlockJson {
+            kind: "blocked-by".to_string(),
+            node: by.to_string(),
+            number: None,
+            evidence: None,
+            threshold: None,
+        },
+    }
+}
+
+#[derive(Serialize)]
+struct PathJson {
+    path: Option<Vec<String>>,
+}
+
+/// `path X [Y]` — the critical dependency chain from X, or a path from X to Y.
+pub fn path(
+    store: &Store,
+    root: &Path,
+    reference: &str,
+    to: Option<&str>,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let derived = Derived::load(store, root)?;
+    let from = resolve(store, reference)?.frontmatter().id();
+    let target = to.map(|t| resolve(store, t)).transpose()?.map(|d| d.frontmatter().id());
+    let chain = derived.graph.path(from, target, &[]);
+
+    if json {
+        let view =
+            PathJson { path: chain.as_ref().map(|c| c.iter().map(ToString::to_string).collect()) };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    match chain {
+        Some(chain) => {
+            let labels: Vec<String> = chain.iter().map(|&id| derived.label(id)).collect();
+            writeln!(out, "{}", labels.join(" -> "))?;
+        }
+        None => writeln!(out, "path: no dependency path")?,
+    }
+    Ok(())
 }
