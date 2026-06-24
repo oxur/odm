@@ -29,11 +29,16 @@ load-bearing work on a relayed belief (the prod-DB 503).
 
 ## Scope
 
-**In:** topo order (Kahn) over `depends_on ∪ consumes`; `next` (ready frontier,
-no active `blocked_by`, not complete); `blocked X` (unsatisfied + soft-satisfied
-reasons); `path X [Y]` (chain / critical path); satisfaction predicate;
-evidence min-propagation; the configurable threshold; soft-satisfied surfacing in
-`next`/`blocked`; the staleness guard; `--json` for each query.
+**In:** **wire the typed `Status` (slice03) into `Frontmatter`** (replace the
+preserved-unknown-key passthrough with the typed field — satisfaction must *read*
+status; this flips arc01's `unknown_keys_preserved` 2→1, an expected/disclosed
+change, status moving unknown→known); topo order (Kahn) over `depends_on ∪
+consumes`; `next` (ready frontier, no active `blocked_by`, not complete);
+`blocked X` (unsatisfied + soft-satisfied reasons); `path X [Y]` (chain / critical
+path); satisfaction predicate; evidence min-propagation; the configurable
+threshold; soft-satisfied surfacing in `next`/`blocked`; the staleness guard;
+`--json` for each query. **Decide + encode** (slice03 uncertainty): whether
+reaching gate N requires gates < N, and whether evidence may regress.
 
 **Out:** `check` v2 wiring of the strict-fail (slice06; this slice exposes the
 warning + the predicate it uses); the gate-recording mechanics (slice03);
