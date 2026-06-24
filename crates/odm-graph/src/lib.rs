@@ -14,6 +14,9 @@
 
 #![deny(missing_docs)]
 
+mod cycle;
+pub use cycle::{Cycle, MissingRationale, Tear};
+
 use std::collections::HashMap;
 use std::hash::Hash;
 
