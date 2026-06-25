@@ -36,8 +36,20 @@ decomposition/recomposition integrity, and `check` v2.
 4. **slice04 — derived order & satisfaction** (`next`/`blocked`/`path`/topo,
    satisfaction, **evidence-leveled satisfaction + threshold + min-propagation**,
    staleness guard) — `odm-graph`/`odm-core`. ← carries the evidence-level work.
-5. **slice05 — decomposition/recomposition integrity** (+ `decomposed: complete`).
+5. **slice05 — decomposition/recomposition integrity** (+ `decomposed: complete`,
+   realized as a typed `Decomposition { on, children }` to enable the drift guard).
+5b. **slice05.1 — evidence-transition dates** *(inserted)* — `GateRecord` gains a
+   first-reach-per-level `evidence_dates` map: the verification-latency *signal*
+   (captured, not yet consumed). Groundwork for the A7 telemetry/forecasting layer.
+   Back-compat: pre-field nodes round-trip byte-identically. (Numbered `05.1` as a
+   bootstrap-phase bisection — the very `Phase 8.5` pattern odm will make
+   impossible once self-hosting; see its CDC note.)
 6. **slice06 — `check` v2** (the lynchpin gate).
+7. **slice07 — CLI graph-mutators** *(added)* — `link`/`unlink`, `set-gate`, `tear`,
+   `new --parent`: wires the engine to the command surface so a graph can be built +
+   advanced through `odm` alone (no hand-editing). **Self-hosting prerequisite**
+   (surfaced in slice04 CDC). On its close, **odm is self-host-usable and Arc 02 is
+   done.**
 
 Evidence-leveled satisfaction spans **slice03** (recording the evidence level on
 each gate transition) and **slice04** (consuming it: min-propagation, threshold,
