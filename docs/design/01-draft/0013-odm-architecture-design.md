@@ -403,8 +403,9 @@ that defers to `odm` (§11) · evidence-level on gate transitions, an `affects` 
 - **Q-7** WBS 100%-rule as a `check` — **reframed & adopted (not deferred):** the
   part that bit us — *seeing* the parent→children decomposition and *recomposing*
   the whole — is structural, and we have the data, so it's built (§4.5: total
-  recomposition, no-orphan/no-stub checks, drift-guarded `decomposed: complete`
-  assertion). Only *automatic semantic* missing/excess-scope detection stays out (a
+  recomposition, no-orphan/no-stub checks, drift-guarded typed `decomposed:
+  Decomposition { on, children }` assertion). Only *automatic semantic*
+  missing/excess-scope detection stays out (a
   human judgement; faking it = confabulation).
 - **Q-8** Explicit entry-gate (Definition-of-Ready) distinct from
   dependency-readiness — **agreed: deferred.**

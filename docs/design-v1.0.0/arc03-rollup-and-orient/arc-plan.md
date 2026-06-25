@@ -97,13 +97,15 @@ can render tear rationale and `check` severities are calibrated before they surf
 
 ## Open design questions (resolve in the slice docs; recommendations marked)
 
-- **Q-A3-1 — Deferred surfacing vs. representation.** A3 is to *surface* deferred
-  nodes + their re-entry predicate (0013 §6; 0015 §5.3), but predicate *evaluation* is
-  A5, and there may be **no `deferred` representation in the schema yet** (gates are
-  `planned/built/…`; DoR/entry-gate is Q-8-deferred; retirement is `retired: {}`).
-  *Rec:* in A3, surface only what is representable today; **do not add a new status
-  just to render it** — the full deferred+predicate path lands with A5. Confirm
-  against the current schema in slice02. *(Needs a quick check + your call.)*
+- **Q-A3-1 — RESOLVED (2026-06-25, Duncan + CDC): deferred-node surfacing is out of
+  A3.** A3 was nominally to *surface* deferred nodes + their re-entry predicate (0013
+  §6; 0015 §5.3), but predicate *evaluation* is A5 and there is **no `deferred`
+  representation in the schema yet** (gates are `planned/built/…`; DoR/entry-gate is
+  Q-8-deferred; retirement is `retired: {}`). Decision: the rollup surfaces only what
+  is representable today; we **do not invent a `deferred` status just to render it**.
+  The full deferred + re-entry-predicate path lands with **A5**, once the
+  schema/metadata firms up. slice02's rollup model leaves a defined slot for it but
+  renders nothing until then.
 - **Q-A3-2 — Drift in the rollup before A5.** `reconcile`/drift is A5. *Rec:* slice02
   renders a `DRIFT` section that is structurally present but reads "not yet tracked
   (A5)" until reconcile is wired — keeps the rollup shape stable with no fake data.
