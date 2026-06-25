@@ -124,7 +124,7 @@ fn multiple_findings_are_deterministic_by_id() {
 
 #[test]
 fn all_edge_kinds_are_link_checked() {
-    use odm_core::frontmatter::Dependency;
+    use odm_core::frontmatter::{Dependency, TornEdge};
     let mut fm = node(id(A), 1, "Node");
     let edges = Edges {
         depends_on: vec![Dependency::Bare(id(MISSING))],
@@ -132,7 +132,10 @@ fn all_edge_kinds_are_link_checked() {
         verifies: vec![id(MISSING)],
         consumes: vec![id(MISSING)],
         affects: vec![id(MISSING)],
-        tears: vec![Dependency::Qualified { node: id(MISSING), satisfied_at: "tested".into() }],
+        tears: vec![TornEdge {
+            edge: Dependency::Qualified { node: id(MISSING), satisfied_at: "tested".into() },
+            because: "assumed".into(),
+        }],
         ..Edges::default()
     };
     *fm.edges_mut() = edges;

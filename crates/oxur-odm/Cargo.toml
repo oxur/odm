@@ -15,5 +15,12 @@ path = "src/main.rs"
 [dependencies]
 odm-cli = { path = "../odm-cli" }
 
+[dev-dependencies]
+# Binary-level end-to-end tests drive the built `odm` process (arc03/slice01).
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+serde_json.workspace = true
+
 [lints]
 workspace = true

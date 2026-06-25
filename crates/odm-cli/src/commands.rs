@@ -13,7 +13,9 @@ use std::path::Path;
 use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
 use odm_core::check::{Finding, Violation};
-use odm_core::frontmatter::{Dependency, Document, Frontmatter, SupersedeKind, Supersedes};
+use odm_core::frontmatter::{
+    Dependency, Document, Frontmatter, SupersedeKind, Supersedes, TornEdge,
+};
 use odm_core::gates::GateSets;
 use odm_core::graph::{Block, NodeGraph, Tear};
 use odm_core::recompose::{self, Issue};
@@ -649,11 +651,9 @@ pub fn set_gate(
 
 /// `tear X depends_on Y --because <r>` — declares a deliberately-assumed
 /// dependency edge. The rationale is validated via [`Tear::new`] (empty →
-/// rejected); the torn edge is recorded in `edges.tears` on X.
-///
-/// Note: the on-disk `tears` schema (a `Vec<Dependency>`) does not yet carry the
-/// rationale text, so `--because` is *validated* but not persisted (the
-/// tear-rationale schema gap, deferred since slice04 — see the slice report).
+/// rejected) and **persisted** as a [`TornEdge`] (`{ edge, because }`) in
+/// `edges.tears` on X, so it survives to `check`'s active-tears listing
+/// (ODD-0013 §4.3). A re-tear of the same target refreshes the rationale.
 pub fn tear(
     store: &Store,
     source_ref: &str,
@@ -680,8 +680,11 @@ pub fn tear(
     }
 
     let edges = src.frontmatter_mut().edges_mut();
-    if !edges.tears.iter().any(|d| dependency_target(d) == target_id) {
-        edges.tears.push(Dependency::Bare(target_id));
+    let entry = TornEdge { edge: Dependency::Bare(target_id), because: because.to_string() };
+    match edges.tears.iter_mut().find(|t| dependency_target(&t.edge) == target_id) {
+        // Re-tearing the same target refreshes the rationale (the latest `--because`).
+        Some(existing) => existing.because = because.to_string(),
+        None => edges.tears.push(entry),
     }
     src.frontmatter_mut().set_updated(today());
     store.persist(&src)?;
@@ -870,6 +873,25 @@ struct EntryJson {
     fix: String,
 }
 
+/// One active tear surfaced in `check`'s active-tears listing (ODD-0013 §4.3):
+/// an assumed dependency edge in effect, with the rationale that justifies it.
+struct ActiveTear {
+    from_label: String,
+    to_label: String,
+    from: Id,
+    to: Id,
+    because: String,
+}
+
+/// JSON shape of one active tear in `check --json` (additive to the v2 schema —
+/// existing `ok`/`errors`/`warnings`/`findings` keys are unchanged).
+#[derive(Serialize)]
+struct TearJson {
+    from: String,
+    to: String,
+    because: String,
+}
+
 /// JSON shape of the whole `check` report (stable, documented schema).
 #[derive(Serialize)]
 struct CheckReport {
@@ -878,6 +900,8 @@ struct CheckReport {
     errors: usize,
     warnings: usize,
     findings: Vec<EntryJson>,
+    /// The assumed dependencies (tears) in effect, each with its rationale.
+    tears: Vec<TearJson>,
 }
 
 /// A one-word violation label (stable across the JSON schema and human output).
@@ -950,17 +974,17 @@ fn label_of(by_id: &HashMap<Id, &Frontmatter>, id: Id) -> String {
     by_id.get(&id).map_or_else(|| id.to_string(), |f| format!("#{} {}", f.number(), f.name()))
 }
 
-/// The torn ordering edges declared in frontmatter (`edges.tears`). The schema
-/// does not yet carry a tear *rationale* (deferred — see slices 04/05); the
-/// engine's [`Tear`] requires one, so a placeholder is synthesized purely to let
-/// the cycle detector exclude the edge. (Flagged in the slice report.)
+/// The torn ordering edges declared in frontmatter (`edges.tears`), mapped to
+/// the engine's [`Tear`] carrying the persisted rationale (`because`). A tear
+/// with an empty rationale is rejected by `Tear::new` and skipped — the `tear`
+/// command never persists one, so this only guards hand-edited frontmatter.
 fn frontmatter_tears(frontmatters: &[Frontmatter]) -> Vec<Tear<Id>> {
     let mut tears = Vec::new();
     for fm in frontmatters {
         let from = fm.id();
-        for dep in &fm.edges().tears {
-            let to = dependency_target(dep);
-            if let Ok(t) = Tear::new(from, to, "declared in frontmatter `edges.tears`") {
+        for torn in &fm.edges().tears {
+            let to = dependency_target(&torn.edge);
+            if let Ok(t) = Tear::new(from, to, torn.because.clone()) {
                 tears.push(t);
             }
         }
@@ -983,6 +1007,21 @@ fn has_advanced(fm: &Frontmatter, gates: &GateSets) -> bool {
     gates.for_type(fm.node_type()).is_some_and(|gset| {
         gset.sequence().iter().enumerate().any(|(i, gate)| i > 0 && fm.status().has_reached(gate))
     })
+}
+
+/// The severity of a recomposition finding. A structural break (**orphan**) or
+/// a now-false assertion (**decomposition-drift**) is a hard `Error`; the
+/// advisory "develop this further" findings (**undeveloped-stub**,
+/// **advanced-without-decomposition**) are `Warning`s that fail only under
+/// `--strict` — matching the staleness / soft-satisfaction treatment
+/// (ODD-0013 §4.4; slice06 CDC rec #2). Everyday `check` no longer exits 1
+/// merely because an arc was advanced before its decomposition was affirmed.
+fn recompose_severity(issue: &Issue) -> Severity {
+    match issue {
+        Issue::UndevelopedStub { .. } | Issue::AdvancedWithoutDecomposition => Severity::Warning,
+        // Orphan, decomposition-drift, and any future structural issue: error.
+        _ => Severity::Error,
+    }
 }
 
 /// Renders a recomposition finding to `(code, detail, fix)`.
@@ -1026,7 +1065,11 @@ fn recompose_render(store: &Store, f: &recompose::Finding) -> (&'static str, Str
 /// ordered list of findings: schema + link-integrity (v1), cycles-without-tears,
 /// recomposition (orphan/stub/drift/advance-without), out-of-order/staleness,
 /// and below-threshold (soft-satisfied) dependencies.
-fn aggregate(store: &Store, root: &Path, docs: &[Document]) -> anyhow::Result<Vec<CheckEntry>> {
+fn aggregate(
+    store: &Store,
+    root: &Path,
+    docs: &[Document],
+) -> anyhow::Result<(Vec<CheckEntry>, Vec<ActiveTear>)> {
     let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
     let by_id: HashMap<Id, &Frontmatter> = frontmatters.iter().map(|f| (f.id(), f)).collect();
     let (gates, threshold) = load_gate_config(root)?;
@@ -1071,11 +1114,12 @@ fn aggregate(store: &Store, root: &Path, docs: &[Document]) -> anyhow::Result<Ve
         });
     }
 
-    // (c) recomposition (slice05) — orphan/stub/drift/advance-without: errors.
+    // (c) recomposition (slice05) — orphan/drift are errors; stub/advance-without
+    // are warnings (fail only under --strict). See `recompose_severity`.
     for f in recompose::integrity(&frontmatters, &gates) {
         let (code, detail, fix) = recompose_render(store, &f);
         entries.push(CheckEntry {
-            severity: Severity::Error,
+            severity: recompose_severity(&f.issue),
             code,
             node: Some(f.node),
             number: Some(f.number),
@@ -1147,7 +1191,23 @@ fn aggregate(store: &Store, root: &Path, docs: &[Document]) -> anyhow::Result<Ve
         }
     }
 
-    Ok(entries)
+    // Active tears: assumed dependencies actually in effect (naming a real
+    // ordering edge), each with its persisted rationale. Listed by `check` so
+    // they stay visible (ODD-0013 §4.3); not findings — informational.
+    let mut active: Vec<ActiveTear> = graph
+        .active_tears(&tears)
+        .into_iter()
+        .map(|t| ActiveTear {
+            from_label: label_of(&by_id, *t.from()),
+            to_label: label_of(&by_id, *t.to()),
+            from: *t.from(),
+            to: *t.to(),
+            because: t.rationale().to_string(),
+        })
+        .collect();
+    active.sort_by_key(|t| (t.from, t.to));
+
+    Ok((entries, active))
 }
 
 /// `check` — the single mechanical gate: aggregates every graph-level invariant
@@ -1169,7 +1229,7 @@ pub fn check(
     out: &mut dyn Write,
 ) -> anyhow::Result<u8> {
     let docs = store.load_all().context("loading the corpus to check")?;
-    let entries = aggregate(store, root, &docs)?;
+    let (entries, tears) = aggregate(store, root, &docs)?;
 
     let errors = entries.iter().filter(|e| e.severity == Severity::Error).count();
     let warnings = entries.iter().filter(|e| e.severity == Severity::Warning).count();
@@ -1193,6 +1253,14 @@ pub fn check(
                     fix: e.fix.clone(),
                 })
                 .collect(),
+            tears: tears
+                .iter()
+                .map(|t| TearJson {
+                    from: t.from.to_string(),
+                    to: t.to.to_string(),
+                    because: t.because.clone(),
+                })
+                .collect(),
         };
         writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
         return Ok(code);
@@ -1200,6 +1268,7 @@ pub fn check(
 
     if entries.is_empty() {
         writeln!(out, "check: ok ({} node(s), no problems)", docs.len())?;
+        write_active_tears(out, &tears)?;
         return Ok(EXIT_OK);
     }
 
@@ -1212,10 +1281,24 @@ pub fn check(
         writeln!(out, "  [{}] {who}: [{}] {}", e.severity.as_str(), e.code, e.detail)?;
         writeln!(out, "    fix: {}", e.fix)?;
     }
+    write_active_tears(out, &tears)?;
     if !strict && warnings > 0 && errors == 0 {
         writeln!(out, "(warnings do not fail; run with --strict to enforce)")?;
     }
     Ok(code)
+}
+
+/// Writes the active-tears listing (assumed dependencies in effect, each with
+/// its rationale) to `out`, or nothing when there are no active tears.
+fn write_active_tears(out: &mut dyn Write, tears: &[ActiveTear]) -> anyhow::Result<()> {
+    if tears.is_empty() {
+        return Ok(());
+    }
+    writeln!(out, "active tears ({}):", tears.len())?;
+    for t in tears {
+        writeln!(out, "  {} depends_on {} (because: {})", t.from_label, t.to_label, t.because)?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

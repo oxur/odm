@@ -11,7 +11,7 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use odm_core::frontmatter::{
     Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
-    Supersedes,
+    Supersedes, TornEdge,
 };
 use odm_core::gates::GateSets;
 use odm_core::status::Evidence;
@@ -116,7 +116,9 @@ fn schema_edges_block_parses_every_kind() {
         \x20 consumes: [{p}]\n\
         \x20 affects: [{p}]\n\
         \x20 supersedes: {{ node: {p}, kind: obsoletes }}\n\
-        \x20 tears: [{p}]\n\
+        \x20 tears:\n\
+        \x20   - edge: {p}\n\
+        \x20     because: assumed for cycle break\n\
          ---\nbody\n"
     );
     let fm = Document::parse(&text).expect("valid edges").frontmatter().clone();
@@ -134,7 +136,13 @@ fn schema_edges_block_parses_every_kind() {
     assert_eq!(e.consumes, vec![id]);
     assert_eq!(e.affects, vec![id]);
     assert_eq!(e.supersedes, Some(Supersedes { node: id, kind: SupersedeKind::Obsoletes }));
-    assert_eq!(e.tears, vec![Dependency::Bare(id)]);
+    assert_eq!(
+        e.tears,
+        vec![TornEdge {
+            edge: Dependency::Bare(id),
+            because: "assumed for cycle break".to_string()
+        }]
+    );
 }
 
 // ----- I-6: canonical field order (snapshot) -------------------------------
@@ -393,6 +401,104 @@ proptest! {
         let reparsed = Document::parse(&emitted)?;
         prop_assert_eq!(reparsed, doc);
     }
+}
+
+// ----- C-1: a tear entry carries both the torn edge and the rationale -------
+
+#[test]
+fn tear_carries_rationale() {
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let target = Id::new();
+    let fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Slice,
+        "n",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    )
+    .with_edges(Edges {
+        tears: vec![TornEdge {
+            edge: Dependency::Bare(target),
+            because: "B is assumed to ship first".to_string(),
+        }],
+        ..Edges::default()
+    });
+    let emitted = Document::new(fm, "body\n").emit().unwrap();
+
+    // Both the torn edge target and its rationale are persisted (not dropped).
+    assert!(emitted.contains(&target.to_string()), "edge persisted:\n{emitted}");
+    assert!(emitted.contains("because:"), "rationale key persisted:\n{emitted}");
+
+    // The typed entry round-trips: edge + because both survive.
+    let reparsed = Document::parse(&emitted).unwrap();
+    let tears = &reparsed.frontmatter().edges().tears;
+    assert_eq!(tears.len(), 1);
+    assert_eq!(tears[0].edge, Dependency::Bare(target));
+    assert_eq!(tears[0].because, "B is assumed to ship first");
+}
+
+// ----- C-3: a populated `tears` round-trips (parse ∘ emit = identity) -------
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(128))]
+    #[test]
+    fn tears_roundtrip_identity(
+        n_tears in 1usize..4,
+        // Non-empty rationale text (a tear always carries one).
+        becauses in prop::collection::vec("[a-zA-Z0-9][a-zA-Z0-9 ._-]{0,39}", 1..4),
+    ) {
+        let id = Id::new();
+        let mut edges = Edges::default();
+        for i in 0..n_tears {
+            let because = becauses.get(i % becauses.len()).cloned().unwrap();
+            // Mix bare and gate-qualified torn edges.
+            let edge = if i % 2 == 0 {
+                Dependency::Bare(Id::new())
+            } else {
+                Dependency::Qualified { node: Id::new(), satisfied_at: "tested".to_string() }
+            };
+            edges.tears.push(TornEdge { edge, because });
+        }
+        let fm = Frontmatter::new(
+            id, 1, NodeType::Slice, "n", day(2026, 6, 20), day(2026, 6, 20), Origin::Planned,
+        )
+        .with_edges(edges);
+
+        let doc = Document::new(fm, "body\n");
+        let emitted = doc.emit()?;
+        prop_assert!(emitted.contains("tears:"), "tears emitted: {emitted}");
+        prop_assert!(emitted.contains("because:"), "rationale emitted: {emitted}");
+        let reparsed = Document::parse(&emitted)?;
+        prop_assert_eq!(reparsed, doc);
+    }
+}
+
+// ----- C-4: empty `tears` is omitted; no-tears nodes round-trip identically -
+
+#[test]
+fn empty_tears_roundtrip() {
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Slice,
+        "n",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    )
+    .with_edges(Edges { part_of: Some(id), ..Edges::default() });
+    let doc = Document::new(fm, "body\n");
+    let emitted = doc.emit().unwrap();
+
+    // An empty `tears` must not invent the key (arc01/02 nodes have none).
+    assert!(!emitted.contains("tears:"), "empty tears omitted; got:\n{emitted}");
+    // And such a node round-trips byte-identically.
+    let reparsed = Document::parse(&emitted).unwrap();
+    assert_eq!(reparsed, doc);
+    assert_eq!(reparsed.emit().unwrap(), emitted);
 }
 
 // ----- I-5 (proptest form): arbitrary unknown scalar keys survive ----------

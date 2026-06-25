@@ -147,7 +147,7 @@ fn check_link_integrity(fm: &Frontmatter, ids: &BTreeSet<Id>, findings: &mut Vec
     if let Some(s) = &edges.supersedes {
         dangling(fm, ids, "supersedes", s.node, findings);
     }
-    for target in edges.tears.iter().map(dependency_target) {
+    for target in edges.tears.iter().map(|t| dependency_target(&t.edge)) {
         dangling(fm, ids, "tears", target, findings);
     }
 }

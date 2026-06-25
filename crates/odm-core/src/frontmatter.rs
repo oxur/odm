@@ -452,9 +452,10 @@ pub struct Edges {
     /// Supersession lineage, if this node supersedes another.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<Supersedes>,
-    /// Dependency edges deliberately assumed/broken to cut a cycle.
+    /// Dependency edges deliberately assumed/broken to cut a cycle, each with
+    /// its required rationale (ODD-0013 §4.3).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tears: Vec<Dependency>,
+    pub tears: Vec<TornEdge>,
 }
 
 impl Edges {
@@ -489,6 +490,25 @@ pub enum Dependency {
         /// string here so it round-trips before then.
         satisfied_at: String,
     },
+}
+
+/// A deliberately-assumed ("torn") dependency edge recorded in `tears:` on the
+/// source node, with the rationale that justifies assuming it (ODD-0013 §4.3).
+///
+/// This is the *persisted* frontmatter entry, deliberately named distinctly
+/// from [`odm_graph::Tear`] (the engine's pure cycle-breaking primitive over
+/// abstract ids). Graph-build maps each `TornEdge` → a `Tear<Id>` carrying this
+/// `because` text, so the rationale flows from disk into the cycle detector and
+/// `check`'s active-tears listing — it is no longer dropped after validation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TornEdge {
+    /// The torn dependency edge (bare id or gate-qualified), mirroring the
+    /// `depends_on` entry it assumes.
+    pub edge: Dependency,
+    /// Why this dependency was deliberately assumed — the tear's audit
+    /// rationale. Required (the `tear` command rejects an empty one via
+    /// [`odm_graph::Tear::new`]).
+    pub because: String,
 }
 
 /// A supersession edge: this node supersedes `node` with a given `kind`.

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 use chrono::NaiveDate;
-use odm_core::frontmatter::{Dependency, Edges, Frontmatter, SupersedeKind, Supersedes};
+use odm_core::frontmatter::{Dependency, Edges, Frontmatter, SupersedeKind, Supersedes, TornEdge};
 use odm_core::graph::{EdgeKind, NodeGraph};
 use odm_core::{Id, NodeType, Origin};
 
@@ -64,7 +64,7 @@ fn ordering_dag_membership() {
         verifies: vec![id('V')],
         affects: vec![id('F')],
         supersedes: Some(Supersedes { node: id('S'), kind: SupersedeKind::Updates }),
-        tears: vec![Dependency::Bare(id('T'))],
+        tears: vec![TornEdge { edge: Dependency::Bare(id('T')), because: "assumed".to_string() }],
     };
     // Provide all referenced nodes so edges are real.
     let mut nodes = vec![a];

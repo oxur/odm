@@ -94,8 +94,8 @@ impl NodeGraph {
             if let Some(s) = &edges.supersedes {
                 graph.add_edge(&from, EdgeKind::Supersedes, &s.node);
             }
-            for dep in &edges.tears {
-                graph.add_edge(&from, EdgeKind::Tears, &dependency_target(dep));
+            for torn in &edges.tears {
+                graph.add_edge(&from, EdgeKind::Tears, &dependency_target(&torn.edge));
             }
         }
         Self { graph }
@@ -169,6 +169,15 @@ impl NodeGraph {
     /// Returns the [`Cycle`] if the ordering relation has one.
     pub fn topological_order(&self, tears: &[Tear<Id>]) -> Result<Vec<Id>, Cycle<Id>> {
         self.graph.topological_order(&ORDERING_KINDS, tears)
+    }
+
+    /// The tears that name a real ordering edge in this graph — the assumed
+    /// dependencies actually in effect (a tear of a non-existent edge is inert,
+    /// so it is excluded). `check` lists these with their rationale so assumed
+    /// dependencies stay visible (ODD-0013 §4.3).
+    #[must_use]
+    pub fn active_tears<'a>(&self, tears: &'a [Tear<Id>]) -> Vec<&'a Tear<Id>> {
+        self.graph.active_tears(&ORDERING_KINDS, tears)
     }
 
     /// The ready frontier (`next`): not-complete nodes whose ordering deps are

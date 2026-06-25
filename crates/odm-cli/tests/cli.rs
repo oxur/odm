@@ -573,7 +573,7 @@ fn check_json_v1() {
 // derived order: next / blocked / path --json (H-12)
 // ===========================================================================
 
-use odm_core::frontmatter::Dependency;
+use odm_core::frontmatter::{Dependency, TornEdge};
 use odm_core::gates::GateSets;
 use odm_core::status::Evidence;
 
@@ -721,7 +721,10 @@ fn check_cycle_requires_tear() {
         fm.edges_mut().part_of = Some(a);
         fm.edges_mut().depends_on = vec![Dependency::Bare(dep)];
         if let Some(t) = tear {
-            fm.edges_mut().tears = vec![Dependency::Bare(t)];
+            fm.edges_mut().tears = vec![TornEdge {
+                edge: Dependency::Bare(t),
+                because: "assumed for now".to_string(),
+            }];
         }
         fm
     };
@@ -931,10 +934,10 @@ fn check_json_schema() {
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
 
-    // Stable envelope.
+    // Stable envelope (v2; `tears` added in arc03/slice01 — additive).
     let mut top: Vec<&String> = value.as_object().unwrap().keys().collect();
     top.sort();
-    assert_eq!(top, ["errors", "findings", "ok", "warnings"]);
+    assert_eq!(top, ["errors", "findings", "ok", "tears", "warnings"]);
     assert_eq!(value["ok"], false);
     assert!(value["errors"].as_u64().unwrap() >= 1);
     assert!(value["warnings"].as_u64().unwrap() >= 1);
@@ -950,6 +953,138 @@ fn check_json_schema() {
     // Both families are present and labeled by severity.
     assert!(findings.iter().any(|f| f["code"] == "orphan" && f["severity"] == "error"));
     assert!(findings.iter().any(|f| f["code"] == "soft-satisfied" && f["severity"] == "warning"));
+}
+
+// ----- C-5: check surfaces each active tear's rationale ---------------------
+
+#[test]
+fn check_lists_tear_rationale() {
+    let dir = TempDir::new().unwrap();
+    let (_p, a) = tree(dir.path());
+    let x = Id::new();
+    let y = Id::new();
+    // X depends_on Y and Y depends_on X — a cycle; tear X->Y to break it.
+    let mut x_fm = fmn(x, 3, NodeType::Slice, "X");
+    x_fm.edges_mut().part_of = Some(a);
+    x_fm.edges_mut().depends_on = vec![Dependency::Bare(y)];
+    x_fm.edges_mut().tears =
+        vec![TornEdge { edge: Dependency::Bare(y), because: "Y assumed ready".to_string() }];
+    put(dir.path(), x_fm);
+    let mut y_fm = fmn(y, 4, NodeType::Slice, "Y");
+    y_fm.edges_mut().part_of = Some(a);
+    y_fm.edges_mut().depends_on = vec![Dependency::Bare(x)];
+    put(dir.path(), y_fm);
+
+    // The torn cycle passes, and the active tear is listed with its rationale.
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(0), "torn cycle passes; out: {}", r.out);
+    assert!(r.out.contains("active tears"), "lists active tears; out: {}", r.out);
+    assert!(r.out.contains("Y assumed ready"), "surfaces rationale; out: {}", r.out);
+
+    // The JSON report carries the rationale too.
+    let j = run(dir.path(), &["check", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&j.out).unwrap();
+    let tears = v["tears"].as_array().expect("tears array");
+    assert_eq!(tears.len(), 1, "one active tear: {}", j.out);
+    assert_eq!(tears[0]["because"], "Y assumed ready");
+}
+
+// ----- C-8: recomposition severities recalibrated ---------------------------
+
+#[test]
+fn check_recomposition_severities() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let arc_gset =
+        GateSets::from_toml_str(V2_TOML).unwrap().for_type(NodeType::Arc).unwrap().clone();
+
+    let p = Id::new();
+    put(dir.path(), fmn(p, 1, NodeType::Project, "P"));
+
+    // orphan (Error): a parentless slice.
+    put(dir.path(), fmn(Id::new(), 9, NodeType::Slice, "Orphan"));
+
+    // undeveloped-stub (Warning): arc advanced with zero children.
+    let q = Id::new();
+    let mut q_fm = fmn(q, 2, NodeType::Arc, "Q");
+    q_fm.edges_mut().part_of = Some(p);
+    q_fm.status_mut()
+        .set_gate(&arc_gset, "in-progress", None, Evidence::Reproduced, day())
+        .unwrap();
+    put(dir.path(), q_fm);
+
+    // advanced-without-decomposition (Warning): arc at terminal gate, a child,
+    // no `decomposed` affirmation.
+    let r = Id::new();
+    let mut r_fm = fmn(r, 3, NodeType::Arc, "R");
+    r_fm.edges_mut().part_of = Some(p);
+    r_fm.status_mut().set_gate(&arc_gset, "complete", None, Evidence::Reproduced, day()).unwrap();
+    put(dir.path(), r_fm);
+    let s = Id::new();
+    let mut s_fm = fmn(s, 4, NodeType::Slice, "S");
+    s_fm.edges_mut().part_of = Some(r);
+    put(dir.path(), s_fm);
+
+    // decomposition-drift (Error): affirmed against a missing child while a real
+    // child is present.
+    let t = Id::new();
+    let mut t_fm = fmn(t, 5, NodeType::Arc, "T");
+    t_fm.edges_mut().part_of = Some(p);
+    t_fm.affirm_decomposed(vec![Id::from_str(MISSING_ID).unwrap()], day());
+    put(dir.path(), t_fm);
+    let u = Id::new();
+    let mut u_fm = fmn(u, 6, NodeType::Slice, "U");
+    u_fm.edges_mut().part_of = Some(t);
+    put(dir.path(), u_fm);
+
+    let out = run(dir.path(), &["check", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&out.out).unwrap();
+    let severity_of = |code: &str| -> String {
+        v["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["code"] == code)
+            .unwrap_or_else(|| panic!("missing finding {code}: {}", out.out))["severity"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(severity_of("orphan"), "error");
+    assert_eq!(severity_of("decomposition-drift"), "error");
+    assert_eq!(severity_of("undeveloped-stub"), "warning");
+    assert_eq!(severity_of("advanced-without-decomposition"), "warning");
+    // Errors present (orphan, drift) ⇒ exit 1 regardless of strict.
+    assert_eq!(out.code, Some(1));
+}
+
+// ----- C-9: a stub warns by default, fails only under --strict --------------
+
+#[test]
+fn stub_warns_default_fails_strict() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let arc_gset =
+        GateSets::from_toml_str(V2_TOML).unwrap().for_type(NodeType::Arc).unwrap().clone();
+
+    // A warning-only corpus: project P with an advanced, child-less arc Q.
+    let p = Id::new();
+    put(dir.path(), fmn(p, 1, NodeType::Project, "P"));
+    let q = Id::new();
+    let mut q_fm = fmn(q, 2, NodeType::Arc, "Q");
+    q_fm.edges_mut().part_of = Some(p);
+    q_fm.status_mut()
+        .set_gate(&arc_gset, "in-progress", None, Evidence::Reproduced, day())
+        .unwrap();
+    put(dir.path(), q_fm);
+
+    // Default: an undeveloped-stub is advisory — warning only, exit 0.
+    let normal = run(dir.path(), &["check"]);
+    assert_eq!(normal.code, Some(0), "stub does not fail default; out: {}", normal.out);
+    assert!(normal.out.contains("undeveloped-stub"), "out: {}", normal.out);
+    // Strict: the same warning fails the run.
+    let strict = run(dir.path(), &["check", "--strict"]);
+    assert_eq!(strict.code, Some(1), "out: {}", strict.out);
 }
 
 // ===========================================================================
@@ -1126,6 +1261,31 @@ fn tear_cli() {
     // An empty rationale is rejected with an affordance.
     let bad = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "   "]);
     assert!(!bad.ok && bad.err.contains("needs a rationale") && bad.err.contains("--because"));
+}
+
+// ----- C-2: `tear --because` persists the rationale on the source -----------
+
+#[test]
+fn tear_persists_rationale() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["new", "slice", "B"]);
+
+    run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "B ships first"]);
+
+    // The rationale is persisted on the source (#1), not dropped after validation.
+    let on_disk = file_for(dir.path(), 1);
+    assert!(on_disk.contains("tears:"), "tears persisted:\n{on_disk}");
+    assert!(on_disk.contains("because:"), "rationale key persisted:\n{on_disk}");
+    assert!(on_disk.contains("B ships first"), "rationale text persisted:\n{on_disk}");
+    assert_eq!(on_disk.matches("because:").count(), 1, "exactly one tear:\n{on_disk}");
+
+    // Re-tearing the same target refreshes the rationale (no duplicate entry).
+    run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "revised reason"]);
+    let updated = file_for(dir.path(), 1);
+    assert!(updated.contains("revised reason"), "refreshed:\n{updated}");
+    assert!(!updated.contains("B ships first"), "old rationale replaced:\n{updated}");
+    assert_eq!(updated.matches("because:").count(), 1, "still one tear:\n{updated}");
 }
 
 // ----- M-8: new --parent sets part_of ---------------------------------------

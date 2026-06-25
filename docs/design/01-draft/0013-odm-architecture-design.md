@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [architecture, design, node-graph, dag, reconciliation]
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-25
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.7
+version: 1.8
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -100,11 +100,16 @@ edges:
   consumes: [01J9...OUT]
   affects: []                        # decision/doc → the docs it touches (0001-C5)
   supersedes: null                   # or { node: 01J9...OLD, kind: updates } — kind ∈ {obsoletes (replace), updates (amend)}; reverse (superseded_by) derived
-  tears: []                          # explicitly-broken dependency edges (see §4.3)
+  tears:                             # explicitly-broken dependency edges (see §4.3); omitted when empty
+    - edge: 01J9...TORN              #   the assumed `depends_on` (bare id or { node, satisfied_at })
+      because: "B is assumed to ship first"   # required rationale (audited; never dropped)
 status:                              # multi-gate vector; absent gate = not reached
   built:  { reached: 2026-06-12, by: "duncan", evidence: reproduced }
   tested: { reached: 2026-06-13, evidence: reconciled }
   # evidence ∈ asserted | attested | reproduced | reconciled  (0001-D3)
+decomposed:                          # a parent's guarded "complete" assertion (§4.5); typed, drift-guarded
+  on: 2026-06-20                     #   when the child set was affirmed complete
+  children: [01J9...AAA, 01J9...BBB] #   the affirmed child ids (a later add/remove is drift)
 desired_facts:                       # for the reconciler (§5)
   - id: db-wired
     describe: "prod service has DB_HOST and connects"
@@ -163,9 +168,11 @@ and must be resolved by an explicit **tear**, never silently tolerated.
 
 ### 4.3 Tears
 A tear marks one `depends_on` edge as *deliberately assumed* (DSM "tearing"). It
-is recorded in `tears:` on the source node with a required rationale. `check`
-fails on a cycle that has no tear; passes once a tear is declared; and lists all
-active tears so assumed dependencies stay visible.
+is recorded in `tears:` on the source node as a typed entry `{ edge, because }`
+— the assumed edge **and** its required `because` rationale (the rationale is
+persisted, not merely validated). `check` fails on a cycle that has no tear;
+passes once a tear is declared; and lists all active tears **with their
+rationale** so assumed dependencies stay visible.
 
 ### 4.4 Satisfaction & the staleness guard
 An edge `A depends_on B` is **satisfied** when `B` has reached the gate named by
@@ -206,10 +213,13 @@ structural and checkable — so this is **built, not deferred** (Q-7):
   no orphans, no dangling parents. `show <parent>` renders the full decomposition.
 - **No undeveloped stubs:** a parent-capable node (`project`, `arc`) driven into a
   working/complete gate while it has zero children is flagged.
-- **Guarded completeness assertion:** a parent may assert `decomposed: complete`
-  ("these children fully account for my scope — no missing, no extra"). `check`
-  then guards it: children added/removed afterward, or a parent advanced toward
-  done without the assertion, flags for re-affirmation.
+- **Guarded completeness assertion:** a parent may affirm a typed
+  `decomposed: Decomposition { on, children }` ("these children fully account for
+  my scope — no missing, no extra"). The affirmed child set is recorded (an
+  enrichment of the bare `decomposed: complete` scalar, realized in arc02
+  slice05) so a later add/remove is detectable as drift. `check` then guards it:
+  children added/removed afterward, or a parent advanced toward done without the
+  assertion, flags for re-affirmation.
 
 What the tool deliberately does **not** attempt: *automatically* detecting
 semantically missing or excess scope ("did you forget a slice?"). That is a human
