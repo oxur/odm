@@ -1283,6 +1283,48 @@ fn write_active_tears(out: &mut dyn Write, tears: &[ActiveTear]) -> anyhow::Resu
     Ok(())
 }
 
+/// One `check` finding surfaced for another command (e.g. `orient`) to render,
+/// already reduced to its display parts. The caller filters by `is_error`.
+pub(crate) struct IntegrityFinding {
+    /// Whether this is a hard error (vs. a warning).
+    pub(crate) is_error: bool,
+    /// The stable one-word code (`orphan`, `cycle`, …).
+    pub(crate) code: &'static str,
+    /// `#<number> <name>` for the node, or `(corpus)` when none applies.
+    pub(crate) who: String,
+    /// The human-readable detail line.
+    pub(crate) detail: String,
+}
+
+/// Runs the full `check` aggregation over an already-loaded corpus and returns
+/// its findings (schema, links, cycles, recomposition, staleness,
+/// soft-satisfaction) for another command to surface. `orient` filters these to
+/// errors so a structural break is unmissable (slice02 ruling 3). Reuses
+/// [`aggregate`] — integrity is never re-walked.
+///
+/// # Errors
+///
+/// Returns an error if the gate config is invalid.
+pub(crate) fn integrity_findings(
+    store: &Store,
+    root: &Path,
+    docs: &[Document],
+) -> anyhow::Result<Vec<IntegrityFinding>> {
+    let (entries, _tears) = aggregate(store, root, docs)?;
+    Ok(entries
+        .into_iter()
+        .map(|e| IntegrityFinding {
+            is_error: e.severity == Severity::Error,
+            code: e.code,
+            who: match (e.number, e.name) {
+                (Some(n), Some(name)) => format!("#{n} {name}"),
+                _ => "(corpus)".to_string(),
+            },
+            detail: e.detail,
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // derived order: next / blocked / path (ODD-0013 §4.1/§4.4)
 // ---------------------------------------------------------------------------

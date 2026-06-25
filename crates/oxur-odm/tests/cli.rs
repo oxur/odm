@@ -105,3 +105,18 @@ fn version_flag_succeeds() {
     let dir = TempDir::new().unwrap();
     odm(&dir).arg("--version").assert().success();
 }
+
+// ----- O-8: bare `odm` (no subcommand) orients and never bare-errors --------
+
+#[test]
+fn bare_odm_orients() {
+    let dir = TempDir::new().unwrap();
+    seed_clean(&dir); // project P(1) <- arc A(2) <- slice S(3): a single project
+
+    // Bare `odm` dispatches to `orient` and exits 0 (no subcommand is not an
+    // error) — the real process maps Ok(EXIT_OK) → ExitCode(0).
+    let out = odm(&dir).assert().success().code(0).get_output().stdout.clone();
+    let out = String::from_utf8(out).unwrap();
+    assert!(out.contains("orient"), "bare odm runs orient:\n{out}");
+    assert!(out.contains("VISION"), "orient leads with the vision section:\n{out}");
+}

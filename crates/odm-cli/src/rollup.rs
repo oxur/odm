@@ -95,18 +95,18 @@ pub fn render(model: &Rollup) -> String {
 }
 
 /// A node's full label: `<type> #<number> <name>`.
-fn label(node: &NodeRef) -> String {
+pub(crate) fn label(node: &NodeRef) -> String {
     format!("{} #{} {}", node.node_type.as_str(), node.number, node.name)
 }
 
 /// A short reference to a dependency node: `#<number> <name>`.
-fn dep_label(node: &NodeRef) -> String {
+pub(crate) fn dep_label(node: &NodeRef) -> String {
     format!("#{} {}", node.number, node.name)
 }
 
 /// The inline status vector: `gate=evidence` for reached gates, `gate=–` for
 /// not-reached, in gate-sequence order. Empty string when the type has no gates.
-fn status_inline(status: &[GateStatus]) -> String {
+pub(crate) fn status_inline(status: &[GateStatus]) -> String {
     status
         .iter()
         .map(|g| match g.evidence {

@@ -12,6 +12,7 @@
 
 mod commands;
 mod context;
+mod orient;
 mod rollup;
 
 use std::process::ExitCode;
@@ -30,11 +31,13 @@ use crate::commands::{EXIT_OK, LinkEdge, UseKind};
 const EXIT_ERROR: u8 = 2;
 
 /// The `odm` command-line interface.
+///
+/// The subcommand is optional: bare `odm` runs `orient` (it never bare-errors).
 #[derive(Debug, Parser)]
 #[command(name = "odm", version, about = "The Odd Document Manager")]
 pub struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 /// The kind of node `use` selects.
@@ -249,6 +252,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Orient: vision → current focus → ready/blocked → integrity → drift.
+    ///
+    /// The default command — bare `odm` runs this. `brief` is an alias.
+    #[command(visible_alias = "brief")]
+    Orient,
     /// Regenerate `ROLLUP.md`: the single cheap view of the whole plan.
     Rollup {
         /// Render the rollup to stdout without writing the file.
@@ -410,7 +418,11 @@ pub fn dispatch(
 ) -> anyhow::Result<u8> {
     let store = Store::open(root);
 
-    match cli.command {
+    // Bare `odm` (no subcommand) orients — it never bare-errors.
+    let command = cli.command.unwrap_or(Command::Orient);
+
+    match command {
+        Command::Orient => orient::orient(&store, root, out)?,
         Command::New { node_type, name, parent, dry_run, yes: _ } => {
             commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
         }
