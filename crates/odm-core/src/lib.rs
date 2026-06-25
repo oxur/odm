@@ -32,6 +32,7 @@ mod node;
 mod node_type;
 mod origin;
 pub mod recompose;
+pub mod rollup;
 pub mod satisfaction;
 pub mod status;
 

@@ -974,24 +974,6 @@ fn label_of(by_id: &HashMap<Id, &Frontmatter>, id: Id) -> String {
     by_id.get(&id).map_or_else(|| id.to_string(), |f| format!("#{} {}", f.number(), f.name()))
 }
 
-/// The torn ordering edges declared in frontmatter (`edges.tears`), mapped to
-/// the engine's [`Tear`] carrying the persisted rationale (`because`). A tear
-/// with an empty rationale is rejected by `Tear::new` and skipped — the `tear`
-/// command never persists one, so this only guards hand-edited frontmatter.
-fn frontmatter_tears(frontmatters: &[Frontmatter]) -> Vec<Tear<Id>> {
-    let mut tears = Vec::new();
-    for fm in frontmatters {
-        let from = fm.id();
-        for torn in &fm.edges().tears {
-            let to = dependency_target(&torn.edge);
-            if let Ok(t) = Tear::new(from, to, torn.because.clone()) {
-                tears.push(t);
-            }
-        }
-    }
-    tears
-}
-
 /// The target id of a dependency edge (bare or gate-qualified).
 fn dependency_target(dep: &Dependency) -> Id {
     match dep {
@@ -1092,7 +1074,7 @@ fn aggregate(
     }
 
     // (b) cycle-without-tear (slice02) — a hard error; passes once torn.
-    let tears = frontmatter_tears(&frontmatters);
+    let tears = odm_core::graph::frontmatter_tears(&frontmatters);
     if let Err(cycle) = graph.topological_order(&tears) {
         let members = cycle.members();
         let chain: Vec<String> = members.iter().map(|&id| label_of(&by_id, id)).collect();
@@ -1307,7 +1289,7 @@ fn write_active_tears(out: &mut dyn Write, tears: &[ActiveTear]) -> anyhow::Resu
 
 /// Loads the gate-sets and satisfaction threshold from `<root>/odm.toml`
 /// (absent file ⇒ empty gate-sets and the default threshold).
-fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidence)> {
+pub(crate) fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidence)> {
     let text = std::fs::read_to_string(root.join("odm.toml")).unwrap_or_default();
     let gates = GateSets::from_toml_str(&text).map_err(|e| anyhow!("gate config: {e}"))?;
     let threshold = threshold_from_toml(&text).map_err(|e| anyhow!("satisfaction config: {e}"))?;

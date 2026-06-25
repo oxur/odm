@@ -12,6 +12,7 @@
 
 mod commands;
 mod context;
+mod rollup;
 
 use std::process::ExitCode;
 
@@ -248,6 +249,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Regenerate `ROLLUP.md`: the single cheap view of the whole plan.
+    Rollup {
+        /// Render the rollup to stdout without writing the file.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Show the ready frontier (nodes whose dependencies are satisfied).
     Next {
         /// Emit JSON.
@@ -431,6 +438,7 @@ pub fn dispatch(
         Command::Context { json } => commands::context(&store, root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
+        Command::Rollup { dry_run } => rollup::rollup(&store, root, dry_run, out, err)?,
         Command::Next { json } => commands::next(&store, root, json, out)?,
         Command::Blocked { reference, json } => {
             commands::blocked(&store, root, &reference, json, out)?;

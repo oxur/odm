@@ -52,6 +52,29 @@ fn dependency_target(dep: &Dependency) -> Id {
     }
 }
 
+/// The torn ordering edges declared in a corpus's frontmatter (`edges.tears`),
+/// mapped to the engine's [`Tear`] carrying the persisted rationale (`because`).
+///
+/// A tear with an empty rationale is rejected by [`Tear::new`] and skipped — the
+/// `tear` command never persists one, so that case only guards hand-edited
+/// frontmatter. This is the single bridge from on-disk `TornEdge`s into the
+/// derived-order queries; `check` and the rollup model both consume it rather
+/// than re-deriving tears.
+#[must_use]
+pub fn frontmatter_tears(nodes: &[Frontmatter]) -> Vec<Tear<Id>> {
+    let mut tears = Vec::new();
+    for fm in nodes {
+        let from = fm.id();
+        for torn in &fm.edges().tears {
+            let to = dependency_target(&torn.edge);
+            if let Ok(t) = Tear::new(from, to, torn.because.clone()) {
+                tears.push(t);
+            }
+        }
+    }
+    tears
+}
+
 /// The in-memory node graph: every node plus its typed edges, with forward and
 /// derived-reverse lookups.
 #[derive(Debug, Clone)]

@@ -26,7 +26,8 @@ and never asks to be hand-edited.
 **In:**
 
 - **`odm-core` rollup model** (`rollup.rs`). A pure assembly over a loaded corpus +
-  `GateSets`, reusing existing ops — **do not reimplement**:
+  `GateSets` + the soft-satisfaction `threshold` (the same `odm.toml` value
+  `check`/`next` read), reusing existing ops — **do not reimplement**:
   - way-finding **tree** from `Recomposition` (reverse-`part_of` forest: roots +
     children; total and unambiguous);
   - per-node **status vector** ordered by the type's gate **sequence** (`GateSet::

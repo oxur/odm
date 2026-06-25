@@ -109,11 +109,12 @@ can render tear rationale and `check` severities are calibrated before they surf
 - **Q-A3-2 — Drift in the rollup before A5.** `reconcile`/drift is A5. *Rec:* slice02
   renders a `DRIFT` section that is structurally present but reads "not yet tracked
   (A5)" until reconcile is wired — keeps the rollup shape stable with no fake data.
-- **Q-A3-3 — Exact vision parse rule (D-1a).** Define precisely in slice03 so it is
-  test-able: `# Vision` heading match (case-insensitive?) vs. "lead section =
-  everything before the first `##`". *Rec:* prefer an explicit `# Vision` section;
-  fall back to the leading prose before the first subheading; cap length. Settle in
-  slice03's slice-doc.
+- **Q-A3-3 — RESOLVED (2026-06-25, in slice03): exact vision parse rule.** From the
+  project body: a `# Vision` heading (case-insensitive, ATX) → that section (to the
+  next same-or-higher heading); else the lead section (body before the first ATX
+  heading); truncate to a ~15-line budget with a `… (full vision: odm show <project>)`
+  continuation marker; always lead with the project `name`. Spec'd in
+  `slice03-orient-brief/slice-doc.md` (row O-2).
 
 ## Method
 
