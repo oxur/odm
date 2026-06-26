@@ -67,7 +67,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `69952ce` (8/8); CDC-verified on structure (`slice01-record-persistence/cdc-verification.md`); cargo rows pending CI | → `done` when slice01 reproduces (CI green). **Convention:** Status ∈ open/done/deferred/no-op; the evidence *strength* lives in the Evidence column. |
-| A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `d03d5d0` (9/9, line cov 98.68%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-5 | slice05 (early-cutoff invalidation) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -110,6 +110,25 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.4 — 2026-06-26
+**slice02 bubble-up** (A-2 attested; A-12 accrual). slice02 delivered the cold path
+(walk → stat+hash+parse → records → persisted snapshot) with no silent drops. Three
+findings dispositioned, none forcing a re-break:
+1. **`EdgeRef` qualifier fidelity resolved (the slice-doc's open question):** `EdgeRef`
+   was enriched to carry `depends_on.satisfied_at`, supersede-kind, and tear `because`.
+   **slice04 input:** the index-backed graph-build reads satisfaction (`satisfied_at`)
+   and `orient`'s active-tears (`because`) straight from the index — it does **not**
+   re-read frontmatter for ordering/satisfaction (strengthens A-10). Format-version
+   stayed 1 (no on-disk index exists; the crate is wired into no command yet — a bump
+   is required if any command persists an index before slice04).
+2. **`meta_hash` field set fixed:** `node_type, gates, tags, edges, title` (sorted),
+   **excluding `updated` + stat fields**. **slice05 input:** early cutoff compares this
+   exact set; a body-only edit (content_hash differs, meta_hash same) recomputes nothing.
+3. **postcard format-evolution note:** `serde` `skip_serializing_if` desyncs a
+   non-self-describing stream — index record/format fields must stay always-serialized;
+   any future "optional" field is a **format-version bump**, never a skip.
+Surfaced by: the slice02 closing-report bubble-up section.
 
 ### v1.3 — 2026-06-26
 **CDC verification of slice01** (plan-keeping). Two reconciliations: (a) propagated v1.2
