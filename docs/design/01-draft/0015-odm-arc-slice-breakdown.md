@@ -28,7 +28,7 @@ is independently demoable.
 |---|---|---|---|
 | **A1 — Substrate & node CRUD** | Workspace + crates; ULID identity; node types (project/arc/slice + odd/adr/note); frontmatter schema; `nodes/YYYY/MM/<ULID>.md` store; `gix`; `odm.toml`; CRUD (`new`/`list`/`show`/`rename`/`retire`/`supersede`); `use`/`context`; `check` v1 (schema + link-integrity). Full-scan list (no index yet). | — | odm-core, odm-store, odm-cli, oxur-odm, odm-graph (stub) |
 | **A2 — Graph, gates & derived order** | Typed edges; petgraph DAG; cycles + explicit tears; multi-gate status vectors **with evidence-level**; **evidence-leveled satisfaction** (threshold + min-propagation, ODD-0013 §4.4); `next`/`blocked`/`path`/topo; staleness guard; decomposition/recomposition integrity (+ `decomposed: complete`); `check` v2. | A1 | odm-graph, odm-core |
-| **A3 — Rollup & orient** | Generated `ROLLUP.md` (+`--json`); `orient`/`brief` leading with **vision → current focus → ready/blocked → drift**; deferred surfaced with re-entry predicate; original-vs-emergent (provenance) view; errors-as-affordances; bare-`odm` orients. **← MVP COMPLETE** | A2 | odm-core, odm-cli |
+| **A3 — Rollup & orient** | Generated `ROLLUP.md` (+`--json`); `orient`/`brief` leading with **vision → current focus → ready/blocked → integrity → drift**; deferred surfacing + re-entry predicate **(deferred to A5 — Q-A3-1)**; original-vs-emergent (provenance) view; errors-as-affordances; bare-`odm` orients. **← MVP COMPLETE** | A2 | odm-core, odm-cli |
 | **A4 — Index & cache** | Incremental stat-cache per 0014 (DB-free, no FTS); replaces full-scan in `list`/`orient`/graph-build; self-healing; **100k-node benchmark** promoting 0014's `[P]` perf claims to `[E]`. | A3 | odm-index |
 | **A5 — Reconciliation** | `desired_facts` (incl. integration-level + program-level acceptance); probe trait + shell/freeze-harness probes; `reconcile` on demand + scheduled; drift in rollup; stale-doc-vs-decision check (`affects` edge). | A2, A3 | odm-reconcile |
 | **A6 — Migrate, self-host & PM-skill** | `migrate` importer (idempotent, `--dry-run`, supersede-not-delete); run on odm's own docs; self-host the plan in odm; populate the PM skill from ODD-0001; retire redundant framework prose → "run `odm check`". | A1, A3 | odm-migrate; `billosys/ai-engineering` |
@@ -109,7 +109,9 @@ is exactly A2 + A5.
    a committed decision. Edge in **A2**, check in **A5**.
 3. **Deferred re-entry predicate** (0001-E5): `deferred` is a first-class status
    carrying a *checkable* re-entry condition (a `desired_fact`/probe), surfaced in
-   the rollup. Lands in **A3** (surfacing) + **A5** (predicate evaluation).
+   the rollup. Lands in **A5** (surfacing + predicate evaluation) — moved from A3 per
+   **Q-A3-1**: no `deferred` representation exists yet, so A3 leaves a defined-but-empty
+   slot rather than invent one.
 
 ## 6. Method & sequencing
 

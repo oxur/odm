@@ -277,9 +277,10 @@ into the rollup.
 - **Config:** per-repo `odm.toml` via layered search (confyg), carried over.
 - **Generated rollup:** a regenerable `ROLLUP.md` (+ `--json`) — way-finding tree,
   per-node status vectors, ready/blocked sets, active tears, drift, and **deferred
-  nodes with their checkable re-entry predicate** (0001-E5). Never hand-edited;
-  `odm orient` reads/produces it. Any on-disk cache is derived and rebuildable from
-  the node files alone.
+  nodes with their checkable re-entry predicate** (0001-E5; *deferred surfacing lands
+  in A5 — Q-A3-1: no `deferred` representation exists yet, so A3 leaves a
+  defined-but-empty slot*). Never hand-edited; `odm orient` reads/produces it. Any
+  on-disk cache is derived and rebuildable from the node files alone.
 
 ### 6.1 Index & cache (`odm-index`) — the read-acceleration mini-infra
 
