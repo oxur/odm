@@ -6,6 +6,7 @@ members = [
     "crates/odm-core",
     "crates/odm-store",
     "crates/odm-graph",
+    "crates/odm-index",
 ]
 # The pre-rebuild crate is preserved as the harvest source (see legacy/oxur-odm).
 # It is not a workspace member and is not built by CI.
@@ -43,6 +44,8 @@ chrono = { version = "0.4", features = ["serde"] }
 serde_norway = "0.9"
 walkdir = "2.5"
 sha2 = "0.10"
+# odm-index: compact, stable-versioned binary snapshot format (pure Rust).
+postcard = { version = "1.0", default-features = false, features = ["use-std"] }
 petgraph = "0.6"   # odm-graph: DAG/tree engine
 ulid = "1.1"       # odm-core: stable identity
 gix = "0.66"       # odm-store: pure-Rust git (Q-2)
