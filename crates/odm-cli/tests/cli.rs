@@ -934,10 +934,12 @@ fn check_json_schema() {
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
 
-    // Stable envelope (v2; `tears` added in arc03/slice01 — additive).
+    // Stable envelope (v2; `tears` added in arc03/slice01, `schema` marker added
+    // in arc03/slice04 — both additive).
     let mut top: Vec<&String> = value.as_object().unwrap().keys().collect();
     top.sort();
-    assert_eq!(top, ["errors", "findings", "ok", "tears", "warnings"]);
+    assert_eq!(top, ["errors", "findings", "ok", "schema", "tears", "warnings"]);
+    assert_eq!(value["schema"], "check/v1");
     assert_eq!(value["ok"], false);
     assert!(value["errors"].as_u64().unwrap() >= 1);
     assert!(value["warnings"].as_u64().unwrap() >= 1);

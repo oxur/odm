@@ -24,6 +24,7 @@ use odm_core::rollup::{
 use odm_store::Store;
 
 use crate::commands;
+use crate::json::RollupJson;
 
 /// The generated rollup file, written at the store root.
 const ROLLUP_FILE: &str = "ROLLUP.md";
@@ -37,7 +38,8 @@ const HEADER: &str = "<!-- GENERATED — do not edit by hand. Regenerate with `o
 /// Markdown, and writes it atomically (write-temp-rename) via odm-store. The
 /// render is deterministic, so re-running on an unchanged corpus produces
 /// identical bytes. `--dry-run` writes no file: it previews the rendered
-/// Markdown to `out` and reports to `err`.
+/// Markdown to `out` and reports to `err`. `--json` serializes the **same**
+/// model (D-3) to `out` and writes no file.
 ///
 /// # Errors
 ///
@@ -47,6 +49,7 @@ pub fn rollup(
     store: &Store,
     root: &Path,
     dry_run: bool,
+    json: bool,
     out: &mut dyn std::io::Write,
     err: &mut dyn std::io::Write,
 ) -> anyhow::Result<()> {
@@ -54,6 +57,14 @@ pub fn rollup(
     let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
     let (gates, threshold) = commands::load_gate_config(root)?;
     let model = Rollup::assemble(&frontmatters, &gates, threshold);
+
+    // `--json` is a non-writing output mode: serialize the same model to stdout.
+    if json {
+        let view = RollupJson::from(&model);
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
     let markdown = render(&model);
 
     let path = root.join(ROLLUP_FILE);

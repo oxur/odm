@@ -892,9 +892,15 @@ struct TearJson {
     because: String,
 }
 
+/// The `check --json` schema marker (arc03 slice04). Additive; versions the
+/// contract from its introduction forward.
+pub(crate) const CHECK_SCHEMA: &str = "check/v1";
+
 /// JSON shape of the whole `check` report (stable, documented schema).
 #[derive(Serialize)]
 struct CheckReport {
+    /// The schema-version marker (`"check/v1"`).
+    schema: &'static str,
     /// Whether the run passed (no failing findings for the active mode).
     ok: bool,
     errors: usize,
@@ -1220,6 +1226,7 @@ pub fn check(
 
     if json {
         let report = CheckReport {
+            schema: CHECK_SCHEMA,
             ok: !failed,
             errors,
             warnings,

@@ -54,10 +54,11 @@ fn check_json_shape_on_real_binary() {
     let output = odm(&dir).args(["check", "--json"]).assert().success().get_output().stdout.clone();
     let value: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON on stdout");
 
-    // The stable v2 envelope (with the additive `tears` array).
+    // The stable v2 envelope (with the additive `tears` array + `schema` marker).
     let mut keys: Vec<&String> = value.as_object().unwrap().keys().collect();
     keys.sort();
-    assert_eq!(keys, ["errors", "findings", "ok", "tears", "warnings"]);
+    assert_eq!(keys, ["errors", "findings", "ok", "schema", "tears", "warnings"]);
+    assert_eq!(value["schema"], "check/v1");
     assert_eq!(value["ok"], true);
     assert_eq!(value["errors"], 0);
 }

@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [architecture, design, node-graph, dag, reconciliation]
 created: 2026-06-20
-updated: 2026-06-25
+updated: 2026-06-26
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.8
+version: 1.9
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -330,6 +330,42 @@ name the exact fix (errors-as-affordances). Bare `odm` **orients** (never bare-e
 
 `check` is the lynchpin: it is the framework's mechanical disciplines made
 executable, so the prose rules they replace can be retired.
+
+### 7.1 JSON output schemas (canonical)
+
+`--json` is the machine contract the ODD-0017 export projection targets. Each
+query envelope carries an additive top-level **`schema`** marker
+(`"<command>/v1"`) so consumers can pin a version and detect future evolution;
+the marker versions the contract **from its introduction (arc03 slice04)
+forward** — the `check` envelope's two earlier unmarked evolutions (severity/code
+in slice06, the `tears` array in arc02 cleanup) are pre-history. The envelopes
+are serialized from the in-memory model the human renders consume (no second
+derivation), and each is locked by a shape test so accidental drift fails CI.
+
+- **`check` → `"schema": "check/v1"`.** `{ schema, ok: bool, errors: uint,
+  warnings: uint, findings: [{ severity, code, node, number, name, detail, fix }],
+  tears: [{ from, to, because }] }`. Additive over the prior v2 envelope — existing
+  consumers are unaffected.
+- **`rollup` → `"schema": "rollup/v1"`.** `{ schema, tree: [TreeNode], ready:
+  [{ node, soft: [{ dep, evidence }] }], blocked: [{ node, reasons: [{ kind,
+  … }] }], tears: [{ from, to, because }], provenance: { planned, discovered,
+  amendment }, drift: { tracked: false }, deferred: [] }`. A `TreeNode` is
+  `{ id, number, name, type, origin, status: [{ gate, evidence|null }], children:
+  [TreeNode] }` (status in gate-sequence order, absent gates `null`). A blocked
+  `reason` is internally tagged by `kind`: `unsatisfied` | `soft-satisfied`
+  (with `evidence`, `threshold`) | `externally-blocked`. The `drift`/`deferred`
+  slots are present but empty until A5 (Q-A3-1/Q-A3-2).
+- **`orient` (and `brief`) → `"schema": "orient/v1"`.** `{ schema, project:
+  NodeRef|null, vision: string|null, focus: { arc: NodeRef, status: [GateStatus] }
+  |null, ready: […], blocked: […], integrity: [{ severity, code, who, detail }],
+  drift: { tracked: false }, hint: string|null }`. `ready`/`blocked` mirror the
+  rollup shapes; `integrity` carries the surfaced `check` **errors** only (the
+  human view's set). In a no-current-project state `project`/`vision`/`focus` are
+  `null` and `hint` names the exact fix command (never bare-errors); otherwise
+  `hint` is `null`. The key set is fixed across all states.
+
+The already-stable `list`/`show`/`context` schemas are unchanged (a `schema`
+marker may be added for consistency when ODD-0017 lands).
 
 ## 8. Crate architecture
 

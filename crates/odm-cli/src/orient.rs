@@ -17,13 +17,22 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use odm_core::frontmatter::{Document, Frontmatter};
-use odm_core::rollup::{Rollup, TreeNode};
+use odm_core::rollup::{NodeRef, Rollup, TreeNode};
 use odm_core::{Id, NodeType};
 use odm_store::Store;
 
 use crate::commands::{self, IntegrityFinding};
 use crate::context::Context;
+use crate::json::{FocusJson, OrientJson};
 use crate::rollup::{dep_label, label, status_inline};
+
+/// The fix affordance shown when the corpus has no project.
+const NO_PROJECT_HINT: &str = "no project yet — create one with `odm new project \"<name>\"`";
+
+/// The fix affordance shown when several projects exist but none is selected.
+fn pick_project_hint(n: usize) -> String {
+    format!("{n} projects, none selected — choose one with `odm use project <ref>`")
+}
 
 /// The vision excerpt budget: at most this many non-empty body lines before the
 /// excerpt is cut with a `odm show` continuation marker (D-1a).
@@ -36,24 +45,31 @@ const VISION_LINE_BUDGET: usize = 15;
 /// # Errors
 ///
 /// Returns an error if the corpus or gate config cannot be loaded.
-pub fn orient(store: &Store, root: &Path, out: &mut dyn std::io::Write) -> anyhow::Result<()> {
+pub fn orient(
+    store: &Store,
+    root: &Path,
+    json: bool,
+    out: &mut dyn std::io::Write,
+) -> anyhow::Result<()> {
     let docs = store.load_all().context("loading the corpus to orient")?;
 
     let ctx = Context::load(root)?;
     let projects: Vec<&Document> =
         docs.iter().filter(|d| d.frontmatter().node_type() == NodeType::Project).collect();
 
-    // Resolve the current project, or render a never-bare-error fallback.
+    // Resolve the current project, or emit a never-bare-error fallback (valid
+    // JSON or the human affordance, per `json`).
     let project: &Document = if let Some(p) =
         ctx.project.and_then(|id| docs.iter().find(|d| d.frontmatter().id() == id))
     {
         p
     } else if projects.is_empty() {
-        return render_no_project(out);
+        return emit_fallback(json, out, NO_PROJECT_HINT.to_string(), &|o| render_no_project(o));
     } else if projects.len() == 1 {
         projects[0]
     } else {
-        return render_pick_project(out, &projects);
+        let hint = pick_project_hint(projects.len());
+        return emit_fallback(json, out, hint, &|o| render_pick_project(o, &projects));
     };
 
     // Reuse the slice02 model (single full scan) + the check aggregation.
@@ -62,9 +78,73 @@ pub fn orient(store: &Store, root: &Path, out: &mut dyn std::io::Write) -> anyho
     let model = Rollup::assemble(&frontmatters, &gates, threshold);
     let findings = commands::integrity_findings(store, root, &docs)?;
 
+    if json {
+        let view = orient_json(project, &ctx, &docs, &model, &findings);
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
     let view = render_orient(project, &ctx, &docs, &model, &findings);
     write!(out, "{view}")?;
     Ok(())
+}
+
+/// Emits a no-project fallback: a valid JSON envelope (with `hint`) when `json`,
+/// else the human affordance via `render`. Both exit 0 — never bare-errors.
+fn emit_fallback(
+    json: bool,
+    out: &mut dyn std::io::Write,
+    hint: String,
+    render: &dyn Fn(&mut dyn std::io::Write) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    if json {
+        let view = OrientJson::fallback(hint);
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        Ok(())
+    } else {
+        render(out)
+    }
+}
+
+/// Builds the resolved-project `orient --json` envelope over the same model the
+/// human view renders (D-3).
+fn orient_json(
+    project: &Document,
+    ctx: &Context,
+    docs: &[Document],
+    model: &Rollup,
+    findings: &[IntegrityFinding],
+) -> OrientJson {
+    let fm = project.frontmatter();
+    let project_ref = NodeRef {
+        id: fm.id(),
+        number: fm.number(),
+        name: fm.name().to_string(),
+        node_type: fm.node_type(),
+    };
+
+    let vision_text = extract_vision(project.body(), fm.number());
+    let vision = (!vision_text.is_empty()).then_some(vision_text);
+
+    let focus =
+        ctx.arc.and_then(|id| docs.iter().find(|d| d.frontmatter().id() == id)).map(|arc| {
+            let afm = arc.frontmatter();
+            let arc_ref = NodeRef {
+                id: afm.id(),
+                number: afm.number(),
+                name: afm.name().to_string(),
+                node_type: afm.node_type(),
+            };
+            let status = find_in_tree(&model.tree, afm.id())
+                .map(|n| n.status.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .map(Into::into)
+                .collect();
+            FocusJson { arc: (&arc_ref).into(), status }
+        });
+
+    OrientJson::resolved((&project_ref).into(), vision, focus, model, findings)
 }
 
 /// Fallback when the corpus has no project: an affordance to create one.

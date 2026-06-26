@@ -12,6 +12,7 @@
 
 mod commands;
 mod context;
+mod json;
 mod orient;
 mod rollup;
 
@@ -256,12 +257,19 @@ enum Command {
     ///
     /// The default command — bare `odm` runs this. `brief` is an alias.
     #[command(visible_alias = "brief")]
-    Orient,
+    Orient {
+        /// Emit JSON instead of the human-readable view.
+        #[arg(long)]
+        json: bool,
+    },
     /// Regenerate `ROLLUP.md`: the single cheap view of the whole plan.
     Rollup {
         /// Render the rollup to stdout without writing the file.
         #[arg(long)]
         dry_run: bool,
+        /// Emit JSON to stdout instead of writing `ROLLUP.md`.
+        #[arg(long)]
+        json: bool,
     },
     /// Show the ready frontier (nodes whose dependencies are satisfied).
     Next {
@@ -419,10 +427,10 @@ pub fn dispatch(
     let store = Store::open(root);
 
     // Bare `odm` (no subcommand) orients — it never bare-errors.
-    let command = cli.command.unwrap_or(Command::Orient);
+    let command = cli.command.unwrap_or(Command::Orient { json: false });
 
     match command {
-        Command::Orient => orient::orient(&store, root, out)?,
+        Command::Orient { json } => orient::orient(&store, root, json, out)?,
         Command::New { node_type, name, parent, dry_run, yes: _ } => {
             commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
         }
@@ -450,7 +458,9 @@ pub fn dispatch(
         Command::Context { json } => commands::context(&store, root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
-        Command::Rollup { dry_run } => rollup::rollup(&store, root, dry_run, out, err)?,
+        Command::Rollup { dry_run, json } => {
+            rollup::rollup(&store, root, dry_run, json, out, err)?;
+        }
         Command::Next { json } => commands::next(&store, root, json, out)?,
         Command::Blocked { reference, json } => {
             commands::blocked(&store, root, &reference, json, out)?;
