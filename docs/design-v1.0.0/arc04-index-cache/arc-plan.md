@@ -68,7 +68,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `69952ce` (8/8); CDC-verified on structure (`slice01-record-persistence/cdc-verification.md`); cargo rows pending CI | → `done` when slice01 reproduces (CI green). **Convention:** Status ∈ open/done/deferred/no-op; the evidence *strength* lives in the Evidence column. |
 | A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `d03d5d0` (9/9, line cov 98.68%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice02 reproduces (CI green). |
-| A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `e53bc44` (10/10, line cov 98.36%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice03 reproduces (CI green). The racy `>=` content-hash fallback (the correctness core) is in. |
 | A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-5 | slice05 (early-cutoff invalidation) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-6 | slice06 (benchmark) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -110,6 +110,22 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.5 — 2026-06-26
+**slice03 bubble-up** (A-3 attested; A-12 accrual). slice03 delivered the warm path
+(load → lstat-classify → racy `>=` content-hash → delta → persist-on-change) with no
+silent drops; the racy correctness core is in. Three findings dispositioned:
+1. **Delta shape fixed:** `{ rebuilt, new[], changed[], deleted[], clean: count }`.
+   **slice05 input:** early cutoff reads `delta.changed` (diff each changed record's
+   `meta_hash` vs. prior to decide downstream recompute) + `delta.deleted`; `new`
+   always recomputes; `clean` is a no-op count. A5/reconcile can reuse the same Delta.
+2. **The index now has a maintained warm path** (`reconcile`). **slice04 / A-10 input:**
+   the consumers (`list`/`orient`/graph-build) read a *reconciled* snapshot — call
+   `reconcile` before reading, not just cold `build`.
+3. **A `node_paths` double-stat micro-cost** (warm stats for the cheap signal;
+   `build_one` re-stats on NEW/CHANGED). Negligible; **slice06 benchmark** confirms it
+   does not matter at 100k.
+Surfaced by: the slice03 closing-report bubble-up section.
 
 ### v1.4 — 2026-06-26
 **slice02 bubble-up** (A-2 attested; A-12 accrual). slice02 delivered the cold path
