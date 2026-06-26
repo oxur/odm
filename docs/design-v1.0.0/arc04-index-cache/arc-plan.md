@@ -55,6 +55,33 @@ the tree. This is the A4 capability the arc's slices must compose into.
 6. **slice06 — benchmark harness.** Synthetic 1k/10k/100k corpora; measure
    cold/warm/load latency; promote the 0014 `[P]` claims to `[E]`; record the numbers.
 
+## Arc Ledger
+
+> Per LEDGER-DISCIPLINE v2.0 §B (Option A: the arc ledger lives here in `arc-plan.md`
+> and closes in the companion `closing-report.md`). Opens now with the class-(b)
+> composition rows stated up front from the capability; accrues class-(a) slice-closed
+> rows and class-(c) bubble-up rows as slices close. **Class-(b) rows are reproduced at
+> the arc scale — an end-to-end demonstration, never inherited from the slices.**
+
+| ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
+|----|-----------|--------|--------------|--------|--------|----------|-------|
+| A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (early-cutoff invalidation) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-6 | slice06 (benchmark) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-7 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
+| A-8 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
+| A-9 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
+| A-10 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | | reproduce at arc scale |
+| A-11 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice06's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
+| A-12 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
+
+Closes in `arc04-index-cache/closing-report.md`: the per-row walk + composition verdict,
+independently gated (fresh context / operator). A failed class-(b) row spawns a
+**remediation slice** (not a re-pass) via the plan-change discipline.
+
 ## Dependencies
 
 Consumes: A1's store + frontmatter parse, A2's graph build, A3's rollup/orient (the
@@ -82,6 +109,12 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.1 — 2026-06-26
+Added the **`## Arc Ledger`** section (class-(a) slice-closed, class-(b) composition,
+class-(c) bubble-up rows) when arc04 became the active work, per LEDGER-DISCIPLINE v2.0
+§B. Pure addition — the v1.0 body is unchanged. Surfaced by: the ledger-discipline
+upgrade (v1→v2.0), not a slice bubble-up.
 
 ### v1.0 — 2026-06-26
 Initial arc-plan, drafted from ODD-0014 (research) + the ODD-0015 A4 row, as part of

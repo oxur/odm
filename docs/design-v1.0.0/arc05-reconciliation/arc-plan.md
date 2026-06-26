@@ -59,6 +59,32 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 7. **slice07 — scheduled reconcile.** `reconcile --schedule` for recurring drift checks;
    drift folded into the rollup on a cadence.
 
+## Arc Ledger
+
+> Per LEDGER-DISCIPLINE v2.0 §B (Option A: opens here, closes in the companion
+> `closing-report.md`). Class-(b) composition rows stated up front from the capability;
+> class-(a) slice-closed and class-(c) bubble-up rows accrue as slices close. **Class-(b)
+> rows are reproduced at arc scale — an end-to-end demonstration, never inherited.**
+
+| ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
+|----|-----------|--------|--------------|--------|--------|----------|-------|
+| A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-7 | slice07 (scheduled reconcile) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-8 | **Compose:** a declared `desired_fact` whose reality diverges is detected and reported as drift by `odm reconcile` | arc-scale demo: declare a fact, diverge reality, observe drift | serious | arc-plan / 0001-C2 | open | | reproduce at arc scale |
+| A-9 | **Compose:** both probe kinds work end-to-end — a **shell** probe and a **file** probe | arc-scale demo: one of each, exercised | serious | arc-plan | open | | reproduce at arc scale |
+| A-10 | **Compose:** drift surfaces in `rollup`/`orient` — the A3 "not yet tracked (A5)" placeholder is gone, replaced by real drift (and "no drift" when clean) | arc-scale demo: rollup/orient before vs. after a divergence | serious | arc-plan / Q-A3-2 | open | | reproduce at arc scale |
+| A-11 | **Compose:** the `affects` edge powers a stale-doc-vs-committed-decision finding in `check` | arc-scale demo: a doc contradicting a committed decision → flagged | serious | arc-plan / 0001-C5 | open | | reproduce at arc scale |
+| A-12 | **Compose:** deferred nodes are surfaced with a checkable re-entry predicate (the Q-A3-1 deferral cashed) | arc-scale demo: a deferred node + its predicate surfaced in rollup/orient | serious | arc-plan / Q-A3-1 | open | | reproduce at arc scale |
+| A-13 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
+
+Closes in `arc05-reconciliation/closing-report.md`: per-row walk + composition verdict,
+independently gated. A failed class-(b) row spawns a **remediation slice**, not a re-pass.
+
 ## Dependencies
 
 Consumes: A2's gate/evidence + satisfaction model, A3's rollup model + orient view +
@@ -85,6 +111,11 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.1 — 2026-06-26
+Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B (the arc ledger opens
+with the arc-plan, which already exists). Pure addition — the v1.0 body is unchanged.
+Surfaced by: the ledger-discipline upgrade (v1→v2.0), not a slice bubble-up.
 
 ### v1.0 — 2026-06-26
 Initial arc-plan, drafted from ODD-0013 §5.2/§4.4, the ODD-0015 A5 row, and the

@@ -59,6 +59,30 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
    `odm check` / the relevant commands; keep the posture/craft prose that odm does not
    mechanize.
 
+## Arc Ledger
+
+> Per LEDGER-DISCIPLINE v2.0 §B (Option A: opens here, closes in the companion
+> `closing-report.md`). Class-(b) composition rows stated up front from the capability;
+> class-(a) slice-closed and class-(c) bubble-up rows accrue as slices close. **Class-(b)
+> rows are reproduced at arc scale — an end-to-end demonstration, never inherited.**
+
+| ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
+|----|-----------|--------|--------------|--------|--------|----------|-------|
+| A-1 | slice01 (`migrate` importer core) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (self-host cutover) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-4 | slice04 (PM-skill population) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (retire redundant framework prose) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-6 | **Compose:** `odm migrate` imports legacy ODDs into the new model — idempotent, `--dry-run`-able, supersede-not-delete (no legacy file removed) | arc-scale demo: migrate a legacy corpus; re-run is a no-op; no deletions | serious | arc-plan / 0013 §9 | open | | reproduce at arc scale |
+| A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | | reproduce at arc scale |
+| A-8 | **Compose:** odm **self-hosts** — its plan lives under `nodes/` and `odm orient`/`rollup`/`check` run on the real corpus | arc-scale demo: `odm orient` over the self-hosted plan | serious | arc-plan / 0013 §9 | open | | reproduce at arc scale. The self-hosting trigger. |
+| A-9 | **Compose:** the PM skill is populated from ODD-0001 and the redundant *mechanical* framework prose is retired with a pointer to `odm check` | arc-scale demo: the skill carries the "run `odm <cmd>`" entries; the retired prose points to odm | serious | arc-plan / 0013 §11 | open | | reproduce at arc scale |
+| A-10 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
+
+Closes in `arc06-migrate-self-host/closing-report.md`: per-row walk + composition verdict,
+independently gated. A failed class-(b) row spawns a **remediation slice**, not a re-pass.
+**On A-8 reproduced, the v1.0.0 MVP-plus is self-hosting.**
+
 ## Dependencies
 
 Consumes: A1's node model + store + `supersedes` edge + `retire`; A3's command surface
@@ -90,6 +114,11 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.1 — 2026-06-26
+Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B (the arc ledger opens
+with the arc-plan, which already exists). Pure addition — the v1.0 body is unchanged.
+Surfaced by: the ledger-discipline upgrade (v1→v2.0), not a slice bubble-up.
 
 ### v1.0 — 2026-06-26
 Initial arc-plan, drafted from ODD-0013 §9/§11 + the ODD-0015 A6 row + the ODD-0001
