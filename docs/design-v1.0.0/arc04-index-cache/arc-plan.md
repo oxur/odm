@@ -46,9 +46,10 @@ the tree. This is the A4 capability the arc's slices must compose into.
 3. **slice03 — warm-path change detection (the racy-correct delta).** Load + verify
    header/checksum; `lstat`-compare on size/mtime/mode; the `>=` racy test → content-hash
    fallback; deletion detection; re-stamp + persist on change. The correctness core.
-4. **slice04 — in-memory filter/sort + wire consumers.** Build type/tag/state/edge maps
-   on load; point `list`, `orient`, and the graph build at the index instead of a fresh
-   walk; confirm identical behavior to the full-scan baseline.
+4. **slice04 — in-memory filter/sort + wire consumers.** Build type/tag/gate/edge maps
+   on load (filter "by gate" = by reached gate — odm has no scalar state, per the
+   slice01 bubble-up, v1.2); point `list`, `orient`, and the graph build at the index
+   instead of a fresh walk; confirm identical behavior to the full-scan baseline.
 5. **slice05 — early-cutoff invalidation.** Distinguish `content_hash` (did the file
    change?) from `meta_hash` (did its *meaning* change?); a body-only change updates the
    record but recomputes nothing downstream.
@@ -65,7 +66,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
-| A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | attested | CC: `69952ce`; `slice01-record-persistence/closing-report.md` (8/8 done, line cov 98.78%). Awaiting CDC reproduce (`attested → reproduced`). | `odm-index` crate + record + snapshot format landed. |
+| A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `69952ce` (8/8); CDC-verified on structure (`slice01-record-persistence/cdc-verification.md`); cargo rows pending CI | → `done` when slice01 reproduces (CI green). **Convention:** Status ∈ open/done/deferred/no-op; the evidence *strength* lives in the Evidence column. |
 | A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -109,6 +110,15 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.3 — 2026-06-26
+**CDC verification of slice01** (plan-keeping). Two reconciliations: (a) propagated v1.2
+finding #1 into the **body** — slice04's "type/tag/state/edge maps" → "type/tag/**gate**/
+edge maps" (the plan-change discipline is change-the-body *and* log it, not log-only);
+(b) **normalized the arc-ledger status convention** — A-1's Status was `attested` (an
+evidence *strength*); set it to `open` with the strength in the Evidence column, so
+A-2…A-6 inherit the right shape (`done` requires ≥ `reproduced`). Surfaced by: CDC
+verification (`slice01-record-persistence/cdc-verification.md`), not a slice bubble-up.
 
 ### v1.2 — 2026-06-26
 **slice01 bubble-up** (A-1 attested; A-12 accrual). slice01 delivered its assigned
