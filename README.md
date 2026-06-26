@@ -11,89 +11,139 @@
 
 *The Odd Document Manager*
 
-`odm` is a command-line tool for managing our design documents (ODDs) --
-or any design-doc workflow, really -- with YAML frontmatter, a state
-lifecycle, git integration, and automatic indexing.
+`odm` keeps your **plan and your design docs in one git-native graph**. Projects,
+arcs, and slices — together with design docs, decision records, and notes — are all
+*nodes* with stable IDs, typed dependency edges, and multi-gate status. `odm` derives
+execution order from the dependency graph (`next` / `blocked` / `path`), records how
+well each step is actually *known* (an evidence ladder from *asserted* to
+*reconciled*), validates the whole graph mechanically (`check`), and reconstitutes
+full situational awareness from one cheap command (`odm orient`).
 
-What's here:
+Files are the source of truth; git is the backend. No server, no database, no SaaS.
 
 - **Binary:** `odm` (published by the `oxur-odm` umbrella crate).
-- **Library:** the document model, store, and graph engine are split across the
+- **Library:** the document model, store, and graph engine, split across the
   workspace crates below.
 
-> **Status — v1.0.0 rebuild in progress.** `odm` is being rebuilt from a single
-> crate into the multi-crate workspace described below. The workspace skeleton is
-> in place (the `odm` binary currently reports `--version` only); the command
-> examples further down describe the target / legacy behavior and are being
-> reimplemented slice by slice (see `docs/design-v1.0.0/`). The pre-rebuild
-> implementation is preserved under [`legacy/oxur-odm`](legacy/oxur-odm) as the
-> harvest source.
+> **Status — v1.0.0, MVP shipped.** The rebuild's MVP (arcs A1–A3) is on `main` and
+> CI-green: node CRUD, the typed dependency graph with gates and evidence-leveled
+> satisfaction, `check`, the generated rollup, and `orient`. The next arcs —
+> incremental index (A4), reconciliation/drift (A5), and the legacy importer +
+> self-hosting (A6) — are on the [roadmap](#roadmap) and not yet built. The
+> pre-rebuild implementation is preserved under [`legacy/oxur-odm`](legacy/oxur-odm)
+> as the harvest source.
 
-## What makes odm different
+## What odm does today
 
-> **Projected, post-arc6 truth.** The capabilities below describe `odm` at the
-> close of the v1.0.0 build (arcs 1–6), **not** today's skeleton. They are the
-> design target fixed in `docs/design/` (ODD-0012/0013/0015) and are landing
-> slice by slice — tracked here so the vision stays visible while the build
-> catches up.
+Most project tools are *issue-oriented* — a person dragging a ticket across a board.
+`odm` is *slice-oriented* and built around dependency order and evidence. What's
+working now (A1–A3):
 
-Most project tools are issue-oriented and built around a person moving a ticket
-across a board. `odm` is *slice-oriented* and built around dependency order and
-evidence. The features that set it apart from a conventional PM tool:
-
-- **Order is derived, not assigned.** `next` / `blocked` / `path` are computed
-  from the dependency DAG by topological sort — sequence is a function of edges,
-  not a hand-ranked backlog.
+- **Order is derived, not assigned.** `next` / `blocked` / `path` are computed from
+  the dependency DAG by topological sort — sequence is a function of edges, not a
+  hand-ranked backlog.
 - **Status carries epistemic confidence.** Every gate records an evidence level
   (`asserted < attested < reproduced < reconciled`), and satisfaction
-  *min-propagates* along dependency chains, so a chain is only as verified as its
-  weakest link — a relayed "it's done" can never silently unblock critical work.
-- **Reconciliation — drift detection for plans.** Nodes declare `desired_facts`;
-  probes diff *declared* state against *observed reality* and report drift
-  (Terraform's lesson, lifted to project state).
-- **Mechanical plan-integrity checking.** `check` fails CI on cycles-without-tears,
-  out-of-order work, broken WBS recomposition, stale-doc-vs-decision, and dangling
-  references — the plan itself is validated, not just stored.
+  *min-propagates* along dependency chains — a chain is only as verified as its
+  weakest link, so a relayed "it's done" can't silently unblock critical work.
+- **Mechanical plan-integrity checking.** `check` reports (and, in `--strict`, fails
+  CI on) cycles-without-tears, out-of-order work, broken WBS recomposition, and
+  dangling references — the plan itself is validated, not just stored.
 - **Explicit tears.** A deliberately-assumed, cycle-breaking dependency is recorded
-  with a required rationale and stays visible — DSM "tearing" applied to plans.
-- **`orient`-first global state.** A fresh session reconstitutes full situational
-  awareness from one command — built for the context-reset tax of working with LLMs.
-- **Files are the source; git is the backend.** The plan lives in version control
-  beside the code and diffs in pull requests — no server, no database, no SaaS.
-- **Intent vs. emergence is first-class.** Each node records its `origin`
-  (planned / discovered / amendment), and the rollup shows original-vs-emergent scope.
+  with a *required rationale* and stays visible — DSM "tearing" applied to plans.
+- **`orient`-first global state.** A fresh session reconstitutes the whole picture —
+  vision, current focus, ready/blocked, integrity, drift — from one command. Bare
+  `odm` runs it; it never bare-errors.
 - **One substrate, self-documenting and self-tracking.** Design docs, decision
-  records, and units of work are all nodes with the same id / edge / gate
-  machinery — not a wiki bolted onto a tracker.
-- **LLM-native ergonomics.** `--json` everywhere with stable schemas,
-  question-named commands, errors that name the fix, idempotent describe-or-create,
-  and an implementer / independent-verifier split built into the workflow.
+  records, and units of work are all nodes with the same id / edge / gate machinery —
+  not a wiki bolted onto a tracker.
+- **Intent vs. emergence is first-class.** Each node records its `origin` (planned /
+  discovered / amendment); the rollup shows original-vs-emergent scope.
+- **Files are the source; git is the backend.** The plan lives in version control
+  beside the code and diffs in pull requests.
+- **LLM-native ergonomics.** `--json` on every query with stable, documented schemas;
+  question-named commands; errors that name the fix; idempotent describe-or-create.
+
+## The model in one breath
+
+A **node** is one markdown file — YAML frontmatter (managed metadata) plus a markdown
+body (way-finding text). Identity is an immutable **ULID**; the human `number` and
+`name` are just metadata. Edges live on the **source** node (`part_of`, `depends_on`,
+`blocked_by`, `consumes`, `verifies`, `affects`, `supersedes`, `tears`); reverse edges
+are *derived*, never stored. **Containment** (`part_of`) is a tree; **ordering**
+(`depends_on ∪ consumes`) is a DAG. Status is a **vector over named gates** defined
+per node type in `odm.toml`. The single source of truth is the set of node files;
+everything else — the rollup, any cache — is derived and regenerable.
+
+## Quick start
+
+```bash
+# Orient — the cheap, whole-picture view (bare `odm` runs this; `brief` is an alias)
+odm orient
+
+# Create nodes (idempotent: re-running describes rather than duplicating)
+odm new project "Payments"
+odm new arc "Card capture" --parent 1
+odm new slice "Tokenize PAN" --parent 2
+odm new slice "Charge endpoint" --parent 2
+
+# Set the working context so you don't repeat --project/--arc
+odm use project "Payments"
+
+# Wire dependencies (edge lives on the source; reverse is derived)
+odm link 4 depends_on 3            # Charge endpoint depends_on Tokenize PAN
+
+# Advance status with an evidence level
+odm set-gate 3 built --evidence reproduced
+
+# Ask the graph
+odm next                           # the ready frontier
+odm blocked 4                      # why #4 is held back
+odm path 4                         # the dependency chain into #4
+
+# Validate the whole graph (CI gate; --strict promotes warnings to failures)
+odm check --strict
+
+# Regenerate the shared way-finding view
+odm rollup                         # writes ROLLUP.md (never hand-edited)
+
+# Everything queryable also speaks JSON with a stable schema
+odm orient --json
+odm check --json
+```
+
+Run `odm <command> --help` for flags. Every mutator takes `--dry-run` and `--yes`;
+every query takes `--json`.
+
+## Command surface
+
+| Area | Commands |
+|------|----------|
+| Orient / read | `orient` (alias `brief`), `list`, `show`, `next`, `blocked`, `path`, `rollup` |
+| Context | `use`, `context` |
+| Create / edit | `new`, `rename`, `retire`, `supersede` |
+| Graph | `link`, `unlink`, `set-gate`, `tear`, `decomposed` |
+| Integrity | `check` |
 
 ## Workspace layout
 
-`odm` is a Cargo workspace (resolver 2, edition 2024, `max_width = 100`). Crates,
-in dependency / publish order:
+`odm` is a Cargo workspace (resolver 2, edition 2024, MSRV 1.85, `max_width = 100`).
+Crates, in dependency / publish order:
 
 | Crate | Binary | Purpose |
 |-------|--------|---------|
-| **odm-graph** | — | Pure DAG/tree engine over abstract ids (edges, topo-sort, cycles, readiness). |
-| **odm-core** | — | Domain model: node types, ULID identity, frontmatter schema, edge & gate semantics. |
+| **odm-graph** | — | Pure DAG/tree engine over abstract ids (edges, topo-sort, cycles, tears, readiness). No domain knowledge. |
+| **odm-core** | — | Domain model: node types, ULID identity, frontmatter schema, edge & gate semantics, satisfaction, the rollup model. |
 | **odm-store** | — | Persistence: `nodes/YYYY/MM/<ULID>.md` layout, atomic writes, git (`gix`), `odm.toml`. |
-| **odm-cli** | — | The clap command surface (`--json`, output via oxur-cli/tabled). |
+| **odm-cli** | — | The clap command surface (`--json`, output via oxur-cli/tabled). Library-only, in-process dispatch. |
 | **oxur-odm** | `odm` | Umbrella: publishes the `odm` binary and re-exports the library API. |
 
-The pre-rebuild crate lives at `legacy/oxur-odm` (package `oxur-odm-legacy`); it
-is excluded from the workspace and kept only for harvesting.
+The pre-rebuild crate lives at `legacy/oxur-odm` (package `oxur-odm-legacy`); it is
+excluded from the workspace and kept only for harvesting.
 
 ## Installation
 
-From crates.io:
-
-```bash
-cargo install oxur-odm      # installs the `odm` binary
-```
-
-From source:
+From source (the reliable path during the rebuild):
 
 ```bash
 git clone https://github.com/oxur/odm
@@ -102,68 +152,62 @@ make build                  # binary at ./bin/odm
 # or: cargo build --release # binary at ./target/release/odm
 ```
 
-## Quick Start
+From crates.io:
 
 ```bash
-# List all documents
-odm list
-
-# Create a new document
-odm new "My Feature Design"
-
-# Add an existing document (numbering, headers, git staging)
-odm add path/to/document.md
-
-# Transition a document to a new state
-odm transition docs/01-draft/0001-my-feature.md "under review"
-
-# Validate all documents
-odm validate
-
-# Update the index
-odm update-index
+cargo install oxur-odm      # installs the `odm` binary
 ```
-
-A full command reference (all subcommands, flags, and aliases), the document
-state lifecycle, frontmatter format, and workflow examples live in the
-legacy package README: [`legacy/oxur-odm/README.md`](legacy/oxur-odm/README.md)
-(being migrated into the new crates).
 
 ## Configuration
 
-`odm` reads an `odm.toml` from the current directory, the git repository root,
-or `~/.config/odm/`. Example (this repo dogfoods `odm` on its own docs):
+`odm` reads an `odm.toml` from the current directory, the git repository root, or
+`~/.config/odm/`. The core configuration is the **per-node-type gate-sets** — the
+ordered status gates each node type moves through (the last gate is its *terminal*
+gate):
 
 ```toml
-docs_directory = "./docs"
-dev_directory = "./docs/dev"
-preserve_dustbin_structure = true
-auto_stage_git = true
+[gates.project]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.arc]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.slice]
+sequence = ["planned", "built", "tested", "deployed", "verified-live", "operator-confirmed"]
+
+[gates.odd]
+sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
 ```
 
-You can also override the docs directory per-invocation with `odm --docs-dir <path> …`.
+## Roadmap
 
-## Library usage
+The MVP (A1–A3) is shipped. Beyond it, on the design board (`docs/design/`,
+`docs/design-v1.0.0/`) and **not yet built**:
 
-```rust
-use odm::config::Config;
-use odm::index::DocumentIndex;
-use odm::state::StateManager;
-```
+- **A4 — Index & cache.** An incremental, stat-based index under `.odm/` (DB-free, no
+  FTS) replacing the full-scan; self-healing and derived.
+- **A5 — Reconciliation.** Nodes declare `desired_facts`; probes diff *declared* state
+  against *observed reality* and report **drift** (Terraform's lesson, lifted to plan
+  state). This is also where deferred-node surfacing lands. Today `orient`/`rollup`
+  show drift as "not yet tracked (A5)".
+- **A6 — Migrate & self-host.** A `migrate` importer brings legacy number-based docs
+  into the model; `odm` then manages its *own* plan as nodes.
+- **A7+ — Telemetry & forecasting.** Two-clock telemetry and evidence-backed forecasts
+  (research in ODD-0018).
 
 ## Development
 
 ```bash
 make build        # build the binary into ./bin/
-make test         # run the full test suite
+make test         # run the full test suite (cargo test --all-features --workspace)
 make lint         # clippy (-D warnings) + rustfmt --check
 make format       # apply rustfmt
-make coverage     # coverage summary (cargo llvm-cov)
+make coverage     # coverage summary (target 95%; floor 90%)
 make check        # build + lint + test
 ```
 
-The workspace targets the stable toolchain (edition 2024, MSRV 1.85,
-`max_width = 100`).
+The workspace targets the stable toolchain (edition 2024, MSRV 1.85, `max_width = 100`).
+Cargo.lock is committed — `odm` is a binary application.
 
 ## License
 
