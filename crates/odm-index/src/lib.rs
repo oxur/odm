@@ -21,10 +21,13 @@
 
 #![deny(missing_docs)]
 
+pub mod build;
+mod hash;
 pub mod record;
 pub mod snapshot;
 
-pub use record::{Digest, EdgeKind, EdgeRef, IndexRecord};
+pub use build::{BuildError, build, build_records};
+pub use record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, IndexRecord, SupersedeKind};
 pub use snapshot::{
     FORMAT_VERSION, HashAlgo, Header, IndexError, Load, MAGIC, RebuildReason, Snapshot,
 };

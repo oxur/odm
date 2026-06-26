@@ -26,8 +26,8 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 
+use crate::hash::sha256;
 use crate::record::IndexRecord;
 
 /// Magic sentinel at the start of every snapshot file.
@@ -181,14 +181,9 @@ pub enum IndexError {
     },
 }
 
-/// SHA-256 over `bytes`, as a fixed 32-byte array.
+/// SHA-256 over `bytes`, as a fixed 32-byte array (the index's hashing helper).
 fn checksum_of(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let out = hasher.finalize();
-    let mut digest = [0u8; 32];
-    digest.copy_from_slice(&out);
-    digest
+    sha256(bytes)
 }
 
 impl Snapshot {

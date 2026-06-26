@@ -66,23 +66,25 @@ impl Store {
         Document::parse(&text).map_err(|e| StoreError::frontmatter(&path, e))
     }
 
-    /// Loads every node by scanning `<root>/nodes/` for `.md` files and parsing
-    /// each. A missing `nodes/` directory is not an error — it yields an empty
-    /// list (self-healing).
+    /// The absolute paths of every node file under `<root>/nodes/` — the `.md`
+    /// files of the `nodes/YYYY/MM/<ULID>.md` layout — sorted by path for
+    /// determinism. A missing `nodes/` directory is not an error: it yields an
+    /// empty list.
     ///
-    /// Results are sorted by id (creation order) for determinism.
+    /// This is the single corpus-walk seam: [`load_all`](Self::load_all) parses
+    /// each path it returns, and `odm-index`'s cold build stats/hashes/parses
+    /// them — neither re-derives the `nodes/YYYY/MM` traversal.
     ///
     /// # Errors
     ///
-    /// Returns [`StoreError::Io`] / [`StoreError::Frontmatter`] for the first
-    /// file that cannot be read or parsed.
-    pub fn load_all(&self) -> Result<Vec<Document>> {
+    /// Returns [`StoreError::Io`] if the directory walk fails.
+    pub fn node_paths(&self) -> Result<Vec<PathBuf>> {
         let nodes_dir = self.root.join(layout::NODES_DIR);
         if !nodes_dir.exists() {
             return Ok(Vec::new());
         }
 
-        let mut docs = Vec::new();
+        let mut paths = Vec::new();
         for entry in WalkDir::new(&nodes_dir).into_iter() {
             let entry = entry.map_err(|e| {
                 let path = e.path().unwrap_or(&nodes_dir).to_path_buf();
@@ -94,8 +96,26 @@ impl Store {
             {
                 continue;
             }
-            let text = std::fs::read_to_string(path).map_err(|e| StoreError::io(path, e))?;
-            let doc = Document::parse(&text).map_err(|e| StoreError::frontmatter(path, e))?;
+            paths.push(path.to_path_buf());
+        }
+        paths.sort();
+        Ok(paths)
+    }
+
+    /// Loads every node by parsing each path from [`node_paths`](Self::node_paths).
+    /// A missing `nodes/` directory yields an empty list (self-healing).
+    ///
+    /// Results are sorted by id (creation order) for determinism.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Io`] / [`StoreError::Frontmatter`] for the first
+    /// file that cannot be read or parsed.
+    pub fn load_all(&self) -> Result<Vec<Document>> {
+        let mut docs = Vec::new();
+        for path in self.node_paths()? {
+            let text = std::fs::read_to_string(&path).map_err(|e| StoreError::io(&path, e))?;
+            let doc = Document::parse(&text).map_err(|e| StoreError::frontmatter(&path, e))?;
             docs.push(doc);
         }
 

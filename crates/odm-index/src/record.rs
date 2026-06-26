@@ -74,15 +74,48 @@ pub struct IndexRecord {
     pub updated: NaiveDate,
 }
 
-/// One outgoing edge of a node, reduced to what the index needs: the target id
-/// and the edge kind. The cold-path build (slice02) maps a node's frontmatter
-/// edges into these.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One outgoing edge of a node: the target id, the edge kind, and any
+/// kind-specific qualifier. The cold-path build (slice02) maps a node's
+/// frontmatter edges into these.
+///
+/// The `qualifier` preserves the edge details slice04's index-backed graph build
+/// and `orient` need so they need not re-read frontmatter (slice02 B-5): a
+/// `depends_on`'s `satisfied_at` gate (for satisfaction), a tear's `because`
+/// (for the active-tears listing), and a supersede's kind. Edges with no
+/// qualifier (most kinds) carry `None`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EdgeRef {
     /// The target node's id.
     pub target: Id,
     /// The kind of edge.
     pub kind: EdgeKind,
+    /// The kind-specific qualifier, if any. Always serialized (postcard is a
+    /// non-self-describing format — a skipped field would desync the stream).
+    pub qualifier: Option<EdgeQualifier>,
+}
+
+/// The kind-specific extra carried by an [`EdgeRef`] — the edge detail beyond
+/// `(target, kind)` that downstream consumers (graph build, `orient`) need.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum EdgeQualifier {
+    /// A `depends_on`'s satisfying gate (`satisfied_at`): the gate at which the
+    /// dependency counts as satisfied.
+    SatisfiedAt(String),
+    /// A `supersedes` edge's kind (obsoletes vs. updates).
+    Supersede(SupersedeKind),
+    /// A tear's required rationale (`because`).
+    Because(String),
+}
+
+/// Whether a `supersedes` edge replaces (obsoletes) or amends (updates) its
+/// target. Mirrors `odm_core`'s supersede kind in the index's own wire format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SupersedeKind {
+    /// The old node is replaced.
+    Obsoletes,
+    /// The old node is amended (still relevant).
+    Updates,
 }
 
 /// The odm edge taxonomy (ODD-0013 §3), as the index records it.
@@ -91,7 +124,7 @@ pub struct EdgeRef {
 /// enum directly: the index is a derived cache with its own versioned on-disk
 /// format, so it owns the wire representation of an edge kind and can evolve it
 /// (behind the snapshot format-version) independently of the domain model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
     /// Containment: source is `part_of` the target (the hierarchy tree).

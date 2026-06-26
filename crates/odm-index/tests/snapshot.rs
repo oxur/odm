@@ -40,8 +40,12 @@ fn sample() -> IndexRecord {
         gates: vec!["planned".to_string(), "built".to_string()],
         tags: vec!["store".to_string()],
         edges: vec![
-            EdgeRef { target: id('B'), kind: EdgeKind::DependsOn },
-            EdgeRef { target: id('C'), kind: EdgeKind::PartOf },
+            EdgeRef {
+                target: id('B'),
+                kind: EdgeKind::DependsOn,
+                qualifier: Some(odm_index::EdgeQualifier::SatisfiedAt("tested".to_string())),
+            },
+            EdgeRef { target: id('C'), kind: EdgeKind::PartOf, qualifier: None },
         ],
         title: "Store layer".to_string(),
         updated: day(),
@@ -165,7 +169,10 @@ prop_compose! {
         IndexRecord {
             id, rel_path, mtime_secs, mtime_nsec, size, inode, mode,
             content_hash, meta_hash, node_type, gates, tags,
-            edges: edges.into_iter().map(|(target, kind)| EdgeRef { target, kind }).collect(),
+            edges: edges
+                .into_iter()
+                .map(|(target, kind)| EdgeRef { target, kind, qualifier: None })
+                .collect(),
             title, updated,
         }
     }
