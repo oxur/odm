@@ -25,9 +25,11 @@ pub mod build;
 mod hash;
 pub mod record;
 pub mod snapshot;
+pub mod warm;
 
 pub use build::{BuildError, build, build_records};
 pub use record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, IndexRecord, SupersedeKind};
 pub use snapshot::{
     FORMAT_VERSION, HashAlgo, Header, IndexError, Load, MAGIC, RebuildReason, Snapshot,
 };
+pub use warm::{Delta, Reconciliation, WarmError, reconcile};

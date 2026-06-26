@@ -9,7 +9,7 @@
 //! slice01 ([`Snapshot::persist`]). `odm-index` adds only the *assembly*.
 
 use std::fs::Metadata;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use odm_core::frontmatter::{Dependency, Document, Edges, SupersedeKind as CoreSupersedeKind};
@@ -78,21 +78,34 @@ pub fn build_records(store: &Store) -> Result<Vec<IndexRecord>, BuildError> {
     let paths = store.node_paths().map_err(BuildError::Walk)?;
 
     let mut records = Vec::with_capacity(paths.len());
-    for path in paths {
-        let bytes = std::fs::read(&path)
-            .map_err(|source| BuildError::Read { path: path.clone(), source })?;
-        let meta = std::fs::symlink_metadata(&path)
-            .map_err(|source| BuildError::Stat { path: path.clone(), source })?;
-        let text =
-            std::str::from_utf8(&bytes).map_err(|_| BuildError::Utf8 { path: path.clone() })?;
-        let doc = Document::parse(text)
-            .map_err(|source| BuildError::Parse { path: path.clone(), source })?;
-
-        let rel_path = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
-        records.push(build_record(&doc, rel_path, &meta, &bytes)?);
+    for path in &paths {
+        records.push(build_one(root, path)?);
     }
     records.sort_by_key(|r| r.id);
     Ok(records)
+}
+
+/// Builds one record for the node file at `path` (absolute), relative to `root`:
+/// `lstat` + read + UTF-8 + parse + assemble. This is the single per-file build
+/// seam — the cold build calls it for every file, and the warm path (slice03)
+/// calls it for each NEW / CHANGED file (reuse, not a second copy).
+///
+/// # Errors
+///
+/// Returns a [`BuildError`] if the file cannot be read, stat'd, decoded, or
+/// parsed.
+pub(crate) fn build_one(root: &Path, path: &Path) -> Result<IndexRecord, BuildError> {
+    let bytes = std::fs::read(path)
+        .map_err(|source| BuildError::Read { path: path.to_path_buf(), source })?;
+    let meta = std::fs::symlink_metadata(path)
+        .map_err(|source| BuildError::Stat { path: path.to_path_buf(), source })?;
+    let text =
+        std::str::from_utf8(&bytes).map_err(|_| BuildError::Utf8 { path: path.to_path_buf() })?;
+    let doc = Document::parse(text)
+        .map_err(|source| BuildError::Parse { path: path.to_path_buf(), source })?;
+
+    let rel_path = path.strip_prefix(root).unwrap_or(path).to_string_lossy().into_owned();
+    build_record(&doc, rel_path, &meta, &bytes)
 }
 
 /// Builds a full snapshot from a cold corpus walk, stamped with the current time
@@ -108,8 +121,9 @@ pub fn build(store: &Store) -> Result<Snapshot, BuildError> {
 }
 
 /// The current time as whole Unix seconds (the index stamp). Falls back to `0`
-/// only if the clock is before the Unix epoch (unreachable in practice).
-fn now_unix_secs() -> i64 {
+/// only if the clock is before the Unix epoch (unreachable in practice). Shared
+/// with the warm path's re-stamp (slice03).
+pub(crate) fn now_unix_secs() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
@@ -162,7 +176,8 @@ fn build_record(
 }
 
 /// The whole-second + sub-second mtime, from the portable `modified()` time.
-fn mtime_parts(meta: &Metadata) -> (i64, u32) {
+/// Shared with the warm path's cheap-signal comparison (slice03).
+pub(crate) fn mtime_parts(meta: &Metadata) -> (i64, u32) {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -173,14 +188,14 @@ fn mtime_parts(meta: &Metadata) -> (i64, u32) {
 /// (the index treats them as opportunistic — they are never a correctness
 /// signal on their own, ODD-0014 §4).
 #[cfg(unix)]
-fn ino_mode(meta: &Metadata) -> (u64, u32) {
+pub(crate) fn ino_mode(meta: &Metadata) -> (u64, u32) {
     use std::os::unix::fs::MetadataExt as _;
     (meta.ino(), meta.mode())
 }
 
 /// Non-Unix fallback: no inode/mode available.
 #[cfg(not(unix))]
-fn ino_mode(_meta: &Metadata) -> (u64, u32) {
+pub(crate) fn ino_mode(_meta: &Metadata) -> (u64, u32) {
     (0, 0)
 }
 
