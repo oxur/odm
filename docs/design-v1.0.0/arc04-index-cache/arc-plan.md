@@ -65,7 +65,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
-| A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | attested | CC: `69952ce`; `slice01-record-persistence/closing-report.md` (8/8 done, line cov 98.78%). Awaiting CDC reproduce (`attested → reproduced`). | `odm-index` crate + record + snapshot format landed. |
 | A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -109,6 +109,22 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.2 — 2026-06-26
+**slice01 bubble-up** (A-1 attested; A-12 accrual). slice01 delivered its assigned
+piece (the record + snapshot format + persistence + self-heal) with no silent drops.
+Three findings dispositioned for downstream slices, none forcing a slice re-break:
+1. ODD-0014's generic `state: State` field has **no odm scalar** — status is a
+   multi-gate vector — so the record stores `gates: Vec<String>` (the reached-gate
+   set). **slice04 input:** the filter/sort "by state" affordance is "by reached
+   gate"; build the maps on the gate set.
+2. The `HashAlgo` enum + 1-byte on-disk algo id make the ODD-0014-recommended
+   xxh3 fingerprint swap a **format-versioned, non-breaking change** — the hook is
+   in place if slice06's benchmark shows hashing dominates (F-7 deferred it).
+3. The index **owns its `EdgeKind`** (mirrors, not reuses, `odm_core`'s) so the
+   wire format is governed by the snapshot format-version; **slice02** maps domain
+   edges → `EdgeRef` on populate.
+Surfaced by: the slice01 closing-report bubble-up section.
 
 ### v1.1 — 2026-06-26
 Added the **`## Arc Ledger`** section (class-(a) slice-closed, class-(b) composition,
