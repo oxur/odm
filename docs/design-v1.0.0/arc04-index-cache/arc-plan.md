@@ -91,12 +91,12 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | A-5 | slice05 (index→graph adapter + derived-order readers) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | adapter + derived-order attested: CC closing-report `89a2223` (4/7 — G-1 adapter, G-2 `next`/`blocked`/`path`, G-6, G-7); CDC-verified on structure (`slice05-graph-adapter-and-views/cdc-verification.md`); cargo rows pending CI. **The deferred `check`/`rollup`/`orient` are now wired** (slice06, A-6). | → `done` when it reproduces (CI green); the deferral it carried is closed by slice06. |
 | A-6 | slice06 (enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`; slice05 continuation) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (8/8; line cov odm-index 97.49% / odm-cli 93.63%); `FORMAT_VERSION 2 → 3` (v2 self-heals, no migration code); `aggregate` takes `&[Frontmatter]`; shared `index_frontmatters` feeds `check`/`rollup`/`orient` + `Derived`; one targeted `store.load` for `orient`'s vision body. Awaiting CDC reproduce. | attested-on-close. Carries G-3/G-4/G-5 from slice05. **Closes A-4 + A-5; makes A-12 satisfiable** (every read path index-backed). |
 | A-7 | slice07 (early-cutoff invalidation) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (6/6; line cov odm-index 95.18% / odm-cli 93.68%); `Delta` gains `meta_changed`; `Snapshot::meta_fingerprint` stamps `ROLLUP.md`; `odm rollup` skips on a body-only edit, regenerates on meta-change/new/deleted; in-memory readers unchanged (§2.4). Awaiting CDC reproduce. | → `done` when slice07 reproduces (CI green). Only **slice08** (benchmark) remains in the arc. |
-| A-8 | slice08 (benchmark) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-8 | slice08 (benchmark) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (8/8; generator `synth.rs` line cov 100%); seeded 1k/10k/100k harness recorded (`slice08-benchmark/benchmark-results.md`); ODD-0014 index-engine `[P]`→`[E]`; slice07's eager-rebuild verdict settled (does not dominate; no caching built). Awaiting CDC reproduce. | → `done` when the numbers reproduce (CI green). **Last slice — the arc-close runs next.** |
 | A-9 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
 | A-11 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
 | A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale: the **adapter-fidelity chain** (synth frontmatter == parsed for every field each consumer reads — graph G-1, origin+decomposed V-3) ∘ the *unchanged* shared `aggregate`/`assemble`/`integrity`, **+** each consumer's correctness + idempotence (warm == cold) | serious | arc-plan | open | **Satisfiable as of slice06 (A-6):** every read path — `list`, derived-order, `check`, `rollup`, `orient` — is index-backed. **No live full-scan-vs-index diff: the `load_all` path is removed once a consumer is wired** (v1.12) — equivalence rests on the adapter-fidelity chain, not an A/B demo. | reproduce at arc scale |
-| A-13 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice08's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
+| A-13 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice08's harness; record the numbers | serious | arc-plan | open | **Satisfied by slice08 (A-8):** harness recorded at 1k/10k/100k (`slice08-benchmark/benchmark-results.md`); index-engine `[P]`→`[E]` (24 MB / 128 ms load; warm 7.6× cold at 100k; eager rebuild acceptable). Text-search `[P]` deliberately left (not measured). | reproduce at arc scale (re-run the harness on CI; scaling is the durable claim). |
 | A-14 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
 Closes in `arc04-index-cache/closing-report.md`: the per-row walk + composition verdict,
@@ -130,6 +130,21 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.14 — 2026-06-29
+**slice08 closed (A-8 attested; the arc capstone — A-13 satisfied).** Built a seeded
+synthetic-corpus generator (`odm_index::synth`, dependency-free SplitMix64 → valid ULIDs,
+reproducible) and a `harness = false` `benches/index_bench.rs` that measures the unchanged
+engine at 1k/10k/100k. Recorded numbers (`slice08-benchmark/benchmark-results.md`) and
+promoted ODD-0014's index-engine `[P]`→`[E]`: single snapshot fine to tens of MB /
+sub-second load (24 MB / 128 ms at 100k); warm avoids re-parse → **7.6× faster than cold at
+100k**, with the recorded nuance that the `lstat` **sweep is O(corpus)** (no watcher), so
+the win is a smaller constant, not a sub-linear sweep; the eager in-memory graph rebuild
+**does not dominate** (settles slice07 — no caching built, §2.4). Text-search "linear scan
+fast enough" deliberately **not** promoted (not measured) — stays `[P]`, flagged. 8/8 rows
+attested; generator `synth.rs` line cov 100%; clippy `-D warnings` clean; no `unsafe`.
+**All 8 Arc 04 slices delivered — the arc-close runs next.** CC closing-report:
+`slice08-benchmark/closing-report.md`. Numbers reproduce via CI.
 
 ### v1.13 — 2026-06-29
 **slice07 closed (A-7 attested; early-cutoff in).** Cashed the two-fingerprint split:

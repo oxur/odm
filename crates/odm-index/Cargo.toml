@@ -24,3 +24,10 @@ thiserror.workspace = true
 proptest.workspace = true
 tempfile.workspace = true
 ulid.workspace = true
+
+# The Arc 04 capstone benchmark harness (slice08): a plain release-mode binary
+# (no criterion) that measures end-to-end latencies at 1k/10k/100k. Excluded
+# from the coverage gate; run with `cargo bench -p odm-index`.
+[[bench]]
+name = "index_bench"
+harness = false

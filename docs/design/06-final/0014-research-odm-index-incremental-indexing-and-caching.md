@@ -120,8 +120,10 @@ well-grounded versus convention.
 
 **Conventional / practitioner [P] (true in practice, not formally guaranteed):**
 
-- "A single snapshot file is fine up to tens of MB / hundreds of ms load" — a
-  reasonable engineering threshold, not a measured odm benchmark [P].
+- "A single snapshot file is fine up to tens of MB / hundreds of ms load" — now
+  **measured** on a synthetic 100k corpus: ~24 MB index, **128 ms** decode
+  (sub-second), linear in node count [E] *(odm v1.0.0 arc04 slice08 benchmark;
+  see `docs/design-v1.0.0/arc04-index-cache/slice08-benchmark/benchmark-results.md`)*.
 - "kqueue doesn't scale to many files" — follows directly from the fd-per-object
   design (which *is* [E]), but the "doesn't scale" framing is consensus [P].
 - Choice of postcard vs. bincode-v2 vs. rkyv is an engineering judgment; the
@@ -485,11 +487,20 @@ Rationale, from the format research [E]:
   measurement** that load latency dominates. Start with postcard/bincode-2;
   revisit rkyv only if profiling demands it. The version-stability detail came
   partly via search snippets — verify before adopting.
-- **Performance numbers herein are mostly thresholds, not odm measurements.**
-  The "single file fine to ~tens of MB," "linear search fast enough," and
-  "snapshot rewrite is milliseconds" claims are [P] engineering judgments. The
-  *first* implementation milestone should include a benchmark harness over
-  synthetic 1k / 10k / 100k corpora to convert these [P] claims to [E].
+- **Performance numbers herein were mostly thresholds; the index-engine ones are
+  now measured.** The arc04 slice08 benchmark (synthetic 1k/10k/100k, seeded) ran
+  the real engine and promoted these to **[E]**: a single snapshot file is fine to
+  tens of MB with sub-second load (24 MB / 128 ms at 100k); the warm path avoids
+  re-parse, so the *re-parse work scales with the delta* and a no-change reconcile
+  is **7.6× faster than a cold build at 100k** (2.3 s vs 17.1 s) — with the
+  recorded nuance that the `lstat` **sweep** is itself O(corpus) (no watcher), so
+  the win is a smaller constant, not a sub-linear sweep [E]. The consumer's eager
+  in-memory graph rebuild **does not dominate** (it is in the noise beside the
+  reconcile I/O), confirming §2.4's "eager recompute is acceptable" [E]. *(Numbers
+  + environment: `docs/design-v1.0.0/arc04-index-cache/slice08-benchmark/benchmark-results.md`.)*
+  The **"linear text search is fast enough"** claim is **not** covered by this
+  benchmark (it measures the index engine, not body search) and remains [P] pending
+  a separate text-search benchmark.
 - **`core.trustmtime` does not exist; do not design around it.** Only
   `core.trustctime` is real [E]. The analogous odm knob, if any, would be
   "ignore ctime differences" for environments where crawlers/backups touch ctime

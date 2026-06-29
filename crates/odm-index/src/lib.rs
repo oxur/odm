@@ -27,6 +27,7 @@ mod hash;
 pub mod maps;
 pub mod record;
 pub mod snapshot;
+pub mod synth;
 pub mod warm;
 
 use std::path::{Path, PathBuf};
