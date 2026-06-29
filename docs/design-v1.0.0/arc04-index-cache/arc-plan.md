@@ -46,24 +46,33 @@ the tree. This is the A4 capability the arc's slices must compose into.
 3. **slice03 — warm-path change detection (the racy-correct delta).** Load + verify
    header/checksum; `lstat`-compare on size/mtime/mode; the `>=` racy test → content-hash
    fallback; deletion detection; re-stamp + persist on change. The correctness core.
-4. **slice04 — enrich record + in-memory filter/sort + wire consumers.** Enrich
-   `IndexRecord` so `gates` carries per-gate **evidence** (not just reached names) —
+4. **slice04 — enrich record + maps + wire `list` (seam a, delivered).** Enrich
+   `IndexRecord` so `gates` carries per-gate **evidence** (+ `number`/`component`) —
    `FORMAT_VERSION 1 → 2` (an old index → `RebuildNeeded(VersionMismatch)` → cold
-   rebuild, via slice01's self-heal) — so the graph build can compute evidence-leveled
-   satisfaction off the index. Build type/tag/gate/edge maps on load (filter "by gate"
-   = by reached gate — odm has no scalar state, per the slice01 bubble-up, v1.2); an
-   index→graph adapter feeds the DAG + satisfaction from index records (no frontmatter
-   parse). Point `list`, the graph readers (`next`/`blocked`/`path`/`check`), and the
-   composed views (`rollup`/`orient`) at the index (via `reconcile`-then-read);
-   `orient` loads only the *current project's* `Document` for the vision body (one
-   targeted load — the index deliberately carries no bodies, 0014 §3.5). Confirm
-   identical behavior to the full-scan baseline. *(Large slice — split seam, if needed
-   at execution: enrich+maps+`list` | graph adapter+readers | composed views.)*
-5. **slice05 — early-cutoff invalidation.** Distinguish `content_hash` (did the file
-   change?) from `meta_hash` (did its *meaning* change?); a body-only change updates the
-   record but recomputes nothing downstream.
-6. **slice06 — benchmark harness.** Synthetic 1k/10k/100k corpora; measure
-   cold/warm/load latency; promote the 0014 `[P]` claims to `[E]`; record the numbers.
+   rebuild, via slice01's self-heal); in-memory type/tag/gate/edge maps on load; `list`
+   index-backed (`reconcile`-then-read), `--json` stays `load_all` (the §3.5 filter/sort
+   boundary). — `odm-index` + `odm-cli`. *(Was the whole consumer-wiring; split at the
+   named seam — see v1.7/v1.8. Seams b+c → slice05.)*
+5. **slice05 — index→graph adapter + derived-order readers (delivered).** The adapter
+   reconstructs `Frontmatter`s from index records (no parse) → feeds the *unchanged*
+   `NodeGraph::build`/`Satisfaction::compute`; `next`/`blocked`/`path` read the index
+   (`reconcile`-then-read), identical to baseline. — `odm-index` + `odm-cli`.
+   *(`check`/`rollup`/`orient` need record fields the adapter lacked — `origin` +
+   `decomposed` — split to slice06; see v1.9.)*
+6. **slice06 — enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient` (slice05
+   continuation).** Enrich `IndexRecord` with `origin` (rollup provenance) + `decomposed`
+   (check recomposition) — `FORMAT_VERSION 2 → 3` (old index self-heals); refactor
+   `check`'s `aggregate` to take `&[Frontmatter]`; wire `check`/`rollup`/`orient` off the
+   index (`reconcile`-then-read); `orient` loads only the current project's `Document`
+   for the vision body (0014 §3.5). Identical to the full-scan baseline. **Closes A-4 +
+   A-5; satisfies the consumers-read-the-index compose row (A-12).** *(The complete
+   remaining field gap is `origin`+`decomposed` — grep-verified; no third surprise.)*
+7. **slice07 — early-cutoff invalidation** *(was slice05→06)*. Distinguish `content_hash`
+   (did the file change?) from `meta_hash` (did its *meaning* change?); a body-only
+   change updates the record but recomputes nothing downstream.
+8. **slice08 — benchmark harness** *(was slice06→07)*. Synthetic 1k/10k/100k corpora;
+   measure cold/warm/load latency; promote the 0014 `[P]` claims to `[E]`; record the
+   numbers.
 
 ## Arc Ledger
 
@@ -78,15 +87,17 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `69952ce` (8/8); CDC-verified on structure (`slice01-record-persistence/cdc-verification.md`); cargo rows pending CI | → `done` when slice01 reproduces (CI green). **Convention:** Status ∈ open/done/deferred/no-op; the evidence *strength* lives in the Evidence column. |
 | A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `d03d5d0` (9/9, line cov 98.68%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `e53bc44` (10/10, line cov 98.36%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice03 reproduces (CI green). The racy `>=` content-hash fallback (the correctness core) is in. |
-| A-4 | slice04 (filter/sort + wire consumers) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
-| A-5 | slice05 (early-cutoff invalidation) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
-| A-6 | slice06 (benchmark) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
-| A-7 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
-| A-8 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
-| A-9 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
-| A-10 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | | reproduce at arc scale |
-| A-11 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice06's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
-| A-12 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
+| A-4 | slice04 (seam a: enrich + maps + index-backed `list`) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | seam (a) attested: CC closing-report `2dafaa1` (7/10); CDC-verified on structure (`slice04-enrich-and-wire/cdc-verification.md`); cargo rows pending CI | → `done` when seam (a) reproduces (CI green). Seams (b)+(c) carried to slice05 (the continuation). |
+| A-5 | slice05 (index→graph adapter + derived-order readers) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | adapter + derived-order attested: CC closing-report `89a2223` (4/7 — G-1 adapter, G-2 `next`/`blocked`/`path`, G-6, G-7); CDC-verified on structure (`slice05-graph-adapter-and-views/cdc-verification.md`); cargo rows pending CI | → `done` when it reproduces (CI green). Crux adapter delivered + proven (graph == baseline graph). `check`/`rollup`/`orient` → slice06. |
+| A-6 | slice06 (enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`; slice05 continuation) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested-on-close. Carries G-3/G-4/G-5 from slice05; `FORMAT_VERSION 2 → 3`. Closes A-4 + A-5 on close. |
+| A-7 | slice07 (early-cutoff invalidation) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-8 | slice08 (benchmark) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-9 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
+| A-10 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
+| A-11 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
+| A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | | reproduce at arc scale |
+| A-13 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice08's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
+| A-14 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
 Closes in `arc04-index-cache/closing-report.md`: the per-row walk + composition verdict,
 independently gated (fresh context / operator). A failed class-(b) row spawns a
@@ -119,6 +130,85 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.10 — 2026-06-29
+**Renumber executed for the slice05 split (CDC, per v1.9's operator request; Duncan's
+v1.8 scheme).** **slice06 = the continuation** (enrich `origin`+`decomposed` →
+`FORMAT_VERSION 2 → 3`, `aggregate` refactor, wire `check`/`rollup`/`orient`);
+early-cutoff → **slice07**; benchmark → **slice08**. Arc Ledger: class-(a) now A-1…A-8
+(A-6 new = slice06); compose **old A-8…A-12 → A-9…A-13**; bubble-up **old A-13 → A-14**.
+**CDC owns the proximate miss** v1.9 names diplomatically: the slice05 doc's
+adapter-field list was *mine* and overlooked `origin`+`decomposed`. **Bounded + frozen:**
+the complete remaining gap is grep-verified to be exactly those two fields, so this is
+the **last insert — arc04 is frozen at 8 slices** and the renumber-bridges stop here.
+> **Bridge note (consolidated — supersedes v1.8's; live table is authoritative).** The
+> *consumers-read-the-index* compose row (cited **A-10** in v1.4/v1.5/v1.7, **A-11** in
+> v1.8/v1.9) is now **A-12**. The *bubble-up accrual* row (A-12 pre-v1.8, **A-13** in
+> v1.8/v1.9) is now **A-14**. IDs **A-1…A-5 are unchanged.** Resolve any other old A-N
+> citation by its *description* against the current table, not its number.
+>
+> **Process note:** two renumber-bridges in one arc is the number-as-identity brittleness
+> odm itself exists to kill — harmless in the markdown-bootstrap phase, impossible once
+> self-hosting (A6). A standing reminder of *why* we're building this. If a third insert
+> ever arises, switch to stable row IDs rather than a third bridge.
+Surfaced by: CDC execution of the v1.9 operator request.
+
+### v1.9 — 2026-06-29
+**slice05 partial bubble-up + a second split** (A-5 adapter+derived-order attested; A-13
+accrual). slice05 delivered its **crux — the index→graph adapter** (G-1, synthesize
+frontmatters → feed the existing graph/satisfaction unchanged) **+ the derived-order
+readers** `next`/`blocked`/`path` (G-2), index-backed and identical to baseline (commit
+`89a2223`). **Deferred: `check` (G-3), `rollup` (G-4), `orient` (G-5)** to a continuation.
+**The arc-level finding:** *wiring all consumers off the index is ~3 slices, not 1* —
+each consumer reads a different frontmatter projection, so the **record must grow per
+consumer**. slice04 added `number`/`component` for `list`; **the composed views + `check`
+read `origin` (rollup provenance) and `decomposed` (`check` recomposition), which the
+record does not carry.** The slice plan's adapter-reconstruction list
+(id/number/type/name/edges/status) overlooked both. **Operator action requested:** scope
+the continuation — enrich the record with `origin` + `decomposed` (`FORMAT_VERSION 2 →
+3`, self-heal handles old indexes) + refactor `aggregate` to `&[Frontmatter]`, then
+source-swap `rollup`/`orient`/`check` to reconcile→adapter→model. **A-4 stays open**
+until it lands; **A-11** (index-backed graph == baseline) is **satisfied for the
+derived-order readers** now. Surfaced by: the slice05 closing-report bubble-up.
+
+### v1.8 — 2026-06-29
+**Renumber executed (CDC, per v1.7's operator request; scheme chosen by Duncan).** The
+slice04 split is realized: **slice05 = the continuation** (index→graph adapter + graph
+readers + composed views, seams b+c); the former early-cutoff/benchmark shift to
+**slice06 / slice07**. The Arc Ledger was renumbered sequentially: class-(a) is now
+A-1…A-7 (A-5 new = slice05); compose rows shifted **old A-7…A-11 → A-8…A-12**; bubble-up
+**old A-12 → A-13**.
+> **Bridge note (reference translation).** Earlier version-history entries (v1.4, v1.5,
+> v1.7) and slices 02/03's closed bubble-ups cite **pre-renumber** IDs. To translate any
+> reference written before v1.8: **add +1 to any ledger ID ≥ A-7.** So the old "A-10"
+> (the *consumers-read-the-index* compose row) is now **A-11**, and the old "A-12"
+> (bubble-up accrual) is now **A-13**. IDs A-1…A-6 are unaffected by the translation
+> (A-5/A-6's *text* was relabeled to the renumbered slices, but those IDs predate the
+> shift).
+Surfaced by: CDC execution of the v1.7 operator request.
+
+### v1.7 — 2026-06-29
+**slice04 seam-(a) bubble-up + split request** (A-4 seam-a attested; A-12 accrual).
+v1.6 kept slice04 as one slice with a named split seam as the execution-time fallback;
+**that fallback fired.** CC delivered **seam (a) — enrich + maps + index-backed `list`**
+(rows I-1…I-5, I-9-`list`, I-10; commit `2dafaa1`) and deferred **(b) index→graph
+adapter + graph readers** (I-6, I-7) and **(c) composed views** (I-8) to a continuation.
+Per the prompt, CC did **not** self-name a `04b`. **Operator action requested: renumber
+the continuation** (e.g. insert a slice for b+c and push the current slice05/06 down, or
+a `slice04-cont`) — A-4 stays `open` until it lands. Findings dispositioned:
+1. **`list` needs `number` + `component`** in the record (beyond per-gate evidence) for
+   its table + filters — added in seam (a). **A-10 input:** index-backed `list` table +
+   filters match baseline.
+2. **`list --json` §3.5 boundary:** the full-node dump (`origin`/`reserved`/`retired`)
+   stays `load_all` — the index is the filter/sort accelerator, not a full-node store.
+   **Open for ratification:** accept the boundary (recommended) vs. grow the record for
+   full `--json` parity. **A-10 input:** "identical to baseline" holds for the human
+   table + filters; full-node `--json` parity is a separate call.
+3. **The index→graph adapter (seam b) is a slice's worth on its own** — synthesize
+   `Frontmatter`s from records → feed the existing `NodeGraph`/`Satisfaction` (no parse,
+   no re-derive). Sketch in the slice04 closing report for the continuation to build on;
+   the record now carries the evidence it needs.
+Surfaced by: the slice04 seam-(a) closing-report bubble-up.
 
 ### v1.6 — 2026-06-29
 **slice04 scope resolved (CDC planning + Duncan).** A design fork surfaced while

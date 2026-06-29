@@ -34,8 +34,10 @@ use crate::record::IndexRecord;
 pub const MAGIC: [u8; 8] = *b"ODMINDEX";
 
 /// The current snapshot format version. Bumped on any incompatible change to the
-/// layout or the record shape; an older file is detected and rebuilt.
-pub const FORMAT_VERSION: u16 = 1;
+/// layout or the record shape; an older file is detected and rebuilt. **v2**
+/// (slice04): `IndexRecord` carries per-gate evidence + `number`/`component`; a
+/// v1 index loads as `RebuildNeeded(VersionMismatch)` and is rebuilt cold.
+pub const FORMAT_VERSION: u16 = 2;
 
 /// The hash algorithm used for the trailing checksum (and, by convention, the
 /// record fingerprints). A fast non-crypto hash (xxh3) is a deferred perf option

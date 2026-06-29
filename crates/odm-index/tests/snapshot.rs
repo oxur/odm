@@ -7,8 +7,9 @@
 use std::str::FromStr;
 
 use chrono::NaiveDate;
+use odm_core::status::Evidence;
 use odm_core::{Id, NodeType};
-use odm_index::record::{EdgeKind, EdgeRef, IndexRecord};
+use odm_index::record::{EdgeKind, EdgeRef, GateState, IndexRecord};
 use odm_index::snapshot::{FORMAT_VERSION, HASH_ALGO, Load, MAGIC, RebuildReason, Snapshot};
 use proptest::prelude::*;
 use tempfile::TempDir;
@@ -36,9 +37,14 @@ fn sample() -> IndexRecord {
         mode: 0o100_644,
         content_hash: [0xAB; 32],
         meta_hash: [0xCD; 32],
+        number: 7,
         node_type: NodeType::Slice,
-        gates: vec!["planned".to_string(), "built".to_string()],
+        gates: vec![
+            GateState { gate: "planned".to_string(), evidence: Evidence::Reproduced },
+            GateState { gate: "built".to_string(), evidence: Evidence::Asserted },
+        ],
         tags: vec!["store".to_string()],
+        component: Some("odm-store".to_string()),
         edges: vec![
             EdgeRef {
                 target: id('B'),
@@ -71,9 +77,12 @@ fn index_record_shape_carries_all_fields() {
     assert_eq!(r.meta_hash.len(), 32);
     assert_ne!(r.content_hash, r.meta_hash);
     // extracted metadata
+    assert_eq!(r.number, 7);
     assert_eq!(r.node_type, NodeType::Slice);
-    assert_eq!(r.gates, ["planned", "built"]);
+    assert_eq!(r.gates[0], GateState { gate: "planned".into(), evidence: Evidence::Reproduced });
+    assert_eq!(r.gates[1].evidence, Evidence::Asserted);
     assert_eq!(r.tags, ["store"]);
+    assert_eq!(r.component.as_deref(), Some("odm-store"));
     assert_eq!(r.edges.len(), 2);
     assert_eq!(r.edges[0].kind, EdgeKind::DependsOn);
     assert_eq!(r.title, "Store layer");
@@ -148,6 +157,15 @@ prop_compose! {
     }
 }
 
+fn arb_evidence() -> impl Strategy<Value = Evidence> {
+    prop_oneof![
+        Just(Evidence::Asserted),
+        Just(Evidence::Attested),
+        Just(Evidence::Reproduced),
+        Just(Evidence::Reconciled),
+    ]
+}
+
 prop_compose! {
     fn arb_record()(
         id in arb_id(),
@@ -159,16 +177,23 @@ prop_compose! {
         mode in any::<u32>(),
         content_hash in proptest::array::uniform32(any::<u8>()),
         meta_hash in proptest::array::uniform32(any::<u8>()),
+        number in any::<u32>(),
         node_type in arb_node_type(),
-        gates in proptest::collection::vec("[a-z-]{1,12}", 0..4),
+        gates in proptest::collection::vec(("[a-z-]{1,12}", arb_evidence()), 0..4),
         tags in proptest::collection::vec("[a-z]{1,8}", 0..4),
+        component in proptest::option::of("[a-z-]{1,10}"),
         edges in proptest::collection::vec((arb_id(), arb_edge_kind()), 0..5),
         title in ".{0,40}",
         updated in arb_date(),
     ) -> IndexRecord {
         IndexRecord {
             id, rel_path, mtime_secs, mtime_nsec, size, inode, mode,
-            content_hash, meta_hash, node_type, gates, tags,
+            content_hash, meta_hash, number, node_type,
+            gates: gates
+                .into_iter()
+                .map(|(gate, evidence)| GateState { gate, evidence })
+                .collect(),
+            tags, component,
             edges: edges
                 .into_iter()
                 .map(|(target, kind)| EdgeRef { target, kind, qualifier: None })

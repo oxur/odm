@@ -15,6 +15,7 @@ description = "Command-line surface for odm: node CRUD over the store"
 [dependencies]
 odm-core = { path = "../odm-core" }
 odm-store = { path = "../odm-store" }
+odm-index = { path = "../odm-index" }
 clap.workspace = true
 anyhow.workspace = true
 serde = { workspace = true }

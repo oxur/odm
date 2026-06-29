@@ -125,12 +125,15 @@ fn cold_build_metadata_fields_from_document() {
     let records = build_records(&Store::open(dir.path())).unwrap();
     let rec = record_for(&records, id);
 
+    assert_eq!(rec.number, 7);
     assert_eq!(rec.node_type, NodeType::Slice);
     assert_eq!(rec.title, "Store layer");
     assert_eq!(rec.updated, day());
     assert_eq!(rec.tags, ["store", "io"]);
-    // `gates` is the reached-gate set, gate-name sorted (BTreeMap order).
-    assert_eq!(rec.gates, ["built", "planned"]);
+    // `gates` is the reached-gate set with evidence, gate-name sorted (BTreeMap).
+    let gates: Vec<(&str, Evidence)> =
+        rec.gates.iter().map(|g| (g.gate.as_str(), g.evidence)).collect();
+    assert_eq!(gates, [("built", Evidence::Asserted), ("planned", Evidence::Reproduced)]);
 }
 
 // ----- B-5: domain edges mapped to EdgeRef across all kinds, with qualifiers -

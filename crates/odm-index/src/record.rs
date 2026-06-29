@@ -16,11 +16,25 @@
 //! slice02's job.
 
 use chrono::NaiveDate;
+use odm_core::status::Evidence;
 use odm_core::{Id, NodeType};
 use serde::{Deserialize, Serialize};
 
 /// The 32-byte digest produced by the index's hash algorithm (SHA-256 today).
 pub type Digest = [u8; 32];
+
+/// A reached gate and the evidence level it was reached at — the index's view of
+/// a node's status (slice04). The graph build reads the evidence to compute
+/// evidence-leveled satisfaction off the index; carrying only gate *names* (as
+/// slice02 did) was not enough. Reached-dates stay out (those are A7 telemetry,
+/// not what satisfaction needs).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GateState {
+    /// The reached gate's name.
+    pub gate: String,
+    /// The evidence level the gate was reached at.
+    pub evidence: Evidence,
+}
 
 /// One tracked node file's index entry (ODD-0014 §3.1).
 ///
@@ -57,15 +71,20 @@ pub struct IndexRecord {
     pub meta_hash: Digest,
 
     // --- extracted metadata for in-memory filter/sort (no re-parse needed) ---
+    /// The node's human number (for display; the `list` table column).
+    pub number: u32,
     /// The node type (`project`/`arc`/`slice`/`odd`/…).
     pub node_type: NodeType,
-    /// The node's state in the gate model: the names of the gates it has reached,
-    /// sorted. odm has no single lifecycle `state` — status is a multi-gate
-    /// vector — so this is the reached-gate set, which supports "filter by
-    /// gate / state" (ODD-0014 §3.1's generic `state` mapped to odm's model).
-    pub gates: Vec<String>,
+    /// The node's state in the gate model: each reached gate with its evidence
+    /// level, gate-name sorted. odm has no single lifecycle `state` — status is a
+    /// multi-gate vector — so this is the reached-gate set (ODD-0014 §3.1's
+    /// generic `state` mapped to odm's model). Carries evidence (slice04) so the
+    /// graph build can compute satisfaction off the index.
+    pub gates: Vec<GateState>,
     /// Free-form filter tags.
     pub tags: Vec<String>,
+    /// Optional subsystem/component filter label.
+    pub component: Option<String>,
     /// The node's outgoing dependency-relevant edges (id + kind), for graph build.
     pub edges: Vec<EdgeRef>,
     /// The node's human title/name.

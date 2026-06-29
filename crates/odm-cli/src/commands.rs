@@ -248,7 +248,14 @@ struct ListRow {
     id: String,
 }
 
-/// `list` — full scan with optional type/tag/component filters. Data → `out`.
+/// `list` — list nodes with optional type/tag/component filters. Data → `out`.
+///
+/// The human table is **index-backed** (slice04): it `reconcile`s the `.odm/`
+/// index (freshening it against any edit) and renders from the index records —
+/// no full corpus parse. `--json` stays a full-node dump over `load_all`: it
+/// emits fields the index deliberately does not carry (`origin`/`reserved`/
+/// `retired`), since the index is the filter/sort accelerator, not a full-node
+/// store (ODD-0014 §3.5).
 pub fn list(
     store: &Store,
     type_filter: Option<&str>,
@@ -261,35 +268,46 @@ pub fn list(
         .map(|t| t.parse::<NodeType>().map_err(|_| anyhow!("unknown type {t:?}")))
         .transpose()?;
 
-    let mut nodes = store.load_all()?;
-    nodes.retain(|d| {
-        let fm = d.frontmatter();
-        type_filter.is_none_or(|t| fm.node_type() == t)
-            && tag.is_none_or(|t| fm.tags().iter().any(|x| x == t))
-            && component.is_none_or(|c| fm.component() == Some(c))
-    });
-    nodes.sort_by_key(|d| d.frontmatter().number());
-
     if json {
+        // Full-node serialization stays load_all-backed (see the doc comment).
+        let mut nodes = store.load_all()?;
+        nodes.retain(|d| {
+            let fm = d.frontmatter();
+            type_filter.is_none_or(|t| fm.node_type() == t)
+                && tag.is_none_or(|t| fm.tags().iter().any(|x| x == t))
+                && component.is_none_or(|c| fm.component() == Some(c))
+        });
+        nodes.sort_by_key(|d| d.frontmatter().number());
         let view: Vec<NodeJson> = nodes.iter().map(NodeJson::from).collect();
         writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
         return Ok(());
     }
 
-    if nodes.is_empty() {
+    // Human table: reconcile-then-read the index (slice03 finding #2 / I-9).
+    let index = odm_index::default_index_path(store.root());
+    let snapshot = odm_index::reconcile(store, &index)?.snapshot;
+    let mut records: Vec<&odm_index::IndexRecord> = snapshot
+        .records
+        .iter()
+        .filter(|r| {
+            type_filter.is_none_or(|t| r.node_type == t)
+                && tag.is_none_or(|t| r.tags.iter().any(|x| x == t))
+                && component.is_none_or(|c| r.component.as_deref() == Some(c))
+        })
+        .collect();
+    records.sort_by_key(|r| r.number);
+
+    if records.is_empty() {
         writeln!(out, "(no nodes)")?;
         return Ok(());
     }
-    let rows: Vec<ListRow> = nodes
+    let rows: Vec<ListRow> = records
         .iter()
-        .map(|d| {
-            let fm = d.frontmatter();
-            ListRow {
-                number: fm.number(),
-                node_type: fm.node_type().as_str().to_string(),
-                name: fm.name().to_string(),
-                id: fm.id().to_string(),
-            }
+        .map(|r| ListRow {
+            number: r.number,
+            node_type: r.node_type.as_str().to_string(),
+            name: r.title.clone(),
+            id: r.id.to_string(),
         })
         .collect();
     writeln!(out, "{}", Table::new(rows).with(Style::sharp()))?;
@@ -1346,32 +1364,40 @@ pub(crate) fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidenc
 }
 
 /// The corpus, graph, and satisfaction needed by every derived-order query.
+///
+/// **Index-backed (slice05):** `load` freshens the `.odm/` index (`reconcile`)
+/// and reconstructs the `Frontmatter`s from the index records via the index→graph
+/// adapter — no corpus parse — then feeds the *existing* `NodeGraph::build` /
+/// `Satisfaction::compute`. The reconstructed frontmatters carry exactly what the
+/// graph + satisfaction read (id/type/edges/status+evidence), so the derived
+/// order is identical to the `load_all` baseline.
 struct Derived {
-    docs: Vec<Document>,
+    frontmatters: Vec<Frontmatter>,
     graph: NodeGraph,
     satisfaction: Satisfaction,
 }
 
 impl Derived {
     fn load(store: &Store, root: &Path) -> anyhow::Result<Self> {
-        let docs = store.load_all()?;
-        let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
         let (gates, threshold) = load_gate_config(root)?;
+        let snapshot =
+            odm_index::reconcile(store, &odm_index::default_index_path(store.root()))?.snapshot;
+        let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
         let graph = NodeGraph::build(&frontmatters);
         let satisfaction = Satisfaction::compute(&frontmatters, &gates, threshold);
-        Ok(Self { docs, graph, satisfaction })
+        Ok(Self { frontmatters, graph, satisfaction })
     }
 
     /// A short `#<number> <name>` label for a node id (falls back to the id).
     fn label(&self, id: Id) -> String {
-        self.docs.iter().find(|d| d.frontmatter().id() == id).map_or_else(
-            || id.to_string(),
-            |d| format!("#{} {}", d.frontmatter().number(), d.frontmatter().name()),
-        )
+        self.frontmatters
+            .iter()
+            .find(|f| f.id() == id)
+            .map_or_else(|| id.to_string(), |f| format!("#{} {}", f.number(), f.name()))
     }
 
     fn number(&self, id: Id) -> Option<u32> {
-        self.docs.iter().find(|d| d.frontmatter().id() == id).map(|d| d.frontmatter().number())
+        self.frontmatters.iter().find(|f| f.id() == id).map(Frontmatter::number)
     }
 }
 

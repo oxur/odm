@@ -17,7 +17,9 @@ use odm_store::Store;
 use serde::Serialize;
 
 use crate::hash::sha256;
-use crate::record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, IndexRecord, SupersedeKind};
+use crate::record::{
+    Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind,
+};
 use crate::snapshot::Snapshot;
 
 /// An error encountered while building the index from the corpus.
@@ -139,10 +141,15 @@ fn build_record(
     let (inode, mode) = ino_mode(meta);
 
     let node_type = fm.node_type();
-    // `gates` = reached gate names (slice01 finding #1: odm has no scalar state).
-    // `reached()` iterates the status BTreeMap, so this is already gate-name sorted.
-    let gates: Vec<String> = fm.status().reached().map(|(name, _)| name.to_string()).collect();
+    // `gates` = each reached gate + its evidence (slice04). `reached()` iterates
+    // the status BTreeMap, so this is already gate-name sorted.
+    let gates: Vec<GateState> = fm
+        .status()
+        .reached()
+        .map(|(name, record)| GateState { gate: name.to_string(), evidence: record.evidence })
+        .collect();
     let tags: Vec<String> = fm.tags().to_vec();
+    let component = fm.component().map(str::to_string);
     let edges = map_edges(fm.edges());
     let title = fm.name().to_string();
     let updated = fm.updated();
@@ -166,9 +173,11 @@ fn build_record(
         mode,
         content_hash,
         meta_hash,
+        number: fm.number(),
         node_type,
         gates,
         tags,
+        component,
         edges,
         title,
         updated,
@@ -253,14 +262,17 @@ fn map_edges(edges: &Edges) -> Vec<EdgeRef> {
     out
 }
 
-/// The semantic-metadata fields the `meta_hash` covers (B-6). Deliberately
-/// **excludes** the stat fields, `content_hash`, and `updated` (bookkeeping):
-/// the meta-hash is the *derived/meaning* fingerprint slice05's early cutoff
-/// compares — a body-only edit must not change it.
+/// The semantic-metadata fields the `meta_hash` covers (B-6 / slice04 I-3).
+/// `gates` carries per-gate **evidence**, so an evidence change invalidates the
+/// fingerprint (the graph reads it). Deliberately **excludes** the stat fields,
+/// `content_hash`, `updated` (bookkeeping), and `number`/`component`
+/// (display/filter metadata, not graph/rollup *meaning*): the meta-hash is the
+/// *derived/meaning* fingerprint slice05's early cutoff compares — a body-only
+/// edit must not change it.
 #[derive(Serialize)]
 struct MetaInput<'a> {
     node_type: odm_core::NodeType,
-    gates: &'a [String],
+    gates: &'a [GateState],
     tags: &'a [String],
     edges: &'a [EdgeRef],
     title: &'a str,

@@ -21,15 +21,30 @@
 
 #![deny(missing_docs)]
 
+pub mod adapter;
 pub mod build;
 mod hash;
+pub mod maps;
 pub mod record;
 pub mod snapshot;
 pub mod warm;
 
+use std::path::{Path, PathBuf};
+
+pub use adapter::frontmatters_from_records;
 pub use build::{BuildError, build, build_records};
-pub use record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, IndexRecord, SupersedeKind};
+pub use maps::IndexMaps;
+pub use record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind};
 pub use snapshot::{
     FORMAT_VERSION, HashAlgo, Header, IndexError, Load, MAGIC, RebuildReason, Snapshot,
 };
 pub use warm::{Delta, Reconciliation, WarmError, reconcile};
+
+/// The index snapshot's path under a store root: `<root>/.odm/index`.
+///
+/// The `.odm/` directory holds derived, gitignored CLI state (the context file
+/// lives there too); the index is never the source of truth.
+#[must_use]
+pub fn default_index_path(root: &Path) -> PathBuf {
+    root.join(".odm").join("index")
+}
