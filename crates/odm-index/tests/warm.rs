@@ -303,3 +303,67 @@ fn warm_returns_delta() {
     assert_eq!(r.delta.deleted, vec![to_delete]);
     assert_eq!(r.delta.clean, 1, "the untouched node");
 }
+
+// ===== slice07: meta-changed vs. body-only in the delta =====================
+
+// ----- E-1: the delta separates a meaning-change from a body-only edit -------
+
+#[test]
+fn delta_distinguishes_meta_changed_from_body_only() {
+    let dir = TempDir::new().unwrap();
+    let store = Store::open(dir.path());
+    let body_only = Id::new();
+    let meta = Id::new();
+    let pb = seed(&store, body_only, "# T\nshort\n");
+    let pm = seed(&store, meta, "# T\nshort\n");
+    set_mtime_secs(&pb, 1_000_000);
+    set_mtime_secs(&pm, 1_000_000);
+    persist_prior(&store, FUTURE);
+
+    // body_only: same frontmatter, longer body → content changes, meaning does not.
+    std::fs::write(&pb, node_doc(body_only, "# T\nmuch longer body now\n").emit().unwrap())
+        .unwrap();
+    // meta: a renamed node — `title` is a meta field, so `meta_hash` changes.
+    let renamed = Document::new(
+        Frontmatter::new(meta, 1, NodeType::Slice, "RENAMED", day(), day(), Origin::Planned),
+        "# T\nshort\n",
+    );
+    std::fs::write(&pm, renamed.emit().unwrap()).unwrap();
+
+    let r = reconcile(&store, &index_path(dir.path())).unwrap();
+    // Both records were rebuilt (their files changed) …
+    assert!(r.delta.changed.contains(&body_only) && r.delta.changed.contains(&meta));
+    // … but only the renamed node's *meaning* changed.
+    assert_eq!(r.delta.meta_changed, vec![meta], "only the meaning-change is meta-changed");
+    assert!(!r.delta.meta_changed.contains(&body_only), "the body-only edit is not meta-changed");
+}
+
+// ----- E-4: a body-only edit still refreshes the record (content_hash + stat) -
+
+#[test]
+fn body_only_edit_refreshes_record() {
+    let dir = TempDir::new().unwrap();
+    let store = Store::open(dir.path());
+    let id = Id::new();
+    let path = seed(&store, id, "# T\nshort\n");
+    set_mtime_secs(&path, 1_000_000);
+    let prior = persist_prior(&store, FUTURE);
+
+    // Body-only edit: identical frontmatter, different body.
+    std::fs::write(
+        &path,
+        node_doc(id, "# T\ntotally different prose, same meaning\n").emit().unwrap(),
+    )
+    .unwrap();
+
+    let r = reconcile(&store, &index_path(dir.path())).unwrap();
+    let before = record_for(&prior, id);
+    let after = record_for(&r.snapshot, id);
+    assert_ne!(
+        after.content_hash, before.content_hash,
+        "content_hash refreshed (the file changed)"
+    );
+    assert_eq!(after.meta_hash, before.meta_hash, "meta_hash unchanged (meaning is stable)");
+    assert!(r.delta.changed.contains(&id), "the record was rebuilt …");
+    assert!(!r.delta.meta_changed.contains(&id), "… but it is body-only, not meta-changed");
+}

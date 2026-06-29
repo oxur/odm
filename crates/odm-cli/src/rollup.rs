@@ -28,18 +28,57 @@ use crate::json::RollupJson;
 /// The generated rollup file, written at the store root.
 const ROLLUP_FILE: &str = "ROLLUP.md";
 
-/// The header marking the file as generated (do not hand-edit).
-const HEADER: &str = "<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. -->";
+/// The token in the generated header that carries the corpus meta-fingerprint
+/// (slice07). `odm rollup` compares the current corpus's fingerprint against the
+/// one stamped here to decide whether a regenerate is needed.
+const FINGERPRINT_TAG: &str = "fingerprint=";
 
-/// `rollup` — full-scan regenerate of `ROLLUP.md` at the repo root.
+/// The generated-file header line, stamping the corpus meta-fingerprint so a
+/// later run can detect a semantically-unchanged corpus and skip the rewrite.
+fn header_line(fingerprint: &str) -> String {
+    format!(
+        "<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. \
+         {FINGERPRINT_TAG}{fingerprint} -->"
+    )
+}
+
+/// Extracts the `fingerprint=<hex>` stamped in a generated `ROLLUP.md`'s header
+/// (its first line), or `None` if absent (e.g. a hand-written or pre-slice07
+/// file — which then always regenerates, the safe default).
+fn stamped_fingerprint(markdown: &str) -> Option<String> {
+    let line = markdown.lines().next()?;
+    let start = line.find(FINGERPRINT_TAG)? + FINGERPRINT_TAG.len();
+    let rest = &line[start..];
+    let end = rest.find(|c: char| !c.is_ascii_hexdigit()).unwrap_or(rest.len());
+    (end > 0).then(|| rest[..end].to_string())
+}
+
+/// Lowercase hex of a 32-byte digest (the meta-fingerprint, for the header).
+fn to_hex(bytes: &[u8; 32]) -> String {
+    let mut s = String::with_capacity(64);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+/// `rollup` — regenerate `ROLLUP.md` at the repo root (with slice07 early cutoff).
 ///
 /// Reads the corpus through the `.odm/` index (`reconcile`-then-read, slice06 —
 /// no full parse), assembles the [`Rollup`] model, renders it to Markdown, and
-/// writes it atomically (write-temp-rename) via odm-store. The
-/// render is deterministic, so re-running on an unchanged corpus produces
-/// identical bytes. `--dry-run` writes no file: it previews the rendered
-/// Markdown to `out` and reports to `err`. `--json` serializes the **same**
-/// model (D-3) to `out` and writes no file.
+/// writes it atomically (write-temp-rename) via odm-store. The render is
+/// deterministic, so re-running on an unchanged corpus produces identical bytes.
+///
+/// **Early cutoff (slice07, ODD-0014 §2.4):** the generated header stamps a
+/// **meta-fingerprint** (a hash over the reconciled records' `(id, meta_hash)`).
+/// A run recomputes that fingerprint and, if it matches the one already stamped
+/// in `ROLLUP.md`, **leaves the file untouched** — a body-only edit refreshes the
+/// index record but regenerates nothing downstream. Any `meta_hash` change, new,
+/// or deleted node moves the fingerprint and forces a regenerate.
+///
+/// `--dry-run` writes no file: it previews the rendered Markdown to `out` and
+/// reports to `err`. `--json` serializes the **same** model (D-3) to `out` and
+/// writes no file.
 ///
 /// # Errors
 ///
@@ -54,8 +93,11 @@ pub fn rollup(
     err: &mut dyn std::io::Write,
 ) -> anyhow::Result<()> {
     let (gates, threshold) = commands::load_gate_config(root)?;
-    let frontmatters =
-        commands::index_frontmatters(store, &gates).context("reconciling the index for rollup")?;
+    let snapshot = odm_index::reconcile(store, &odm_index::default_index_path(store.root()))
+        .context("reconciling the index for rollup")?
+        .snapshot;
+    let fingerprint = to_hex(&snapshot.meta_fingerprint());
+    let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
     let model = Rollup::assemble(&frontmatters, &gates, threshold);
 
     // `--json` is a non-writing output mode: serialize the same model to stdout.
@@ -65,7 +107,7 @@ pub fn rollup(
         return Ok(());
     }
 
-    let markdown = render(&model);
+    let markdown = render(&model, &fingerprint);
 
     let path = root.join(ROLLUP_FILE);
     if dry_run {
@@ -79,20 +121,33 @@ pub fn rollup(
         return Ok(());
     }
 
+    // Early cutoff: the existing file already reflects this exact semantic state.
+    if let Ok(existing) = std::fs::read_to_string(&path) {
+        if stamped_fingerprint(&existing).as_deref() == Some(fingerprint.as_str()) {
+            writeln!(
+                err,
+                "{} unchanged (corpus semantically unchanged); skipped regeneration",
+                path.display()
+            )?;
+            return Ok(());
+        }
+    }
+
     odm_store::atomic::write(&path, markdown.as_bytes())
         .with_context(|| format!("writing {}", path.display()))?;
-    writeln!(err, "wrote {} ({} node(s))", path.display(), frontmatters.len())?;
+    writeln!(err, "wrote {} ({} node(s))", path.display(), snapshot.records.len())?;
     Ok(())
 }
 
 /// Renders the [`Rollup`] model to Markdown in the canonical section order
 /// (ODD-0013 §6): way-finding tree (status inline) → ready → blocked → active
 /// tears → provenance → drift. The deferred slot is empty in A3 (Q-A3-1), so no
-/// deferred section is emitted.
+/// deferred section is emitted. The header stamps `fingerprint` (slice07) so a
+/// later run can detect a semantically-unchanged corpus.
 #[must_use]
-pub fn render(model: &Rollup) -> String {
+pub fn render(model: &Rollup, fingerprint: &str) -> String {
     let mut s = String::new();
-    let _ = writeln!(s, "{HEADER}\n");
+    let _ = writeln!(s, "{}\n", header_line(fingerprint));
     let _ = writeln!(s, "# Rollup\n");
 
     render_tree(&mut s, model);

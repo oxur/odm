@@ -196,6 +196,26 @@ impl Snapshot {
         Self { index_timestamp, records }
     }
 
+    /// A combined fingerprint over the corpus's **semantic** state: SHA-256 over
+    /// each record's `(id, meta_hash)` in id order (records are id-sorted). Two
+    /// snapshots share a fingerprint iff they have the same node set with the same
+    /// per-node *meaning* — a body-only edit (`content_hash` moves, `meta_hash`
+    /// stable) does **not** change it, but a `meta_hash` change, a new node, or a
+    /// deleted node does. This is slice07's early-cutoff signal: `odm rollup`
+    /// stamps it in `ROLLUP.md` and skips the rewrite when it is unchanged
+    /// (ODD-0014 §2.4/§2.5).
+    #[must_use]
+    pub fn meta_fingerprint(&self) -> [u8; 32] {
+        let mut buf = Vec::with_capacity(self.records.len() * (26 + 32));
+        for record in &self.records {
+            // ULIDs render to a fixed-width 26-char string, so id + meta_hash is
+            // unambiguous without a separator.
+            buf.extend_from_slice(record.id.to_string().as_bytes());
+            buf.extend_from_slice(&record.meta_hash);
+        }
+        sha256(&buf)
+    }
+
     /// The snapshot header (constants + stamp + record count).
     #[must_use]
     pub fn header(&self) -> Header {

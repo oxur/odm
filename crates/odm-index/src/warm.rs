@@ -27,12 +27,17 @@ use crate::hash::sha256;
 use crate::record::IndexRecord;
 use crate::snapshot::{Load, Snapshot};
 
-/// What a warm reconcile changed, for downstream consumers (slice04/05).
+/// What a warm reconcile changed, for downstream consumers (slice04/05/07).
 ///
-/// New/changed/deleted are carried as **id sets** (slice05's early cutoff acts on
+/// New/changed/deleted are carried as **id sets** (slice07's early cutoff acts on
 /// exactly these); `clean` is a **count** (the large, do-nothing majority — its
 /// ids carry no downstream signal, so retaining them would be waste). `rebuilt`
 /// is `true` when the snapshot was absent/corrupt/stale and rebuilt cold.
+///
+/// `meta_changed` is the **semantic** subset of `changed` (ODD-0014 §2.4/§2.5): a
+/// changed record whose new `meta_hash` differs from the prior record's. The
+/// complement — `changed` ids **not** in `meta_changed` — are *body-only* edits
+/// (the file changed, its meaning did not), the early-cutoff signal slice07 reads.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Delta {
     /// A full cold rebuild happened (load returned `RebuildNeeded`).
@@ -41,6 +46,9 @@ pub struct Delta {
     pub new: Vec<Id>,
     /// Ids of files whose content changed (re-parsed + updated).
     pub changed: Vec<Id>,
+    /// Ids (⊆ `changed`) whose *meaning* changed (`meta_hash` differs from prior).
+    /// `changed` minus this set is the body-only edits (early cutoff, §2.4).
+    pub meta_changed: Vec<Id>,
     /// Ids of records whose file is gone (removed).
     pub deleted: Vec<Id>,
     /// Count of files that were clean (skipped; record reused).
@@ -148,7 +156,7 @@ pub fn reconcile(store: &Store, index_path: &Path) -> Result<Reconciliation, War
                 if cheap_differs {
                     // CHANGED (cheap signal): re-read + re-hash + re-parse.
                     let updated = build_one(root, path)?;
-                    delta.changed.push(updated.id);
+                    note_change(&mut delta, &record, &updated);
                     next.push(updated);
                 } else if mtime_secs >= prior.index_timestamp {
                     // RACILY CLEAN: stat cannot be trusted — the hash is the authority.
@@ -159,7 +167,7 @@ pub fn reconcile(store: &Store, index_path: &Path) -> Result<Reconciliation, War
                         next.push(record);
                     } else {
                         let updated = build_one(root, path)?;
-                        delta.changed.push(updated.id);
+                        note_change(&mut delta, &record, &updated);
                         next.push(updated);
                     }
                 } else {
@@ -198,6 +206,18 @@ fn rebuild_cold(store: &Store, index_path: &Path) -> Result<Reconciliation, Warm
     snapshot.persist(index_path)?;
     let new = snapshot.records.iter().map(|r| r.id).collect();
     Ok(Reconciliation { delta: Delta { rebuilt: true, new, ..Delta::default() }, snapshot })
+}
+
+/// Records a CHANGED file on the delta: always in `changed` (the record was
+/// re-built), and additionally in `meta_changed` when its `meta_hash` differs
+/// from the prior record's — i.e. its *meaning* changed, not just its bytes
+/// (ODD-0014 §2.4/§2.5). A body-only edit lands in `changed` but **not**
+/// `meta_changed`, which is the early-cutoff signal.
+fn note_change(delta: &mut Delta, prior: &IndexRecord, updated: &IndexRecord) {
+    delta.changed.push(updated.id);
+    if updated.meta_hash != prior.meta_hash {
+        delta.meta_changed.push(updated.id);
+    }
 }
 
 /// The same-size-edit defense (ODD-0014 §2.3): zero the recorded `size` of any

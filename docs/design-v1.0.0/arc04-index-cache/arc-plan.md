@@ -90,7 +90,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | A-4 | slice04 (seam a: enrich + maps + index-backed `list`) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | seam (a) attested: CC closing-report `2dafaa1` (7/10); CDC-verified on structure (`slice04-enrich-and-wire/cdc-verification.md`); cargo rows pending CI. **Seams (b)+(c) now delivered** — slice06 wired the graph readers + composed views (closing-report this slice). | → `done` when seam (a) reproduces (CI green); functionally closed by slice06. |
 | A-5 | slice05 (index→graph adapter + derived-order readers) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | adapter + derived-order attested: CC closing-report `89a2223` (4/7 — G-1 adapter, G-2 `next`/`blocked`/`path`, G-6, G-7); CDC-verified on structure (`slice05-graph-adapter-and-views/cdc-verification.md`); cargo rows pending CI. **The deferred `check`/`rollup`/`orient` are now wired** (slice06, A-6). | → `done` when it reproduces (CI green); the deferral it carried is closed by slice06. |
 | A-6 | slice06 (enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`; slice05 continuation) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (8/8; line cov odm-index 97.49% / odm-cli 93.63%); `FORMAT_VERSION 2 → 3` (v2 self-heals, no migration code); `aggregate` takes `&[Frontmatter]`; shared `index_frontmatters` feeds `check`/`rollup`/`orient` + `Derived`; one targeted `store.load` for `orient`'s vision body. Awaiting CDC reproduce. | attested-on-close. Carries G-3/G-4/G-5 from slice05. **Closes A-4 + A-5; makes A-12 satisfiable** (every read path index-backed). |
-| A-7 | slice07 (early-cutoff invalidation) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-7 | slice07 (early-cutoff invalidation) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (6/6; line cov odm-index 95.18% / odm-cli 93.68%); `Delta` gains `meta_changed`; `Snapshot::meta_fingerprint` stamps `ROLLUP.md`; `odm rollup` skips on a body-only edit, regenerates on meta-change/new/deleted; in-memory readers unchanged (§2.4). Awaiting CDC reproduce. | → `done` when slice07 reproduces (CI green). Only **slice08** (benchmark) remains in the arc. |
 | A-8 | slice08 (benchmark) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-9 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
@@ -130,6 +130,19 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.13 — 2026-06-29
+**slice07 closed (A-7 attested; early-cutoff in).** Cashed the two-fingerprint split:
+`reconcile`'s `Delta` gains `meta_changed` (the semantic subset of `changed` — a
+`meta_hash` compare at the CHANGED arm), and `odm rollup` skips regenerating `ROLLUP.md`
+when the corpus is semantically unchanged — via a `Snapshot::meta_fingerprint` (hash over
+each record's `(id, meta_hash)`) stamped in the generated header. A body-only edit
+refreshes the index record but regenerates nothing downstream; any meaning-change / new /
+deleted node regenerates. In-memory readers unchanged (0014 §2.4 — no lazy/persistent
+graph caching). 6/6 rows attested; line cov odm-index 95.18% / odm-cli 93.68%; clippy
+`-D warnings` clean; no `unsafe`. No new arc-level finding. **Only slice08 (the 100k
+benchmark) remains.** CC closing-report: `slice07-early-cutoff/closing-report.md`.
+Cargo/coverage rows reproduce via CI.
 
 ### v1.12 — 2026-06-29
 **CDC verification of slice06 — A-12 verify-method corrected (plan-keeping).** slice06

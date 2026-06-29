@@ -18,6 +18,7 @@ use tempfile::TempDir;
 struct Run {
     ok: bool,
     out: String,
+    err: String,
 }
 
 fn run(root: &Path, args: &[&str]) -> Run {
@@ -26,7 +27,19 @@ fn run(root: &Path, args: &[&str]) -> Run {
     let mut out = Vec::new();
     let mut err = Vec::new();
     let result = odm_cli::dispatch(cli, root, &mut out, &mut err);
-    Run { ok: result.is_ok(), out: String::from_utf8(out).unwrap() }
+    Run {
+        ok: result.is_ok(),
+        out: String::from_utf8(out).unwrap(),
+        err: String::from_utf8(err).unwrap(),
+    }
+}
+
+/// Rewrites a node's body while keeping its frontmatter byte-identical — a
+/// body-only edit (`content_hash` moves, `meta_hash` stable).
+fn body_only_edit(root: &Path, id: Id, new_body: &str) {
+    let store = Store::open(root);
+    let fm = store.load(id).unwrap().frontmatter().clone();
+    store.persist(&Document::new(fm, new_body.to_string())).unwrap();
 }
 
 /// Persists a node file directly (bypassing `new`) so a test can pin its number,
@@ -294,4 +307,75 @@ fn view_consumers_reconcile_before_read() {
 
     persist(root, 4, NodeType::Slice, "Fresh orphan", Origin::Planned, None, "# FO\n");
     assert!(run(root, &["check"]).out.contains("orphan"), "check reconciles before read");
+}
+
+// ===== slice07: `odm rollup` early-cutoff ===================================
+
+// ----- E-2: a body-only edit leaves ROLLUP.md untouched (early cutoff) --------
+
+#[test]
+fn rollup_skips_on_body_only_change() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    let p = persist(root, 1, NodeType::Project, "Proj", Origin::Planned, None, "# Proj\n");
+    let a = persist(root, 2, NodeType::Arc, "Arc one", Origin::Planned, Some(p), "# A\n");
+
+    // First rollup writes ROLLUP.md and stamps the corpus meta-fingerprint.
+    assert!(run(root, &["rollup"]).ok);
+    let rollup_path = root.join("ROLLUP.md");
+    let before = std::fs::read(&rollup_path).unwrap();
+
+    // A body-only edit to the arc: content changes, meaning does not.
+    body_only_edit(root, a, "# A\n\nMuch longer prose, same frontmatter.\n");
+
+    let second = run(root, &["rollup"]);
+    assert!(second.ok);
+    assert!(
+        second.err.contains("unchanged") && second.err.contains("skipped"),
+        "rollup reports the skip:\n{}",
+        second.err
+    );
+    let after = std::fs::read(&rollup_path).unwrap();
+    assert_eq!(before, after, "a body-only edit leaves ROLLUP.md byte-identical");
+}
+
+// ----- E-3: a meaning-change / new / deleted always regenerates ROLLUP.md -----
+
+#[test]
+fn rollup_regenerates_on_meta_change() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    let p = persist(root, 1, NodeType::Project, "Proj", Origin::Planned, None, "# Proj\n");
+    let a = persist(root, 2, NodeType::Arc, "Arc one", Origin::Planned, Some(p), "# A\n");
+    let slice = persist(root, 3, NodeType::Slice, "Slice one", Origin::Planned, Some(a), "# S\n");
+
+    assert!(run(root, &["rollup"]).ok);
+    let rollup_path = root.join("ROLLUP.md");
+    let mut prev = std::fs::read(&rollup_path).unwrap();
+
+    // (a) a gate/evidence change is a meaning-change → regenerate.
+    let gate = run(root, &["set-gate", "Slice one", "built"]);
+    assert!(gate.ok, "set-gate:\n{}", gate.err);
+    let after_gate = run(root, &["rollup"]);
+    assert!(after_gate.err.contains("wrote"), "regenerates on gate change:\n{}", after_gate.err);
+    let now = std::fs::read(&rollup_path).unwrap();
+    assert_ne!(prev, now, "ROLLUP.md changed after a gate change");
+    prev = now;
+
+    // (b) a new node → the record set changes → regenerate.
+    persist(root, 4, NodeType::Slice, "Slice two", Origin::Planned, Some(a), "# S2\n");
+    let after_new = run(root, &["rollup"]);
+    assert!(after_new.err.contains("wrote"), "regenerates on a new node:\n{}", after_new.err);
+    let now = std::fs::read(&rollup_path).unwrap();
+    assert_ne!(prev, now, "ROLLUP.md changed after a new node");
+    prev = now;
+
+    // (c) a deleted node → the record set changes → regenerate.
+    std::fs::remove_file(Store::open(root).path_of(slice)).unwrap();
+    let after_del = run(root, &["rollup"]);
+    assert!(after_del.err.contains("wrote"), "regenerates on a deletion:\n{}", after_del.err);
+    let now = std::fs::read(&rollup_path).unwrap();
+    assert_ne!(prev, now, "ROLLUP.md changed after a deletion");
 }
