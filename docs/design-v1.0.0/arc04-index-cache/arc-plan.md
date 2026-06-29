@@ -95,7 +95,7 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | A-9 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
 | A-11 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
-| A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | **Satisfiable as of slice06 (A-6):** every read path — `list`, derived-order (`next`/`blocked`/`path`), `check`, `rollup`, `orient` — is index-backed and matches baseline (per-consumer slice-scale tests). | reproduce at arc scale (the forced-full-scan-vs-index demo remains for arc close). |
+| A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale: the **adapter-fidelity chain** (synth frontmatter == parsed for every field each consumer reads — graph G-1, origin+decomposed V-3) ∘ the *unchanged* shared `aggregate`/`assemble`/`integrity`, **+** each consumer's correctness + idempotence (warm == cold) | serious | arc-plan | open | **Satisfiable as of slice06 (A-6):** every read path — `list`, derived-order, `check`, `rollup`, `orient` — is index-backed. **No live full-scan-vs-index diff: the `load_all` path is removed once a consumer is wired** (v1.12) — equivalence rests on the adapter-fidelity chain, not an A/B demo. | reproduce at arc scale |
 | A-13 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice08's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
 | A-14 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
@@ -130,6 +130,18 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.12 — 2026-06-29
+**CDC verification of slice06 — A-12 verify-method corrected (plan-keeping).** slice06
+wired `check`/`rollup`/`orient` off the index, which *removed* their `load_all` paths —
+so A-12's original Verify ("forced-full-scan vs. index diff") is now **impossible**.
+Corrected A-12's Verify to the real reproduction: the **adapter-fidelity chain** (synth
+frontmatter == parsed for every field each consumer reads — graph G-1 + origin/decomposed
+V-3) ∘ the unchanged shared `aggregate`/`assemble`/`integrity`, plus each consumer's
+correctness + idempotence. **Standing note:** with no A/B safety net, the adapter-fidelity
+tests are the load-bearing equivalence guarantee — any future consumer reading a new
+field must extend the adapter *and* its fidelity test. Surfaced by: CC's slice06 flag #1
++ CDC verification.
 
 ### v1.11 — 2026-06-29
 **slice06 closed (A-6 attested; consumer-wiring done).** Enriched `IndexRecord` with
