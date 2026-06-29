@@ -16,7 +16,6 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use anyhow::Context as _;
-use odm_core::frontmatter::Frontmatter;
 use odm_core::rollup::{
     ActiveTear, BlockReason, BlockedNode, GateStatus, NodeRef, Provenance, ReadyNode, Rollup,
     TreeNode,
@@ -34,8 +33,9 @@ const HEADER: &str = "<!-- GENERATED — do not edit by hand. Regenerate with `o
 
 /// `rollup` — full-scan regenerate of `ROLLUP.md` at the repo root.
 ///
-/// Loads the whole corpus, assembles the [`Rollup`] model, renders it to
-/// Markdown, and writes it atomically (write-temp-rename) via odm-store. The
+/// Reads the corpus through the `.odm/` index (`reconcile`-then-read, slice06 —
+/// no full parse), assembles the [`Rollup`] model, renders it to Markdown, and
+/// writes it atomically (write-temp-rename) via odm-store. The
 /// render is deterministic, so re-running on an unchanged corpus produces
 /// identical bytes. `--dry-run` writes no file: it previews the rendered
 /// Markdown to `out` and reports to `err`. `--json` serializes the **same**
@@ -53,9 +53,9 @@ pub fn rollup(
     out: &mut dyn std::io::Write,
     err: &mut dyn std::io::Write,
 ) -> anyhow::Result<()> {
-    let docs = store.load_all().context("loading the corpus for rollup")?;
-    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
     let (gates, threshold) = commands::load_gate_config(root)?;
+    let frontmatters =
+        commands::index_frontmatters(store, &gates).context("reconciling the index for rollup")?;
     let model = Rollup::assemble(&frontmatters, &gates, threshold);
 
     // `--json` is a non-writing output mode: serialize the same model to stdout.
@@ -81,7 +81,7 @@ pub fn rollup(
 
     odm_store::atomic::write(&path, markdown.as_bytes())
         .with_context(|| format!("writing {}", path.display()))?;
-    writeln!(err, "wrote {} ({} node(s))", path.display(), docs.len())?;
+    writeln!(err, "wrote {} ({} node(s))", path.display(), frontmatters.len())?;
     Ok(())
 }
 

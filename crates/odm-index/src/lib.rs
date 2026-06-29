@@ -34,7 +34,9 @@ use std::path::{Path, PathBuf};
 pub use adapter::frontmatters_from_records;
 pub use build::{BuildError, build, build_records};
 pub use maps::IndexMaps;
-pub use record::{Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind};
+pub use record::{
+    Decomposition, Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind,
+};
 pub use snapshot::{
     FORMAT_VERSION, HashAlgo, Header, IndexError, Load, MAGIC, RebuildReason, Snapshot,
 };

@@ -51,40 +51,50 @@ pub fn orient(
     json: bool,
     out: &mut dyn std::io::Write,
 ) -> anyhow::Result<()> {
-    let docs = store.load_all().context("loading the corpus to orient")?;
+    // Read the corpus through the `.odm/` index (reconcile-then-read, slice06 —
+    // no full parse). Bodies stay out of the index (ODD-0014 §3.5): the project
+    // vision below is the one consumer that needs a body, via a targeted load.
+    let (gates, threshold) = commands::load_gate_config(root)?;
+    let frontmatters =
+        commands::index_frontmatters(store, &gates).context("reconciling the index to orient")?;
 
     let ctx = Context::load(root)?;
-    let projects: Vec<&Document> =
-        docs.iter().filter(|d| d.frontmatter().node_type() == NodeType::Project).collect();
+    let projects: Vec<&Frontmatter> =
+        frontmatters.iter().filter(|f| f.node_type() == NodeType::Project).collect();
 
-    // Resolve the current project, or emit a never-bare-error fallback (valid
+    // Resolve the current project id, or emit a never-bare-error fallback (valid
     // JSON or the human affordance, per `json`).
-    let project: &Document = if let Some(p) =
-        ctx.project.and_then(|id| docs.iter().find(|d| d.frontmatter().id() == id))
+    let project_id: Id = if let Some(fm) =
+        ctx.project.and_then(|id| frontmatters.iter().find(|f| f.id() == id))
     {
-        p
+        fm.id()
     } else if projects.is_empty() {
         return emit_fallback(json, out, NO_PROJECT_HINT.to_string(), &|o| render_no_project(o));
     } else if projects.len() == 1 {
-        projects[0]
+        projects[0].id()
     } else {
         let hint = pick_project_hint(projects.len());
         return emit_fallback(json, out, hint, &|o| render_pick_project(o, &projects));
     };
 
-    // Reuse the slice02 model (single full scan) + the check aggregation.
-    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
-    let (gates, threshold) = commands::load_gate_config(root)?;
+    // The one targeted body load (§3.5): the current project's `Document`, for
+    // its vision excerpt. Everything else composes off the index-backed model.
+    let project = store
+        .load(project_id)
+        .with_context(|| format!("loading project {project_id} for orient"))?;
+
+    // Reuse the slice02 model + the check aggregation, both over the index-backed
+    // frontmatters (no re-derivation).
     let model = Rollup::assemble(&frontmatters, &gates, threshold);
-    let findings = commands::integrity_findings(store, root, &docs)?;
+    let findings = commands::integrity_findings(store, root, &frontmatters)?;
 
     if json {
-        let view = orient_json(project, &ctx, &docs, &model, &findings);
+        let view = orient_json(&project, &ctx, &frontmatters, &model, &findings);
         writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
         return Ok(());
     }
 
-    let view = render_orient(project, &ctx, &docs, &model, &findings);
+    let view = render_orient(&project, &ctx, &frontmatters, &model, &findings);
     write!(out, "{view}")?;
     Ok(())
 }
@@ -111,7 +121,7 @@ fn emit_fallback(
 fn orient_json(
     project: &Document,
     ctx: &Context,
-    docs: &[Document],
+    frontmatters: &[Frontmatter],
     model: &Rollup,
     findings: &[IntegrityFinding],
 ) -> OrientJson {
@@ -126,23 +136,21 @@ fn orient_json(
     let vision_text = extract_vision(project.body(), fm.number());
     let vision = (!vision_text.is_empty()).then_some(vision_text);
 
-    let focus =
-        ctx.arc.and_then(|id| docs.iter().find(|d| d.frontmatter().id() == id)).map(|arc| {
-            let afm = arc.frontmatter();
-            let arc_ref = NodeRef {
-                id: afm.id(),
-                number: afm.number(),
-                name: afm.name().to_string(),
-                node_type: afm.node_type(),
-            };
-            let status = find_in_tree(&model.tree, afm.id())
-                .map(|n| n.status.as_slice())
-                .unwrap_or(&[])
-                .iter()
-                .map(Into::into)
-                .collect();
-            FocusJson { arc: (&arc_ref).into(), status }
-        });
+    let focus = ctx.arc.and_then(|id| frontmatters.iter().find(|f| f.id() == id)).map(|afm| {
+        let arc_ref = NodeRef {
+            id: afm.id(),
+            number: afm.number(),
+            name: afm.name().to_string(),
+            node_type: afm.node_type(),
+        };
+        let status = find_in_tree(&model.tree, afm.id())
+            .map(|n| n.status.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .map(Into::into)
+            .collect();
+        FocusJson { arc: (&arc_ref).into(), status }
+    });
 
     OrientJson::resolved((&project_ref).into(), vision, focus, model, findings)
 }
@@ -157,11 +165,13 @@ fn render_no_project(out: &mut dyn std::io::Write) -> anyhow::Result<()> {
 
 /// Fallback when several projects exist but none is the current context: list
 /// them and prompt a selection.
-fn render_pick_project(out: &mut dyn std::io::Write, projects: &[&Document]) -> anyhow::Result<()> {
+fn render_pick_project(
+    out: &mut dyn std::io::Write,
+    projects: &[&Frontmatter],
+) -> anyhow::Result<()> {
     writeln!(out, "odm — orient\n")?;
     writeln!(out, "{} projects, none selected:", projects.len())?;
-    for p in projects {
-        let fm = p.frontmatter();
+    for fm in projects {
         writeln!(out, "  - #{} {}", fm.number(), fm.name())?;
     }
     writeln!(out, "  → choose one: `odm use project <ref>`")?;
@@ -172,7 +182,7 @@ fn render_pick_project(out: &mut dyn std::io::Write, projects: &[&Document]) -> 
 fn render_orient(
     project: &Document,
     ctx: &Context,
-    docs: &[Document],
+    frontmatters: &[Frontmatter],
     model: &Rollup,
     findings: &[IntegrityFinding],
 ) -> String {
@@ -195,9 +205,8 @@ fn render_orient(
 
     // 2. Current focus: the current arc + its status vector.
     let _ = writeln!(s, "\nCURRENT FOCUS");
-    match ctx.arc.and_then(|id| docs.iter().find(|d| d.frontmatter().id() == id)) {
-        Some(arc) => {
-            let arc_fm = arc.frontmatter();
+    match ctx.arc.and_then(|id| frontmatters.iter().find(|f| f.id() == id)) {
+        Some(arc_fm) => {
             let status = find_in_tree(&model.tree, arc_fm.id())
                 .map(|n| status_inline(&n.status))
                 .unwrap_or_default();

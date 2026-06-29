@@ -1067,25 +1067,26 @@ fn recompose_render(store: &Store, f: &recompose::Finding) -> (&'static str, Str
     }
 }
 
-/// Aggregates every graph-level invariant over the whole corpus into a single
-/// ordered list of findings: schema + link-integrity (v1), cycles-without-tears,
-/// recomposition (orphan/stub/drift/advance-without), out-of-order/staleness,
-/// and below-threshold (soft-satisfied) dependencies.
+/// Aggregates every graph-level invariant over the given frontmatters (the
+/// index-backed projection, slice06) into a single ordered list of findings:
+/// schema + link-integrity (v1), cycles-without-tears, recomposition
+/// (orphan/stub/drift/advance-without), out-of-order/staleness, and
+/// below-threshold (soft-satisfied) dependencies. It owns no I/O beyond the gate
+/// config — the caller supplies the (reconciled) frontmatters.
 fn aggregate(
     store: &Store,
     root: &Path,
-    docs: &[Document],
+    frontmatters: &[Frontmatter],
 ) -> anyhow::Result<(Vec<CheckEntry>, Vec<ActiveTear>)> {
-    let frontmatters: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
     let by_id: HashMap<Id, &Frontmatter> = frontmatters.iter().map(|f| (f.id(), f)).collect();
     let (gates, threshold) = load_gate_config(root)?;
-    let graph = NodeGraph::build(&frontmatters);
-    let satisfaction = Satisfaction::compute(&frontmatters, &gates, threshold);
+    let graph = NodeGraph::build(frontmatters);
+    let satisfaction = Satisfaction::compute(frontmatters, &gates, threshold);
 
     let mut entries = Vec::new();
 
     // (a) schema + link-integrity + supersession (v1) — hard errors.
-    for f in odm_core::check::check(&frontmatters) {
+    for f in odm_core::check::check(frontmatters) {
         entries.push(CheckEntry {
             severity: Severity::Error,
             code: violation_label(&f.violation),
@@ -1098,7 +1099,7 @@ fn aggregate(
     }
 
     // (b) cycle-without-tear (slice02) — a hard error; passes once torn.
-    let tears = odm_core::graph::frontmatter_tears(&frontmatters);
+    let tears = odm_core::graph::frontmatter_tears(frontmatters);
     if let Err(cycle) = graph.topological_order(&tears) {
         let members = cycle.members();
         let chain: Vec<String> = members.iter().map(|&id| label_of(&by_id, id)).collect();
@@ -1122,7 +1123,7 @@ fn aggregate(
 
     // (c) recomposition (slice05) — orphan/drift are errors; stub/advance-without
     // are warnings (fail only under --strict). See `recompose_severity`.
-    for f in recompose::integrity(&frontmatters, &gates) {
+    for f in recompose::integrity(frontmatters, &gates) {
         let (code, detail, fix) = recompose_render(store, &f);
         entries.push(CheckEntry {
             severity: recompose_severity(&f.issue),
@@ -1234,8 +1235,10 @@ pub fn check(
     json: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<u8> {
-    let docs = store.load_all().context("loading the corpus to check")?;
-    let (entries, tears) = aggregate(store, root, &docs)?;
+    let (gates, _threshold) = load_gate_config(root)?;
+    let frontmatters =
+        index_frontmatters(store, &gates).context("reconciling the index to check")?;
+    let (entries, tears) = aggregate(store, root, &frontmatters)?;
 
     let errors = entries.iter().filter(|e| e.severity == Severity::Error).count();
     let warnings = entries.iter().filter(|e| e.severity == Severity::Warning).count();
@@ -1274,7 +1277,7 @@ pub fn check(
     }
 
     if entries.is_empty() {
-        writeln!(out, "check: ok ({} node(s), no problems)", docs.len())?;
+        writeln!(out, "check: ok ({} node(s), no problems)", frontmatters.len())?;
         write_active_tears(out, &tears)?;
         return Ok(EXIT_OK);
     }
@@ -1321,8 +1324,8 @@ pub(crate) struct IntegrityFinding {
     pub(crate) detail: String,
 }
 
-/// Runs the full `check` aggregation over an already-loaded corpus and returns
-/// its findings (schema, links, cycles, recomposition, staleness,
+/// Runs the full `check` aggregation over the index-backed frontmatters and
+/// returns its findings (schema, links, cycles, recomposition, staleness,
 /// soft-satisfaction) for another command to surface. `orient` filters these to
 /// errors so a structural break is unmissable (slice02 ruling 3). Reuses
 /// [`aggregate`] — integrity is never re-walked.
@@ -1333,9 +1336,9 @@ pub(crate) struct IntegrityFinding {
 pub(crate) fn integrity_findings(
     store: &Store,
     root: &Path,
-    docs: &[Document],
+    frontmatters: &[Frontmatter],
 ) -> anyhow::Result<Vec<IntegrityFinding>> {
-    let (entries, _tears) = aggregate(store, root, docs)?;
+    let (entries, _tears) = aggregate(store, root, frontmatters)?;
     Ok(entries
         .into_iter()
         .map(|e| IntegrityFinding {
@@ -1363,6 +1366,28 @@ pub(crate) fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidenc
     Ok((gates, threshold))
 }
 
+/// The index-backed corpus frontmatters: `reconcile` the `.odm/` index against
+/// the corpus (the warm path — freshens any edit) and reconstruct one
+/// `Frontmatter` per record via the index→graph adapter — **no full corpus
+/// parse**. The reconstructed frontmatters carry exactly what the graph,
+/// satisfaction, recomposition, and provenance read — id, type, number, edges,
+/// status with evidence, and (since slice06) `origin` and `decomposed` — so
+/// every consumer built on them is identical to its `load_all` baseline. Bodies
+/// stay out of the index (ODD-0014 §3.5); a consumer that needs one (only
+/// `orient`'s vision) does its own targeted [`Store::load`].
+///
+/// # Errors
+///
+/// Returns an error if the index cannot be reconciled.
+pub(crate) fn index_frontmatters(
+    store: &Store,
+    gates: &GateSets,
+) -> anyhow::Result<Vec<Frontmatter>> {
+    let snapshot =
+        odm_index::reconcile(store, &odm_index::default_index_path(store.root()))?.snapshot;
+    Ok(odm_index::frontmatters_from_records(&snapshot.records, gates))
+}
+
 /// The corpus, graph, and satisfaction needed by every derived-order query.
 ///
 /// **Index-backed (slice05):** `load` freshens the `.odm/` index (`reconcile`)
@@ -1380,9 +1405,7 @@ struct Derived {
 impl Derived {
     fn load(store: &Store, root: &Path) -> anyhow::Result<Self> {
         let (gates, threshold) = load_gate_config(root)?;
-        let snapshot =
-            odm_index::reconcile(store, &odm_index::default_index_path(store.root()))?.snapshot;
-        let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
+        let frontmatters = index_frontmatters(store, &gates)?;
         let graph = NodeGraph::build(&frontmatters);
         let satisfaction = Satisfaction::compute(&frontmatters, &gates, threshold);
         Ok(Self { frontmatters, graph, satisfaction })

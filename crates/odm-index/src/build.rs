@@ -18,7 +18,7 @@ use serde::Serialize;
 
 use crate::hash::sha256;
 use crate::record::{
-    Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind,
+    Decomposition, Digest, EdgeKind, EdgeQualifier, EdgeRef, GateState, IndexRecord, SupersedeKind,
 };
 use crate::snapshot::Snapshot;
 
@@ -151,15 +151,19 @@ fn build_record(
     let tags: Vec<String> = fm.tags().to_vec();
     let component = fm.component().map(str::to_string);
     let edges = map_edges(fm.edges());
+    let decomposed =
+        fm.decomposed().map(|d| Decomposition { on: d.on, children: d.children.clone() });
     let title = fm.name().to_string();
     let updated = fm.updated();
 
     let content_hash = sha256(bytes);
     let meta_hash = meta_fingerprint(&MetaInput {
         node_type,
+        origin: fm.origin(),
         gates: &gates,
         tags: &tags,
         edges: &edges,
+        decomposed: decomposed.as_ref(),
         title: &title,
     })?;
 
@@ -174,11 +178,13 @@ fn build_record(
         content_hash,
         meta_hash,
         number: fm.number(),
+        origin: fm.origin(),
         node_type,
         gates,
         tags,
         component,
         edges,
+        decomposed,
         title,
         updated,
     })
@@ -262,19 +268,22 @@ fn map_edges(edges: &Edges) -> Vec<EdgeRef> {
     out
 }
 
-/// The semantic-metadata fields the `meta_hash` covers (B-6 / slice04 I-3).
-/// `gates` carries per-gate **evidence**, so an evidence change invalidates the
-/// fingerprint (the graph reads it). Deliberately **excludes** the stat fields,
-/// `content_hash`, `updated` (bookkeeping), and `number`/`component`
-/// (display/filter metadata, not graph/rollup *meaning*): the meta-hash is the
-/// *derived/meaning* fingerprint slice05's early cutoff compares — a body-only
-/// edit must not change it.
+/// The semantic-metadata fields the `meta_hash` covers (B-6 / slice04 I-3 /
+/// slice06 V-2). `gates` carries per-gate **evidence** (the graph reads it);
+/// `decomposed` drives `check`'s recomposition; `origin` drives the rollup's
+/// provenance view — all *meaning*, so a change to any invalidates the
+/// fingerprint. Deliberately **excludes** the stat fields, `content_hash`,
+/// `updated` (bookkeeping), and `number`/`component` (display/filter metadata):
+/// the meta-hash is the *derived/meaning* fingerprint slice07's early cutoff
+/// compares — a body-only edit must not change it.
 #[derive(Serialize)]
 struct MetaInput<'a> {
     node_type: odm_core::NodeType,
+    origin: odm_core::Origin,
     gates: &'a [GateState],
     tags: &'a [String],
     edges: &'a [EdgeRef],
+    decomposed: Option<&'a Decomposition>,
     title: &'a str,
 }
 
@@ -290,9 +299,11 @@ fn meta_fingerprint(input: &MetaInput<'_>) -> Result<Digest, BuildError> {
 
     let canonical = MetaInput {
         node_type: input.node_type,
+        origin: input.origin,
         gates: input.gates,
         tags: &tags,
         edges: &edges,
+        decomposed: input.decomposed,
         title: input.title,
     };
     let bytes = postcard::to_allocvec(&canonical)?;

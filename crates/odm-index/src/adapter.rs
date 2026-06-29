@@ -9,15 +9,13 @@
 //! **unchanged** — so no graph or satisfaction logic is re-derived (slice04
 //! closing-report sketch; G-1 decision).
 //!
-//! Fidelity is exact for the graph + satisfaction (the fields those read — id,
-//! type, edges + qualifiers, reached gates + evidence — round-trip through the
-//! record). The reconstructed frontmatter is **not** a faithful full node: it
-//! carries a placeholder `origin` and no `decomposed`/body — fields the record
-//! does not store. Consumers that read those (`rollup`'s provenance, `check`'s
-//! recomposition) are **not** wired off this adapter yet; see the slice05
-//! closing report / bubble-up.
+//! Fidelity is exact for the graph + satisfaction (id, type, edges + qualifiers,
+//! reached gates + evidence) **and**, since slice06, for `rollup`'s provenance
+//! (`origin`) and `check`'s recomposition (`decomposed`) — the record carries
+//! both. The reconstructed frontmatter is "the full frontmatter projection minus
+//! the body" (§3.5): it has no body, so `orient`'s vision still does one targeted
+//! `store.load(project)`.
 
-use odm_core::Origin;
 use odm_core::frontmatter::{
     Dependency, Edges, Frontmatter, SupersedeKind as CoreSupersedeKind, Supersedes, TornEdge,
 };
@@ -41,8 +39,8 @@ pub fn frontmatters_from_records(records: &[IndexRecord], gates: &GateSets) -> V
 /// Reconstructs one `Frontmatter` from a record.
 fn frontmatter_from_record(record: &IndexRecord, gates: &GateSets) -> Frontmatter {
     // `created` is derivable from the ULID (the store derives the path the same
-    // way); `origin` is a placeholder — the record does not carry it (only
-    // graph/satisfaction read this frontmatter, and they ignore origin).
+    // way). `origin` round-trips from the record (slice06) — the rollup's
+    // provenance view reads it.
     let created = record.id.created_at().date_naive();
     let mut fm = Frontmatter::new(
         record.id,
@@ -51,7 +49,7 @@ fn frontmatter_from_record(record: &IndexRecord, gates: &GateSets) -> Frontmatte
         record.title.clone(),
         created,
         record.updated,
-        Origin::Planned,
+        record.origin,
     )
     .with_edges(edges_from_record(record));
 
@@ -64,6 +62,13 @@ fn frontmatter_from_record(record: &IndexRecord, gates: &GateSets) -> Frontmatte
             let _ =
                 fm.status_mut().set_gate(gate_set, &gate.gate, None, gate.evidence, record.updated);
         }
+    }
+
+    // Re-affirm the decomposition assertion (slice06) — `check`'s recomposition
+    // reads it. `affirm_decomposed` re-sorts/dedups, but the record's children
+    // are already sorted+deduped, so this round-trips identically.
+    if let Some(decomposed) = &record.decomposed {
+        fm.affirm_decomposed(decomposed.children.clone(), decomposed.on);
     }
     fm
 }

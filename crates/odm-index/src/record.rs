@@ -17,7 +17,7 @@
 
 use chrono::NaiveDate;
 use odm_core::status::Evidence;
-use odm_core::{Id, NodeType};
+use odm_core::{Id, NodeType, Origin};
 use serde::{Deserialize, Serialize};
 
 /// The 32-byte digest produced by the index's hash algorithm (SHA-256 today).
@@ -73,6 +73,10 @@ pub struct IndexRecord {
     // --- extracted metadata for in-memory filter/sort (no re-parse needed) ---
     /// The node's human number (for display; the `list` table column).
     pub number: u32,
+    /// How the node arose (`planned`/`discovered`/`amendment`) — the rollup's
+    /// provenance view (slice06). Reuses `odm_core::Origin` (string-serialized,
+    /// no `skip_serializing_if`, so postcard-safe).
+    pub origin: Origin,
     /// The node type (`project`/`arc`/`slice`/`odd`/…).
     pub node_type: NodeType,
     /// The node's state in the gate model: each reached gate with its evidence
@@ -87,10 +91,29 @@ pub struct IndexRecord {
     pub component: Option<String>,
     /// The node's outgoing dependency-relevant edges (id + kind), for graph build.
     pub edges: Vec<EdgeRef>,
+    /// The parent's guarded "decomposition complete" assertion, if affirmed —
+    /// `check`'s recomposition checks (drift / advanced-without) read it
+    /// (slice06). Absent until affirmed.
+    pub decomposed: Option<Decomposition>,
     /// The node's human title/name.
     pub title: String,
     /// The node's last-updated date.
     pub updated: NaiveDate,
+}
+
+/// A parent's affirmed "decomposition complete" assertion (ODD-0013 §4.5), as the
+/// index records it: the date and the affirmed child set.
+///
+/// This **mirrors** `odm_core`'s `Decomposition` rather than embedding it: that
+/// type's `children` field carries `#[serde(skip_serializing_if)]`, which
+/// **desyncs a non-self-describing format like postcard** (the slice02 lesson) —
+/// so the index owns a copy whose fields are always serialized.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Decomposition {
+    /// The date the child set was affirmed complete.
+    pub on: NaiveDate,
+    /// The affirmed child ids (sorted + de-duplicated, as odm-core affirms them).
+    pub children: Vec<Id>,
 }
 
 /// One outgoing edge of a node: the target id, the edge kind, and any

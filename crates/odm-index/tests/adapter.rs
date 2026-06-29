@@ -165,3 +165,72 @@ fn index_graph_adapter_equals_frontmatter_graph() {
     // The containment children (part_of) round-trip — the tree the rollup uses.
     assert_eq!(real_graph.children(a), synth_graph.children(a));
 }
+
+/// slice06 V-3: the adapter recovers `origin` (rollup provenance) and
+/// `decomposed` (check recomposition), not just the graph/satisfaction shape.
+/// We compare the two consumers that read those fields — `Rollup::assemble`'s
+/// provenance grouping and `recompose::integrity`'s drift detection — over the
+/// corpus frontmatters versus the adapter-reconstructed ones. Equality proves
+/// the record carries both faithfully (a dropped `decomposed` would erase the
+/// drift finding; a dropped `origin` would mis-group provenance).
+#[test]
+fn adapter_reconstructs_origin_decomposed() {
+    use odm_core::recompose;
+    use odm_core::rollup::Rollup;
+
+    let dir = TempDir::new().unwrap();
+    let store = Store::open(dir.path());
+    std::fs::write(dir.path().join("odm.toml"), CONFIG).unwrap();
+
+    // Varied origins so provenance has all three buckets populated.
+    let p = Id::new();
+    let mut pf = Frontmatter::new(p, 1, NodeType::Project, "P", day(), day(), Origin::Planned);
+
+    let a = Id::new();
+    let mut af = Frontmatter::new(a, 2, NodeType::Arc, "A", day(), day(), Origin::Discovered);
+    af.edges_mut().part_of = Some(p);
+
+    let kept = Id::new();
+    let mut kf =
+        Frontmatter::new(kept, 3, NodeType::Slice, "Kept", day(), day(), Origin::Amendment);
+    kf.edges_mut().part_of = Some(a);
+
+    let added = Id::new();
+    let mut addf =
+        Frontmatter::new(added, 4, NodeType::Slice, "Added", day(), day(), Origin::Discovered);
+    addf.edges_mut().part_of = Some(a);
+
+    // A affirms decomposition over {Kept} only, but {Kept, Added} are its current
+    // children → a DecompositionDrift{added:[Added]}. P affirms its real child {A}
+    // (a clean, drift-free assertion) so both Some-cases are exercised.
+    af.affirm_decomposed(vec![kept], day());
+    pf.affirm_decomposed(vec![a], day());
+
+    let real = vec![pf, af, kf, addf];
+    for fm in &real {
+        store.persist(&Document::new(fm.clone(), "# n\n")).unwrap();
+    }
+    let records = build_records(&store).unwrap();
+    let synth = frontmatters_from_records(&records, &gates());
+
+    // Provenance (reads `origin`) is identical → origin round-trips.
+    let real_rollup = Rollup::assemble(&real, &gates(), Evidence::Reproduced);
+    let synth_rollup = Rollup::assemble(&synth, &gates(), Evidence::Reproduced);
+    assert_eq!(
+        real_rollup.provenance, synth_rollup.provenance,
+        "rollup provenance identical (origin reconstructed)"
+    );
+
+    // Recomposition integrity (reads `decomposed`) is identical → decomposed
+    // round-trips. The corpus is engineered to contain a drift finding, so this
+    // is a positive signal, not a vacuous empty==empty.
+    let real_findings = recompose::integrity(&real, &gates());
+    let synth_findings = recompose::integrity(&synth, &gates());
+    assert_eq!(real_findings, synth_findings, "integrity findings identical (decomposed carried)");
+    let drift = real_findings.iter().find(|f| f.node == a).expect("a finding on A");
+    assert_eq!(
+        drift.issue,
+        recompose::Issue::DecompositionDrift { added: vec![added], removed: vec![] },
+        "the engineered drift is present (proves decomposed is not dropped)"
+    );
+}

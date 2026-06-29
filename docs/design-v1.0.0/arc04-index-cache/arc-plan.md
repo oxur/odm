@@ -87,15 +87,15 @@ the tree. This is the A4 capability the arc's slices must compose into.
 | A-1 | slice01 (record + persistence) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `69952ce` (8/8); CDC-verified on structure (`slice01-record-persistence/cdc-verification.md`); cargo rows pending CI | → `done` when slice01 reproduces (CI green). **Convention:** Status ∈ open/done/deferred/no-op; the evidence *strength* lives in the Evidence column. |
 | A-2 | slice02 (cold-path build) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `d03d5d0` (9/9, line cov 98.68%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (warm-path racy-correct delta) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report `e53bc44` (10/10, line cov 98.36%); awaiting CDC reproduce (`attested → reproduced`) | → `done` when slice03 reproduces (CI green). The racy `>=` content-hash fallback (the correctness core) is in. |
-| A-4 | slice04 (seam a: enrich + maps + index-backed `list`) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | seam (a) attested: CC closing-report `2dafaa1` (7/10); CDC-verified on structure (`slice04-enrich-and-wire/cdc-verification.md`); cargo rows pending CI | → `done` when seam (a) reproduces (CI green). Seams (b)+(c) carried to slice05 (the continuation). |
-| A-5 | slice05 (index→graph adapter + derived-order readers) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | adapter + derived-order attested: CC closing-report `89a2223` (4/7 — G-1 adapter, G-2 `next`/`blocked`/`path`, G-6, G-7); CDC-verified on structure (`slice05-graph-adapter-and-views/cdc-verification.md`); cargo rows pending CI | → `done` when it reproduces (CI green). Crux adapter delivered + proven (graph == baseline graph). `check`/`rollup`/`orient` → slice06. |
-| A-6 | slice06 (enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`; slice05 continuation) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested-on-close. Carries G-3/G-4/G-5 from slice05; `FORMAT_VERSION 2 → 3`. Closes A-4 + A-5 on close. |
+| A-4 | slice04 (seam a: enrich + maps + index-backed `list`) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | seam (a) attested: CC closing-report `2dafaa1` (7/10); CDC-verified on structure (`slice04-enrich-and-wire/cdc-verification.md`); cargo rows pending CI. **Seams (b)+(c) now delivered** — slice06 wired the graph readers + composed views (closing-report this slice). | → `done` when seam (a) reproduces (CI green); functionally closed by slice06. |
+| A-5 | slice05 (index→graph adapter + derived-order readers) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | adapter + derived-order attested: CC closing-report `89a2223` (4/7 — G-1 adapter, G-2 `next`/`blocked`/`path`, G-6, G-7); CDC-verified on structure (`slice05-graph-adapter-and-views/cdc-verification.md`); cargo rows pending CI. **The deferred `check`/`rollup`/`orient` are now wired** (slice06, A-6). | → `done` when it reproduces (CI green); the deferral it carried is closed by slice06. |
+| A-6 | slice06 (enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`; slice05 continuation) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report this slice (8/8; line cov odm-index 97.49% / odm-cli 93.63%); `FORMAT_VERSION 2 → 3` (v2 self-heals, no migration code); `aggregate` takes `&[Frontmatter]`; shared `index_frontmatters` feeds `check`/`rollup`/`orient` + `Derived`; one targeted `store.load` for `orient`'s vision body. Awaiting CDC reproduce. | attested-on-close. Carries G-3/G-4/G-5 from slice05. **Closes A-4 + A-5; makes A-12 satisfiable** (every read path index-backed). |
 | A-7 | slice07 (early-cutoff invalidation) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-8 | slice08 (benchmark) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-9 | **Compose:** first run builds + persists; a subsequent run touches only the delta (cost scales with the change, not the corpus) | arc-scale demo: cold run, then warm run over an unchanged-but-one corpus; observe delta-only work | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** change detection is racy-git-correct end-to-end — a same-tick, same-size in-place edit is caught (would fail under a stat-only path) | arc-scale demo: craft the racy case; warm run detects it | serious | arc-plan | open | | reproduce at arc scale |
 | A-11 | **Compose:** a missing/corrupt index self-heals (rebuilt from node files; carries no authority) | arc-scale demo: delete/corrupt `.odm/` index; next run rebuilds; results identical | serious | arc-plan | open | | reproduce at arc scale |
-| A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | | reproduce at arc scale |
+| A-12 | **Compose:** `list`/`orient`/graph-build read the index and match the full-scan baseline behavior | arc-scale demo: same outputs index-backed vs. forced full-scan | serious | arc-plan | open | **Satisfiable as of slice06 (A-6):** every read path — `list`, derived-order (`next`/`blocked`/`path`), `check`, `rollup`, `orient` — is index-backed and matches baseline (per-consumer slice-scale tests). | reproduce at arc scale (the forced-full-scan-vs-index demo remains for arc close). |
 | A-13 | **Compose:** the 100k-node benchmark promotes ODD-0014's `[P]` perf claims to `[E]` | arc-scale demo: run slice08's harness; record the numbers | serious | arc-plan | open | | reproduce at arc scale |
 | A-14 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
@@ -130,6 +130,19 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.11 — 2026-06-29
+**slice06 closed (A-6 attested; consumer-wiring done).** Enriched `IndexRecord` with
+`origin` + `decomposed` (the grep-verified two-field gap — `Decomposition` mirrored
+index-side to dodge postcard `skip_serializing_if` desync), bumped `FORMAT_VERSION 2 → 3`
+(v2 self-heals, no migration code), extended the adapter (provenance + recomposition
+fidelity), refactored `check`'s `aggregate` to `&[Frontmatter]`, and wired `check`/
+`rollup`/`orient` off the shared `index_frontmatters` (reconcile-then-read) — `orient`
+keeping one targeted `store.load` for the vision body (§3.5). 8/8 rows attested; line cov
+odm-index 97.49% / odm-cli 93.63%; clippy `-D warnings` clean; no `unsafe`. **A-4 + A-5
+close** (their deferred seams delivered) and **A-12 is satisfiable** (every read path
+index-backed, matches baseline). No new arc-level finding. CC closing-report:
+`slice06-views-and-check/closing-report.md`. Cargo/coverage rows reproduce via CI.
 
 ### v1.10 — 2026-06-29
 **Renumber executed for the slice05 split (CDC, per v1.9's operator request; Duncan's

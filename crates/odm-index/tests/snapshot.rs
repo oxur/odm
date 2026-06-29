@@ -8,8 +8,8 @@ use std::str::FromStr;
 
 use chrono::NaiveDate;
 use odm_core::status::Evidence;
-use odm_core::{Id, NodeType};
-use odm_index::record::{EdgeKind, EdgeRef, GateState, IndexRecord};
+use odm_core::{Id, NodeType, Origin};
+use odm_index::record::{Decomposition, EdgeKind, EdgeRef, GateState, IndexRecord};
 use odm_index::snapshot::{FORMAT_VERSION, HASH_ALGO, Load, MAGIC, RebuildReason, Snapshot};
 use proptest::prelude::*;
 use tempfile::TempDir;
@@ -38,6 +38,7 @@ fn sample() -> IndexRecord {
         content_hash: [0xAB; 32],
         meta_hash: [0xCD; 32],
         number: 7,
+        origin: Origin::Discovered,
         node_type: NodeType::Slice,
         gates: vec![
             GateState { gate: "planned".to_string(), evidence: Evidence::Reproduced },
@@ -53,6 +54,7 @@ fn sample() -> IndexRecord {
             },
             EdgeRef { target: id('C'), kind: EdgeKind::PartOf, qualifier: None },
         ],
+        decomposed: Some(Decomposition { on: day(), children: vec![id('B'), id('C')] }),
         title: "Store layer".to_string(),
         updated: day(),
     }
@@ -166,6 +168,10 @@ fn arb_evidence() -> impl Strategy<Value = Evidence> {
     ]
 }
 
+fn arb_origin() -> impl Strategy<Value = Origin> {
+    prop_oneof![Just(Origin::Planned), Just(Origin::Discovered), Just(Origin::Amendment)]
+}
+
 prop_compose! {
     fn arb_record()(
         id in arb_id(),
@@ -178,17 +184,19 @@ prop_compose! {
         content_hash in proptest::array::uniform32(any::<u8>()),
         meta_hash in proptest::array::uniform32(any::<u8>()),
         number in any::<u32>(),
+        origin in arb_origin(),
         node_type in arb_node_type(),
         gates in proptest::collection::vec(("[a-z-]{1,12}", arb_evidence()), 0..4),
         tags in proptest::collection::vec("[a-z]{1,8}", 0..4),
         component in proptest::option::of("[a-z-]{1,10}"),
         edges in proptest::collection::vec((arb_id(), arb_edge_kind()), 0..5),
+        decomposed in proptest::option::of((arb_date(), proptest::collection::vec(arb_id(), 0..3))),
         title in ".{0,40}",
         updated in arb_date(),
     ) -> IndexRecord {
         IndexRecord {
             id, rel_path, mtime_secs, mtime_nsec, size, inode, mode,
-            content_hash, meta_hash, number, node_type,
+            content_hash, meta_hash, number, origin, node_type,
             gates: gates
                 .into_iter()
                 .map(|(gate, evidence)| GateState { gate, evidence })
@@ -198,6 +206,7 @@ prop_compose! {
                 .into_iter()
                 .map(|(target, kind)| EdgeRef { target, kind, qualifier: None })
                 .collect(),
+            decomposed: decomposed.map(|(on, children)| Decomposition { on, children }),
             title, updated,
         }
     }
