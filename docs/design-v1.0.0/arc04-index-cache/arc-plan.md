@@ -46,10 +46,19 @@ the tree. This is the A4 capability the arc's slices must compose into.
 3. **slice03 — warm-path change detection (the racy-correct delta).** Load + verify
    header/checksum; `lstat`-compare on size/mtime/mode; the `>=` racy test → content-hash
    fallback; deletion detection; re-stamp + persist on change. The correctness core.
-4. **slice04 — in-memory filter/sort + wire consumers.** Build type/tag/gate/edge maps
-   on load (filter "by gate" = by reached gate — odm has no scalar state, per the
-   slice01 bubble-up, v1.2); point `list`, `orient`, and the graph build at the index
-   instead of a fresh walk; confirm identical behavior to the full-scan baseline.
+4. **slice04 — enrich record + in-memory filter/sort + wire consumers.** Enrich
+   `IndexRecord` so `gates` carries per-gate **evidence** (not just reached names) —
+   `FORMAT_VERSION 1 → 2` (an old index → `RebuildNeeded(VersionMismatch)` → cold
+   rebuild, via slice01's self-heal) — so the graph build can compute evidence-leveled
+   satisfaction off the index. Build type/tag/gate/edge maps on load (filter "by gate"
+   = by reached gate — odm has no scalar state, per the slice01 bubble-up, v1.2); an
+   index→graph adapter feeds the DAG + satisfaction from index records (no frontmatter
+   parse). Point `list`, the graph readers (`next`/`blocked`/`path`/`check`), and the
+   composed views (`rollup`/`orient`) at the index (via `reconcile`-then-read);
+   `orient` loads only the *current project's* `Document` for the vision body (one
+   targeted load — the index deliberately carries no bodies, 0014 §3.5). Confirm
+   identical behavior to the full-scan baseline. *(Large slice — split seam, if needed
+   at execution: enrich+maps+`list` | graph adapter+readers | composed views.)*
 5. **slice05 — early-cutoff invalidation.** Distinguish `content_hash` (did the file
    change?) from `meta_hash` (did its *meaning* change?); a body-only change updates the
    record but recomputes nothing downstream.
@@ -110,6 +119,20 @@ Ledger per slice; CC implements, CDC verifies every row; cargo rows via CI / loc
 closes with its own `closing-report.md` + composition check (Part V).
 
 ## Version History
+
+### v1.6 — 2026-06-29
+**slice04 scope resolved (CDC planning + Duncan).** A design fork surfaced while
+drawing up slice04: the index carries edges + reached-gate *names* but **not** per-gate
+evidence (the graph commands need it for evidence-leveled satisfaction) or bodies
+(`orient` needs the vision body). Decision (Duncan, Option A): **enrich `IndexRecord`
+with per-gate evidence → `FORMAT_VERSION 1 → 2`**, and wire *all* consumers — `list`,
+the graph readers, and the composed views — off the index, with `orient` doing one
+targeted project-body load. The slice04 body line is updated accordingly. Kept as **one
+slice** (not split) to avoid a mid-sequence renumber that would break the `A-10`/`A-12`
+arc-ledger back-references in slices 01–03's closed bubble-ups; a split seam is named in
+the slice-doc as the execution-time fallback. The slice02 `FORMAT_VERSION` freeze
+watch-item is **discharged here** (the bump the watch anticipated). Surfaced by: CDC
+planning of slice04, not a slice bubble-up.
 
 ### v1.5 — 2026-06-26
 **slice03 bubble-up** (A-3 attested; A-12 accrual). slice03 delivered the warm path
