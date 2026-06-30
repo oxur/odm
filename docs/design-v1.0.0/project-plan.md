@@ -61,14 +61,14 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 - **A3 — COMPLETE.** All four slices (cleanup, rollup, orient, `--json`) CDC-verified
   and merged to `main`; pushed for CI. The arc-close recomposition check passed with no
   silent drops (`arc03-rollup-and-orient/arc-close.md`). **MVP (A1–A3) is done.**
-- **A4 — Index & cache: CLOSED (composed; CI-pending).** All 8 slices CDC-verified; the
-  arc-close composition check passed with an independent arc-gate review
-  (`arc04-index-cache/closing-report.md`, PASS-WITH-NOTES). The index/cache capability
-  lands: `list`/`orient`/graph-build/`check`/`rollup` are index-backed and match baseline,
-  change detection is racy-git-correct, the index self-heals, and the 100k benchmark
-  promoted ODD-0014's `[P]` perf claims to `[E]`. Executable/number rows route to CI
-  (sandbox has no 1.85+ toolchain); P-4 flips `done` on CI-green + merge. Forward-carried:
-  the **adapter-fidelity invariant** is now a hard gate in `arc05`'s arc-plan (v1.2).
+- **A4 — Index & cache: ✅ CLOSED (composed; CI-green 2026-06-30).** All 8 slices
+  CDC-verified; the arc-close composition check passed with an independent arc-gate review
+  (`arc04-index-cache/closing-report.md`, PASS-WITH-NOTES); **CI green across slices 01–08
+  flipped every row to `reproduced`** (P-4 `done`). The index/cache capability lands:
+  `list`/`orient`/graph-build/`check`/`rollup` are index-backed and match baseline, change
+  detection is racy-git-correct, the index self-heals, and the 100k benchmark promoted
+  ODD-0014's `[P]` perf claims to `[E]`. Forward-carried: the **adapter-fidelity invariant**
+  is now a hard gate in `arc05`'s arc-plan (v1.2).
 - **A5 / A6 — PLANNED, not started.** Arc-plans drafted this session
   (`arcNN-<slug>/arc-plan.md`); per *plan late, plan deep*, no per-slice doc sets exist
   yet — those are written when each arc becomes the active work.
@@ -138,7 +138,7 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-1 | A1 (substrate & node CRUD) closed + composed | ptr: arc01 close | correctness | project-plan | done | merged to `main`, CI-green | **Disclosed gap:** A1 predates the v2.0 arc-close discipline — no formal arc `closing-report.md`. Composed-in-fact (the MVP runs on it). |
 | P-2 | A2 (graph, gates & derived order) closed + composed | ptr: arc02 close | correctness | project-plan | done | merged to `main`, CI-green | Same disclosed gap as P-1 (no formal arc closing-report). |
 | P-3 | A3 (rollup & orient) closed + composed | ptr: `arc03-rollup-and-orient/arc-close.md` | correctness | project-plan | done | arc-close composition check passed, no silent drops; merged | A3's bubble-up forced no project-plan change (recorded). (File is `arc-close.md`; canonical name is `closing-report.md`.) |
-| P-4 | A4 (index & cache) closed + composed | ptr: `arc04-index-cache/closing-report.md` | correctness | project-plan | open | attested: arc-close done (`arc04-index-cache/closing-report.md`) — 8/8 slices CDC-verified, class-(b) composition rows A-9…A-13 reproduced at arc scale **on structure** (end-to-end tests span the slices), independent arc-gate review **PASS-WITH-NOTES**; ODD-0014 `[P]`→`[E]`. Executable/number rows pending CI. | → `done` on CI-green + merge. Composed-in-fact now; the green checkmark is CI's. Delivered set is *broader* than the roadmap line (also `check`+`rollup`) — over-delivery, not drift. |
+| P-4 | A4 (index & cache) closed + composed | ptr: `arc04-index-cache/closing-report.md` | correctness | project-plan | done | **reproduced/reconciled:** arc-close done (`arc04-index-cache/closing-report.md`) — 8/8 slices CDC-verified, class-(b) composition rows A-9…A-13 reproduced at arc scale (structural CDC + executable **CI green 2026-06-30**), independent arc-gate review **PASS-WITH-NOTES**; ODD-0014 `[P]`→`[E]`. | Delivered set is *broader* than the roadmap line (also `check`+`rollup`) — over-delivery, not drift. |
 | P-5 | A5 (reconciliation) closed + composed | ptr: arc05 closing-report | correctness | project-plan | open | | attested-on-close. |
 | P-6 | A6 (migrate, self-host & PM-skill) closed + composed | ptr: arc06 closing-report | correctness | project-plan | open | | attested-on-close. |
 | P-7 | **Compose (DoD):** a fresh session reaches full situational awareness from `odm orient` alone | project-scale demo: fresh session, `odm orient` only | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now; reproduce at project scale on close. The headline DoD. |
@@ -155,6 +155,13 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.5 — 2026-06-30
+**CI green — A4 fully closed (P-4 `done`).** Duncan confirmed workspace CI is green across
+Arc 04's slices 01–08, discharging the "CI-pending" holding state from v1.4: the arc's
+attested cargo/number rows and the executable half of the composition rows are now
+`reproduced` (arc-plan v1.15, closing-report CI banner). P-4 (A4 closed + composed) flips
+open → `done`. No DoD re-scope. Surfaced by: operator CI-green confirmation.
 
 ### v1.4 — 2026-06-30
 **A4 (Index & cache) closed + composed (CI-pending).** Arc 04 reached its arc-close: all 8

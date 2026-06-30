@@ -16,6 +16,15 @@
 > structurally here; the executable pass is the CI gate. This register is the honest
 > floor: "the demonstrations are built and span the slices; the green checkmark is CI's."
 
+> **CI GREEN — 2026-06-30 (operator-confirmed).** The "executable reproduction pending CI"
+> caveat throughout this report is now **discharged**: the workspace CI ran green across
+> slices 01–08, so every `attested`-pending-CI cargo/number row and the executable half of
+> the class-(b) composition rows (A-9…A-13, already reproduced *structurally* by CDC in
+> this report) are now **reproduced**. Arc Ledger A-1…A-14 are `done` (arc-plan v1.15);
+> project ledger P-4 is `done` (project-plan v1.5). **Arc 04 is fully closed.** The body
+> below is preserved as written at close (it reads "pending CI"); this banner is the
+> reconciliation, not a rewrite.
+
 ## 1. Capability — restated, and the verdict
 
 **Capability (from `arc-plan.md`):** a read-acceleration mini-infra — the `odm-index`

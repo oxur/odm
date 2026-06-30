@@ -93,16 +93,29 @@ run reconcile on odm's own corpus once it lands.
 
 ## Open design questions (resolve in slice docs)
 
-- **Probe safety/sandboxing.** A shell probe runs arbitrary commands — scope the trust
-  model (probes are author-declared, run locally) and whether any guardrails are needed.
+- **Probe safety/sandboxing.** ✅ **Resolved (slice01).** Probes are **author-declared and
+  run locally with the user's own privileges** — the same trust model as a git hook,
+  `make`, or `build.rs` in your own repo. The MVP adds **no sandbox**; the trust boundary
+  is "you ran a command written in your own node files," documented explicitly in code +
+  the slice-doc. Guardrails considered and deferred (a `--no-exec`/dry-run, an allowlist)
+  to an untrusted-/multi-author-corpus scenario, which is out of MVP scope.
 - **Schedule mechanism.** In-tool scheduler vs. emit-for-cron/CI — decide in slice07;
   lean toward the latter (files-are-the-source ethos, no daemon).
-- **Program-level acceptance facts.** ODD-0015 A5 calls for program-level acceptance
-  (the MVP DoD as tracked facts) — fold into slice01's `desired_facts` model or a thin
-  layer above it; settle when slice01 is planned.
+- **Program-level acceptance facts.** ✅ **Resolved (slice01): no separate layer.**
+  Program-/arc-level acceptance facts are just `desired_facts` declared on the project (or
+  arc) node — the `desired_facts` model is uniform across node types. One mechanism; the
+  MVP DoD can be encoded as `desired_facts` on the project node, which `reconcile` then
+  checks (a dogfooding hook for A6).
 - **Deferred representation.** The exact schema for `deferred` (status variant vs.
   marker + predicate) is the Q-A3-1 question A3 deliberately left open until "the
-  schema/metadata firms up" — settle it in slice06, not before.
+  schema/metadata firms up" — settle it in slice06, not before. (Note: a `Deferred` model
+  + rollup slot **already exist** in `odm-core/rollup.rs` — slice06 fills, not greenfields.)
+- **Index integration of `desired_facts` (the carried invariant's trigger).** Whether
+  `reconcile` reads `desired_facts` *via the index* (consistent with A4, → IndexRecord +
+  adapter + fidelity test + `FORMAT_VERSION` bump) or directly from the store is a
+  **slice02/03 decision** (the probe-runner / `reconcile` are the first readers). slice01
+  adds the field to the frontmatter only; the slice that first reads it off the index must
+  honor the adapter-fidelity invariant below. Flagged so it is not missed.
 
 ## Invariants carried in from earlier arcs
 
@@ -127,6 +140,19 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.3 — 2026-06-30
+**A5 activated; slice01-relevant open questions resolved (plan-deepening).** A5 is now the
+active arc (chosen over A6 after A4's CI-green close). Per *plan late, plan deep*, deepened
+the plan as slice01 is drawn up: **resolved** the probe-safety question (author-declared,
+local, user-privilege; no MVP sandbox) and the program-level-acceptance-facts question
+(no separate layer — `desired_facts` on the project/arc node). Added a fourth open question
+naming the **index-integration trigger** for the carried adapter-fidelity invariant
+(slice02/03, not slice01). Recorded two **already-built** hooks found while grounding the
+slice: the `affects` edge (`EdgeKind::Affects`, `frontmatter.affects`, graph + check
+dangling-ref) and the `Deferred` rollup model both exist (A2/A3) — so slices 05 and 06 are
+*lighter than greenfield* (they add the **semantics**, not the model). No structural
+re-break; the 7-slice breakdown holds. Surfaced by: drawing up slice01.
 
 ### v1.2 — 2026-06-30
 **Carried in the adapter-fidelity invariant from A4's close (project-level bubble-up).**
