@@ -68,7 +68,7 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
-| A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`21cfbf1`; 7/7; cov odm-reconcile 96% / odm-core desired.rs 100%); CDC-verified on structure (`slice01-desired-facts-probe/cdc-verification.md`); three-way `ProbeOutcome` + exec-directly shell probe; cargo rows pending CI. | → `done` when slice01 reproduces (CI green). |
 | A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -140,6 +140,25 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.4 — 2026-06-30
+**slice01 closed (A-1 attested; arc opener in) + CDC plan-keeping.** Landed `desired_facts`
+(`odm-core::desired`: `DesiredFact`/`ProbeSpec`/`ShellExpect`), the three-way
+`ProbeOutcome` (`Holds`/`Drifted`/`Error`) + object-safe `Probe` trait, and the **shell**
+probe in the new `odm-reconcile` crate. 7/7 rows attested; clippy clean; no `unsafe`; cov
+96%/100%. CDC-verified on structure (cargo rows pending CI). Two design rulings recorded:
+(1) the shell probe **execs directly** (whitespace-tokenized argv), *not* `sh -c` — derived
+from the non-negotiable `Error ≠ Drifted` split (`sh -c` makes a missing binary exit 127 = a
+divergence). Bounded cost: no shell metacharacters; **carry-forward** — if quoted/structured
+args are ever needed, add an explicit `argv: Vec<String>` shell-probe form (not `sh -c`),
+in a later slice. (2) The frontmatter `desired_facts` field *correctly* uses
+`skip_serializing_if` (YAML is self-describing — the A4 no-skip lesson is **postcard**-only);
+the always-serialized obligation lands on the **index record**, not the frontmatter.
+**Sharpens slice02/03:** `desired_facts` is a *nested structured* field, so the first index
+reader's adapter + fidelity-test extension (the carried invariant) is more than a scalar
+add. *Plan-keeping note:* CC wrote the bubble-up in its closing-report but did not propagate
+it here; CDC recorded A-1 + this entry (the PM Part IV slice-close arc-plan-update step).
+Surfaced by: slice01 close + CDC verification.
 
 ### v1.3 — 2026-06-30
 **A5 activated; slice01-relevant open questions resolved (plan-deepening).** A5 is now the
