@@ -40,7 +40,7 @@
 
 ## Closure
 
-Closed at commit `RECPL03` on 2026-06-30. Verified by: CC (self-attested); CDC to
+Closed at commit `266fc38` on 2026-06-30. Verified by: CC (self-attested); CDC to
 reproduce. Rows: 6. Done: 6. Deferred: 0. No-op: 0.
 
 > Per LEDGER-DISCIPLINE v2.0 §A, all evidence is **attested** (CC built and ran
