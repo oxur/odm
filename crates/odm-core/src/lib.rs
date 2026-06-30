@@ -24,6 +24,7 @@
 #![deny(missing_docs)]
 
 pub mod check;
+pub mod desired;
 pub mod frontmatter;
 pub mod gates;
 pub mod graph;
@@ -36,6 +37,7 @@ pub mod rollup;
 pub mod satisfaction;
 pub mod status;
 
+pub use desired::{DesiredFact, ProbeSpec, ShellExpect};
 pub use id::{Id, IdParseError};
 pub use node::Node;
 pub use node_type::{NodeType, ParseNodeTypeError};

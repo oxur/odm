@@ -22,6 +22,8 @@ Member crates, in dependency / publish order (see ODD-0013 §8):
 | **odm-graph** | — | Pure DAG/tree engine over abstract ids: edges, topo-sort, cycles, readiness. |
 | **odm-core** | — | Domain model: node types, ULID identity, frontmatter schema, edge & gate semantics. |
 | **odm-store** | — | Persistence: `nodes/YYYY/MM/<ULID>.md`, atomic writes, git (`gix`), `odm.toml`. |
+| **odm-index** | — | Persisted, derived stat-cache: the index snapshot record + format (Arc 04). |
+| **odm-reconcile** | — | Desired-state facts + probes: the `Probe` trait, three-way `ProbeOutcome`, the shell probe (Arc 05). |
 | **odm-cli** | — | clap command surface, `--json`, output (oxur-cli / tabled). |
 | **oxur-odm** | `odm` | Umbrella: publishes the `odm` binary; re-exports the library API. |
 
@@ -29,8 +31,9 @@ Member crates, in dependency / publish order (see ODD-0013 §8):
 > binary reports `--version` only); real behavior lands slice by slice under
 > `docs/design-v1.0.0/`. The pre-rebuild crate is preserved at
 > `legacy/oxur-odm` (package `oxur-odm-legacy`), excluded from the workspace and
-> kept as the harvest source — do not delete it. `odm-index` / `odm-reconcile`
-> / `odm-migrate` are deferred to the arcs that need them (not yet created).
+> kept as the harvest source — do not delete it. `odm-index` (Arc 04) and
+> `odm-reconcile` (Arc 05) now exist, created by the arcs that needed them;
+> `odm-migrate` remains deferred to its arc (not yet created).
 
 Shared dependency versions live in `[workspace.dependencies]`; crate manifests
 reference them with `<dep>.workspace = true` (no version literals). Lints are

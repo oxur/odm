@@ -4,9 +4,8 @@
 //! [`Document::parse`] splits and deserializes a node file; [`Document::emit`]
 //! serializes it back in the canonical field order of ODD-0013 §2.3. The
 //! headline invariant is **`parse ∘ emit == identity`**: emitting a document
-//! and parsing the result yields an equal document, including any keys this
-//! slice does not yet model (`status`, `desired_facts`, …), which are
-//! preserved verbatim.
+//! and parsing the result yields an equal document, including any keys not yet
+//! modeled by the schema, which are preserved verbatim.
 //!
 //! # YAML library isolation
 //!
@@ -18,6 +17,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_norway::Mapping;
 
+use crate::desired::DesiredFact;
 use crate::{Id, NodeType, Origin};
 
 /// The frontmatter delimiter line.
@@ -153,10 +153,10 @@ impl Document {
 ///
 /// Fields are declared — and therefore emitted — in canonical order: `id`,
 /// `number`, `type`, `name`, `created`, `updated`, `tags`, `component`,
-/// `origin`, `reserved`, `retired`, `edges`, `status`, `decomposed`. Any keys
-/// not modeled here (e.g. `desired_facts`) are captured in a hidden catch-all
-/// and re-emitted last, so they survive a round-trip until their owning slices
-/// model them.
+/// `origin`, `reserved`, `retired`, `edges`, `status`, `decomposed`,
+/// `desired_facts`. Any keys not modeled here are captured in a hidden
+/// catch-all and re-emitted last, so they survive a round-trip until their
+/// owning slices model them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frontmatter {
     /// Stable ULID identity.
@@ -198,8 +198,15 @@ pub struct Frontmatter {
     /// affirmed. Typed since arc02 slice05.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     decomposed: Option<Decomposition>,
+    /// The node's declared desired-state facts (ODD-0013 §5.2): checkable
+    /// claims about the world that `reconcile` probes for drift. Absent/empty is
+    /// the default. Typed since arc05 slice01 (previously preserved as an
+    /// unknown key). Skipped on emit when empty, so a fact-free node round-trips
+    /// to byte-identical frontmatter.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    desired_facts: Vec<DesiredFact>,
     /// Keys not yet modeled, preserved verbatim across a round-trip (forward
-    /// compatibility for `desired_facts`, …).
+    /// compatibility for schema additions not yet typed).
     #[serde(flatten)]
     extra: Mapping,
 }
@@ -231,6 +238,7 @@ impl Frontmatter {
             edges: Edges::default(),
             status: crate::status::Status::new(),
             decomposed: None,
+            desired_facts: Vec::new(),
             extra: Mapping::new(),
         }
     }
@@ -260,6 +268,13 @@ impl Frontmatter {
     #[must_use]
     pub fn with_edges(mut self, edges: Edges) -> Self {
         self.edges = edges;
+        self
+    }
+
+    /// Sets the declared desired-state facts (ODD-0013 §5.2).
+    #[must_use]
+    pub fn with_desired_facts(mut self, desired_facts: Vec<DesiredFact>) -> Self {
+        self.desired_facts = desired_facts;
         self
     }
 
@@ -329,6 +344,12 @@ impl Frontmatter {
         &self.edges
     }
 
+    /// The node's declared desired-state facts (empty if none are declared).
+    #[must_use]
+    pub fn desired_facts(&self) -> &[DesiredFact] {
+        &self.desired_facts
+    }
+
     /// The retirement marker, if the node has been retired.
     #[must_use]
     pub fn retired(&self) -> Option<&Retirement> {
@@ -364,8 +385,8 @@ impl Frontmatter {
         self.decomposed = Some(Decomposition { on, children });
     }
 
-    /// The number of preserved-but-unmodeled top-level keys (e.g.
-    /// `desired_facts`).
+    /// The number of preserved-but-unmodeled top-level keys (forward
+    /// compatibility for schema additions not yet typed).
     #[must_use]
     pub fn unknown_key_count(&self) -> usize {
         self.extra.len()

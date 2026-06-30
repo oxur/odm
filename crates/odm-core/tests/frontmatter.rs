@@ -9,6 +9,7 @@
 use std::str::FromStr;
 
 use chrono::NaiveDate;
+use odm_core::desired::{DesiredFact, ProbeSpec, ShellExpect};
 use odm_core::frontmatter::{
     Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
     Supersedes, TornEdge,
@@ -247,9 +248,10 @@ fn mutators_and_retirement_roundtrip() {
 
 #[test]
 fn unknown_keys_preserved_through_roundtrip() {
-    // `status` became a typed field in arc02 slice04, so it is no longer an
-    // "unknown" key; `desired_facts` is still unmodeled and must survive. Both
-    // still round-trip — one typed, one preserved.
+    // `status` became a typed field in arc02 slice04 (and `desired_facts` in
+    // arc05 slice01), so neither is an "unknown" key any longer. A genuinely
+    // unmodeled key (`provenance_note`) must still survive verbatim. Both still
+    // round-trip — one typed, one preserved.
     let text = format!(
         "---\n\
          id: {SAMPLE_ULID}\n\
@@ -264,13 +266,11 @@ fn unknown_keys_preserved_through_roundtrip() {
         \x20 built:\n\
         \x20   reached: 2026-06-12\n\
         \x20   evidence: reproduced\n\
-         desired_facts:\n\
-        \x20 - id: db-wired\n\
-        \x20   describe: prod connects\n\
+         provenance_note: hand-authored\n\
          ---\nbody\n"
     );
     let doc = Document::parse(&text).expect("valid");
-    // Only `desired_facts` is unknown now; `status` is typed.
+    // Only `provenance_note` is unknown now; `status` is typed.
     assert_eq!(doc.frontmatter().unknown_key_count(), 1);
     assert!(doc.frontmatter().status().has_reached("built"));
 
@@ -279,7 +279,7 @@ fn unknown_keys_preserved_through_roundtrip() {
     // Both keys are still literally present after emission.
     let emitted = doc.emit().expect("emit");
     assert!(emitted.contains("status:"));
-    assert!(emitted.contains("desired_facts:"));
+    assert!(emitted.contains("provenance_note: hand-authored"));
     assert!(emitted.contains("evidence: reproduced"));
 }
 
@@ -522,7 +522,7 @@ proptest! {
         // to deserialize into their typed shapes rather than land in `extra`).
         let modeled = ["id", "number", "type", "name", "created", "updated",
                        "tags", "component", "origin", "reserved", "retired",
-                       "edges", "status", "decomposed"];
+                       "edges", "status", "decomposed", "desired_facts"];
         let mut yaml = String::from(
             "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\nnumber: 1\ntype: note\nname: n\n\
              created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n",
@@ -541,5 +541,147 @@ proptest! {
         prop_assert_eq!(doc.frontmatter().unknown_key_count(), count);
         let reparsed = Document::parse(&doc.emit()?)?;
         prop_assert_eq!(reparsed, doc);
+    }
+}
+
+// ----- F-1 / F-2 (arc05 slice01): desired_facts schema + positioned errors ---
+
+fn shell_fact(id: &str, describe: &str, run: &str, exit: i32, stdout: Option<&str>) -> DesiredFact {
+    DesiredFact {
+        id: id.to_string(),
+        describe: describe.to_string(),
+        probe: ProbeSpec::Shell {
+            run: run.to_string(),
+            expect: ShellExpect { exit, stdout_contains: stdout.map(str::to_string) },
+        },
+    }
+}
+
+fn doc_with_facts(node_type: NodeType, facts: Vec<DesiredFact>) -> Document {
+    let fm = Frontmatter::new(
+        Id::from_str(SAMPLE_ULID).unwrap(),
+        1,
+        node_type,
+        "n",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    )
+    .with_desired_facts(facts);
+    Document::new(fm, "body\n")
+}
+
+#[test]
+fn desired_facts_round_trip() {
+    // A project node carrying program-level acceptance facts (no separate
+    // layer — arc-plan v1.3): one fact checks exit only, one also matches stdout.
+    let project = doc_with_facts(
+        NodeType::Project,
+        vec![
+            shell_fact(
+                "db-reachable",
+                "the prod DB answers a trivial query",
+                "pg_isready -h prod -t 2",
+                0,
+                None,
+            ),
+            shell_fact(
+                "git-clean",
+                "the working tree is clean",
+                "git status --porcelain",
+                0,
+                Some(""),
+            ),
+        ],
+    );
+    // A slice node carrying a single fact — the model is uniform across types.
+    let slice = doc_with_facts(
+        NodeType::Slice,
+        vec![shell_fact("built", "the crate builds", "cargo build", 0, None)],
+    );
+    // The default: a node that declares nothing.
+    let empty = doc_with_facts(NodeType::Note, vec![]);
+
+    for doc in [&project, &slice, &empty] {
+        // parse ∘ emit == identity, on every node type.
+        let reparsed = Document::parse(&doc.emit().expect("emit")).expect("parse");
+        assert_eq!(&reparsed, doc);
+    }
+
+    // Accessor reflects the declared facts and the empty default.
+    assert_eq!(project.frontmatter().desired_facts().len(), 2);
+    assert_eq!(project.frontmatter().desired_facts()[0].id, "db-reachable");
+    assert!(slice.frontmatter().desired_facts().len() == 1);
+    assert!(empty.frontmatter().desired_facts().is_empty());
+
+    // Empty is skipped on emit (a fact-free node gains no `desired_facts:` key);
+    // a populated node emits the canonical `kind: shell` shape.
+    assert!(!empty.emit().unwrap().contains("desired_facts"));
+    let emitted = project.emit().unwrap();
+    assert!(emitted.contains("desired_facts:"));
+    assert!(emitted.contains("kind: shell"));
+
+    // The proposed YAML shape (slice-doc) parses into the typed model.
+    let text = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: arc\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n\
+         desired_facts:\n  - id: db-reachable\n    describe: \"the prod DB answers a trivial query\"\n\
+         \x20   probe:\n      kind: shell\n      run: \"pg_isready -h prod -t 2\"\n\
+         \x20     expect:\n        exit: 0\n---\nbody\n"
+    );
+    let parsed = Document::parse(&text).expect("proposed shape parses");
+    match &parsed.frontmatter().desired_facts()[0].probe {
+        ProbeSpec::Shell { run, expect } => {
+            assert_eq!(run, "pg_isready -h prod -t 2");
+            assert_eq!(expect.exit, 0);
+            assert_eq!(expect.stdout_contains, None);
+        }
+    }
+}
+
+#[test]
+fn desired_facts_malformed_errors_with_position() {
+    let base = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: project\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n"
+    );
+    // An unknown probe `kind`, a missing required field (`run`), and an empty
+    // `id` are each a parse error that carries position — never a panic or a
+    // silent drop.
+    let unknown_kind = format!(
+        "{base}desired_facts:\n  - id: f1\n    describe: d\n    probe:\n      kind: bogus\n\
+         \x20     run: \"true\"\n      expect:\n        exit: 0\n---\nbody\n"
+    );
+    let missing_run = format!(
+        "{base}desired_facts:\n  - id: f1\n    describe: d\n    probe:\n      kind: shell\n\
+         \x20     expect:\n        exit: 0\n---\nbody\n"
+    );
+    let empty_id = format!(
+        "{base}desired_facts:\n  - id: \"\"\n    describe: d\n    probe:\n      kind: shell\n\
+         \x20     run: \"true\"\n      expect:\n        exit: 0\n---\nbody\n"
+    );
+
+    for (label, text) in
+        [("unknown_kind", unknown_kind), ("missing_run", missing_run), ("empty_id", empty_id)]
+    {
+        match Document::parse(&text) {
+            Err(FrontmatterError::Yaml(msg)) => {
+                assert!(
+                    msg.contains("line") && msg.contains("column"),
+                    "{label}: error must carry a position, got: {msg}"
+                );
+            }
+            other => panic!("{label}: expected a positioned Yaml error, got {other:?}"),
+        }
+    }
+
+    // The empty-id error names the offending field (not a generic YAML fault).
+    let empty_id_again = format!(
+        "{base}desired_facts:\n  - id: \"  \"\n    describe: d\n    probe:\n      kind: shell\n\
+         \x20     run: \"true\"\n      expect:\n        exit: 0\n---\nbody\n"
+    );
+    match Document::parse(&empty_id_again) {
+        Err(FrontmatterError::Yaml(msg)) => assert!(msg.contains("`id` must not be empty")),
+        other => panic!("expected empty-id error, got {other:?}"),
     }
 }

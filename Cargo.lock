@@ -1865,6 +1865,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "odm-reconcile"
+version = "1.0.0"
+dependencies = [
+ "odm-core",
+ "tempfile",
+]
+
+[[package]]
 name = "odm-store"
 version = "1.0.0"
 dependencies = [

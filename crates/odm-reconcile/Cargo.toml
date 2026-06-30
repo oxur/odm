@@ -1,0 +1,18 @@
+[package]
+name = "odm-reconcile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Desired-state facts + probes for odm: the Probe trait, the three-way ProbeOutcome, and the shell probe (Arc 05)"
+
+[lints]
+workspace = true
+
+[dependencies]
+odm-core = { path = "../odm-core" }
+
+[dev-dependencies]
+tempfile.workspace = true
