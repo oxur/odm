@@ -61,7 +61,15 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 - **A3 — COMPLETE.** All four slices (cleanup, rollup, orient, `--json`) CDC-verified
   and merged to `main`; pushed for CI. The arc-close recomposition check passed with no
   silent drops (`arc03-rollup-and-orient/arc-close.md`). **MVP (A1–A3) is done.**
-- **A4 / A5 / A6 — PLANNED, not started.** Arc-plans drafted this session
+- **A4 — Index & cache: CLOSED (composed; CI-pending).** All 8 slices CDC-verified; the
+  arc-close composition check passed with an independent arc-gate review
+  (`arc04-index-cache/closing-report.md`, PASS-WITH-NOTES). The index/cache capability
+  lands: `list`/`orient`/graph-build/`check`/`rollup` are index-backed and match baseline,
+  change detection is racy-git-correct, the index self-heals, and the 100k benchmark
+  promoted ODD-0014's `[P]` perf claims to `[E]`. Executable/number rows route to CI
+  (sandbox has no 1.85+ toolchain); P-4 flips `done` on CI-green + merge. Forward-carried:
+  the **adapter-fidelity invariant** is now a hard gate in `arc05`'s arc-plan (v1.2).
+- **A5 / A6 — PLANNED, not started.** Arc-plans drafted this session
   (`arcNN-<slug>/arc-plan.md`); per *plan late, plan deep*, no per-slice doc sets exist
   yet — those are written when each arc becomes the active work.
 
@@ -130,7 +138,7 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-1 | A1 (substrate & node CRUD) closed + composed | ptr: arc01 close | correctness | project-plan | done | merged to `main`, CI-green | **Disclosed gap:** A1 predates the v2.0 arc-close discipline — no formal arc `closing-report.md`. Composed-in-fact (the MVP runs on it). |
 | P-2 | A2 (graph, gates & derived order) closed + composed | ptr: arc02 close | correctness | project-plan | done | merged to `main`, CI-green | Same disclosed gap as P-1 (no formal arc closing-report). |
 | P-3 | A3 (rollup & orient) closed + composed | ptr: `arc03-rollup-and-orient/arc-close.md` | correctness | project-plan | done | arc-close composition check passed, no silent drops; merged | A3's bubble-up forced no project-plan change (recorded). (File is `arc-close.md`; canonical name is `closing-report.md`.) |
-| P-4 | A4 (index & cache) closed + composed | ptr: arc04 closing-report | correctness | project-plan | open | | attested-on-close. Active arc. |
+| P-4 | A4 (index & cache) closed + composed | ptr: `arc04-index-cache/closing-report.md` | correctness | project-plan | open | attested: arc-close done (`arc04-index-cache/closing-report.md`) — 8/8 slices CDC-verified, class-(b) composition rows A-9…A-13 reproduced at arc scale **on structure** (end-to-end tests span the slices), independent arc-gate review **PASS-WITH-NOTES**; ODD-0014 `[P]`→`[E]`. Executable/number rows pending CI. | → `done` on CI-green + merge. Composed-in-fact now; the green checkmark is CI's. Delivered set is *broader* than the roadmap line (also `check`+`rollup`) — over-delivery, not drift. |
 | P-5 | A5 (reconciliation) closed + composed | ptr: arc05 closing-report | correctness | project-plan | open | | attested-on-close. |
 | P-6 | A6 (migrate, self-host & PM-skill) closed + composed | ptr: arc06 closing-report | correctness | project-plan | open | | attested-on-close. |
 | P-7 | **Compose (DoD):** a fresh session reaches full situational awareness from `odm orient` alone | project-scale demo: fresh session, `odm orient` only | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now; reproduce at project scale on close. The headline DoD. |
@@ -139,7 +147,7 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-10 | **Compose (DoD):** status is multi-gate with evidence levels | project-scale demo | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-11 | **Compose (DoD):** desired-vs-actual drift is detected and reported (the prod-DB-503 class) | project-scale demo: declare a fact, diverge reality, observe drift | serious | project-plan / 0001-C2 | open | | Lands with A5 (reconciliation). |
 | P-12 | **Compose (DoD):** odm self-hosts — manages its own plan as nodes; these design docs are queryable via `odm orient` | project-scale demo: migrate + orient on odm's own corpus | serious | project-plan / 0013 §9 | open | | Lands with A6 (the self-hosting trigger). |
-| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). |
+| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; one finding forward-carried (the adapter-fidelity invariant → arc05 v1.2) — recorded, v1.4. |
 
 Closes in a project-level `closing-report.md` with the per-row walk and the **project
 gate** (go / adjust / kill against the DoD, reviewed by the operator + an independent
@@ -147,6 +155,24 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.4 — 2026-06-30
+**A4 (Index & cache) closed + composed (CI-pending).** Arc 04 reached its arc-close: all 8
+slices CDC-verified, the class-(b) composition rows (A-9…A-13) reproduced at arc scale on
+structure (end-to-end tests that span the slices — racy-correctness, self-heal, delta-only,
+adapter-fidelity-backed baseline match, 100k benchmark), and an **independent arc-gate
+review** (fresh-context subagent) returned PASS-WITH-NOTES — confirming, in particular, that
+the A-12 idempotence tests' tautology was *named and avoided* (equivalence rests on the
+adapter-fidelity tests), not walked into. ODD-0014's index-engine `[P]` perf claims were
+promoted to `[E]`. Updated §3 status (A4 → CLOSED, composed, CI-pending) and **P-4** (open →
+attested-on-close; flips `done` on CI-green + merge). **Bubble-up disposition (P-13): no
+roadmap re-scope forced** — A4 delivered its capability as the roadmap defined it (the
+delivered consumer set is *broader* than the line named: also `check`+`rollup`). One finding
+forward-carried, not dropped: the **adapter-fidelity invariant** (A4 removed the `load_all`
+A/B net, so any future index reader must extend the adapter + its fidelity test in the same
+slice — the CLI idempotence tests pass tautologically and won't catch a regression) is now a
+hard gate in **`arc05`'s arc-plan (v1.2)**. Surfaced by: A4 arc-close + its arc-gate review
+(`arc04-index-cache/closing-report.md`).
 
 ### v1.3 — 2026-06-26
 Added a **scope note** to §5 (Project Ledger): the ledger verifies the v1.0.0 DoD

@@ -104,6 +104,22 @@ run reconcile on odm's own corpus once it lands.
   marker + predicate) is the Q-A3-1 question A3 deliberately left open until "the
   schema/metadata firms up" — settle it in slice06, not before.
 
+## Invariants carried in from earlier arcs
+
+- **Adapter-fidelity obligation (from A4, gate-elevated).** A4 wired every read consumer
+  off the index, which *removed* the `load_all` full-scan path — so there is **no live
+  A/B safety net**: equivalence-to-baseline rests entirely on the adapter-fidelity tests
+  (`odm-index/tests/adapter.rs`), which compare index-synthesized frontmatters against
+  parsed ones field-by-field. **Hard invariant for every A5 slice that adds an
+  index-backed reader or makes a consumer read a *new* record field: extend the adapter
+  *and* its fidelity test in the same slice.** The CLI `*_matches_baseline` idempotence
+  tests pass green *tautologically* whether or not the new field is faithful, so they will
+  **not** catch a regression — only the fidelity test will. A slice that reads a new field
+  without extending the fidelity test is a silent weakening of the A4 guarantee, and its
+  ledger must carry a row that fails if the adapter is incomplete. (Raised by A4's
+  arc-gate review; see `arc04-index-cache/closing-report.md` §"Independent arc-gate
+  review" correction #2.)
+
 ## Method
 
 Ledger per slice; CC implements, CDC verifies; cargo rows via CI / local 1.85+;
@@ -111,6 +127,15 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.2 — 2026-06-30
+**Carried in the adapter-fidelity invariant from A4's close (project-level bubble-up).**
+Added an "Invariants carried in from earlier arcs" section recording the hard obligation,
+elevated by A4's independent arc-gate review, that any A5 slice adding an index-backed
+reader or reading a new record field must extend the adapter + its fidelity test in the
+same slice — because A4 removed the `load_all` A/B net and the CLI idempotence tests pass
+tautologically. Pure addition; the v1.0/v1.1 body is unchanged. Surfaced by: A4 arc-close
++ its arc-gate review (`arc04-index-cache/closing-report.md`).
 
 ### v1.1 — 2026-06-26
 Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B (the arc ledger opens
