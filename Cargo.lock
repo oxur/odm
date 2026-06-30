@@ -1868,7 +1868,10 @@ dependencies = [
 name = "odm-reconcile"
 version = "1.0.0"
 dependencies = [
+ "chrono",
  "odm-core",
+ "odm-store",
+ "sha2",
  "tempfile",
 ]
 

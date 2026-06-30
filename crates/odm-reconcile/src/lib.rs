@@ -1,191 +1,47 @@
 //! `odm-reconcile` — desired-state facts probed against reality (ODD-0013 §5.2).
 //!
 //! A node declares [`DesiredFact`](odm_core::DesiredFact)s in its frontmatter
-//! (modeled in `odm-core`). This crate provides the machinery that checks one
-//! declared fact against the world:
+//! (modeled in `odm-core`). This crate checks those facts against the world:
 //!
-//! - [`Probe`] — the trait an individual check implements;
-//! - [`ProbeOutcome`] — the **three-way** result of a check (`Holds` /
-//!   `Drifted` / `Error`); and
-//! - [`ShellProbe`] — the first probe impl: run an author-declared command and
-//!   compare its exit code (and an optional stdout match) to the expectation.
+//! - [`Probe`] / [`ProbeOutcome`] — the trait an individual check implements and
+//!   the **three-way** result (`Holds` / `Drifted` / `Error`); "couldn't check"
+//!   is never collapsed into "checked, drifted".
+//! - [`ShellProbe`] (slice01) — run an author-declared command, compare exit (and
+//!   optional stdout) to the expectation.
+//! - [`FileProbe`] (slice02) — check a file against `exists` / `sha256` / `size`.
+//! - [`Runner`] (slice02) — execute a node's (or the whole corpus's)
+//!   `desired_facts` and collect per-fact outcomes, preserving drift-vs-error in
+//!   the aggregate so slice03 can assign severities and exit codes.
 //!
-//! This is arc05 slice01 — the substrate the rest of the arc composes on. There
-//! is deliberately **no** probe-runner, no `file` probe, and no `reconcile`
-//! command here yet: a runner that executes all of a node's facts is slice02,
-//! the `file` probe is slice02, and the `odm reconcile` command is slice03. This
-//! slice lands the model + trait + the one probe, exercised directly.
+//! Scope held to slice02: this is **library** API only. No `odm reconcile`
+//! command, no `--json`, no exit codes, no rollup/orient wiring (slices 03–04).
+//!
+//! # Reading `desired_facts` — from the store, not the index
+//!
+//! [`Runner`] reads frontmatter directly from the [`Store`](odm_store::Store), it
+//! does **not** route facts through the A4 index. Reconcile is an infrequent,
+//! I/O-bound action whose cost is the probes themselves; a frontmatter read is
+//! noise beside a subprocess spawn or a file hash. The heavy nested
+//! `desired_facts` structure is therefore not added to every index snapshot
+//! record (the same call A4 made for the `list --json` full-node dump).
+//! Consequently the carried adapter-fidelity invariant is honored **by
+//! non-triggering**: the field is read where it lives, so the index equivalence
+//! guarantee is untouched. See the slice02 slice-doc "central design decision"
+//! for the full rationale.
+//!
+//! (The guarded index identifiers — the snapshot record type, the index-read
+//! seam, the format-version constant — are deliberately kept *out* of this
+//! crate's source so the ledger G-5 grep stays a meaningful tripwire against a
+//! future accidental switch to the index path.)
 
 #![deny(missing_docs)]
 
-use std::process::Command;
+mod file;
+mod probe;
+mod runner;
+mod shell;
 
-use odm_core::ShellExpect;
-
-/// The result of evaluating one [`DesiredFact`](odm_core::DesiredFact) against
-/// reality.
-///
-/// The split is **three-way and load-bearing**: "I checked and reality has
-/// drifted" ([`Drifted`](ProbeOutcome::Drifted)) is a distinct, actionable
-/// finding from "I could not check at all" ([`Error`](ProbeOutcome::Error)). A
-/// `bool` would collapse the two and silently report an unrunnable probe as
-/// "no drift" — exactly the dishonesty reconciliation exists to prevent. The
-/// reconciler (slice03) maps `Drifted` and `Error` to different severities and
-/// exit codes; do not merge them.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProbeOutcome {
-    /// Observed reality matches the declared expectation.
-    Holds,
-    /// Reality was observed and **diverges** from the expectation — the finding
-    /// that matters. Both sides are carried, human-readable, for reporting.
-    Drifted {
-        /// What the fact declared should be true.
-        expected: String,
-        /// What was actually observed.
-        observed: String,
-    },
-    /// The probe **could not be evaluated** (command not found, I/O error,
-    /// abnormal termination). This is "couldn't check", never "checked, holds"
-    /// and never "checked, drifted".
-    Error {
-        /// Why the probe could not be evaluated.
-        reason: String,
-    },
-}
-
-/// A single checkable probe: evaluate the declared expectation against reality
-/// and report a [`ProbeOutcome`].
-///
-/// Object-safe and intentionally minimal — the slice02 runner holds probes
-/// behind this trait and treats every kind uniformly. New probe kinds (the
-/// `file` probe, slice02) implement the same one method.
-pub trait Probe {
-    /// Evaluate this probe against the live local environment.
-    ///
-    /// Returns [`ProbeOutcome::Holds`] when reality matches, `Drifted` when it
-    /// diverges, and `Error` when the check itself could not be carried out.
-    fn evaluate(&self) -> ProbeOutcome;
-}
-
-/// The **shell** probe: run an author-declared command and map its result to a
-/// [`ProbeOutcome`] — `Holds` when the exit code (and optional stdout match)
-/// meet the expectation, `Drifted` when they diverge, `Error` when the command
-/// cannot run.
-///
-/// # Trust model
-///
-/// The shell probe runs **author-declared commands locally with the invoking
-/// user's own privileges** — the same trust boundary as a git hook, a `make`
-/// target, or a `build.rs` in your own repository. The command text comes from
-/// a node file you (or your collaborators) wrote and committed. There is
-/// **no sandbox** in the MVP: a probe can do anything the user running `odm`
-/// can do. The boundary is therefore "you ran a command written in your own
-/// node files," stated here so it is an explicit decision and not an
-/// assumption.
-///
-/// Guardrails for an *untrusted* or multi-author corpus — a `--no-exec` /
-/// dry-run mode, or an allowlist of permitted commands — were considered and
-/// **deferred**: they belong to a threat model (running probes from a corpus
-/// you do not trust) that is out of MVP scope. They are a no-op in this slice
-/// by design, not by omission.
-///
-/// # Command form
-///
-/// `run` is whitespace-tokenized into a program and its arguments and executed
-/// **directly** — it is *not* passed to a shell interpreter. So shell
-/// metacharacters (pipes, redirects, `&&`, globbing, `$VAR` expansion) are
-/// **not** interpreted in the MVP. Executing directly is a deliberate choice:
-/// it makes "the command cannot run" (a spawn failure → [`ProbeOutcome::Error`])
-/// genuinely distinct from "the command ran and diverged" (a non-zero exit →
-/// [`ProbeOutcome::Drifted`]). Routing through `sh -c` would turn a missing
-/// binary into exit code 127 — a *divergence*, collapsing the load-bearing
-/// Error/Drift distinction. Richer shell semantics, if needed, are a later
-/// extension to the spec.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShellProbe {
-    run: String,
-    expect: ShellExpect,
-}
-
-impl ShellProbe {
-    /// Builds a shell probe from a command line and its expectation. `run` is
-    /// the `program arg1 arg2 …` form described on the type.
-    #[must_use]
-    pub fn new(run: impl Into<String>, expect: ShellExpect) -> Self {
-        Self { run: run.into(), expect }
-    }
-
-    /// The expectation rendered for a `Drifted.expected` message.
-    fn expectation(&self) -> String {
-        match &self.expect.stdout_contains {
-            Some(needle) => format!("exit {}, stdout contains {needle:?}", self.expect.exit),
-            None => format!("exit {}", self.expect.exit),
-        }
-    }
-
-    /// What was observed, rendered for a `Drifted.observed` message. Stdout is
-    /// truncated so a chatty command cannot produce an unbounded report.
-    fn observation(&self, code: i32, stdout: &str) -> String {
-        match &self.expect.stdout_contains {
-            Some(_) => format!("exit {code}, stdout {:?}", truncate(stdout, 200)),
-            None => format!("exit {code}"),
-        }
-    }
-}
-
-impl Probe for ShellProbe {
-    fn evaluate(&self) -> ProbeOutcome {
-        let mut parts = self.run.split_whitespace();
-        let Some(program) = parts.next() else {
-            return ProbeOutcome::Error { reason: "empty command".to_string() };
-        };
-        let args: Vec<&str> = parts.collect();
-
-        let output = match Command::new(program).args(&args).output() {
-            Ok(output) => output,
-            // Spawn failed: the command cannot run (not found, not executable,
-            // I/O error). This is "couldn't check", not drift.
-            Err(err) => {
-                return ProbeOutcome::Error { reason: format!("could not run `{program}`: {err}") };
-            }
-        };
-
-        // No exit code means the process was terminated by a signal — it ran
-        // but produced no code to compare against, so the expectation could not
-        // be evaluated.
-        let Some(code) = output.status.code() else {
-            return ProbeOutcome::Error {
-                reason: format!("`{program}` terminated by a signal without an exit code"),
-            };
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let exit_ok = code == self.expect.exit;
-        let stdout_ok = match &self.expect.stdout_contains {
-            Some(needle) => stdout.contains(needle.as_str()),
-            None => true,
-        };
-
-        if exit_ok && stdout_ok {
-            ProbeOutcome::Holds
-        } else {
-            ProbeOutcome::Drifted {
-                expected: self.expectation(),
-                observed: self.observation(code, &stdout),
-            }
-        }
-    }
-}
-
-/// Truncates `s` to at most `max` bytes (on a char boundary), appending `…`
-/// when it was shortened.
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    let mut end = max;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}…", &s[..end])
-}
+pub use file::FileProbe;
+pub use probe::{Probe, ProbeOutcome};
+pub use runner::{CorpusReport, FactResult, NodeReport, OutcomeCounts, Runner};
+pub use shell::ShellProbe;

@@ -37,7 +37,7 @@ pub mod rollup;
 pub mod satisfaction;
 pub mod status;
 
-pub use desired::{DesiredFact, ProbeSpec, ShellExpect};
+pub use desired::{DesiredFact, FileExpect, ProbeSpec, ShellExpect};
 pub use id::{Id, IdParseError};
 pub use node::Node;
 pub use node_type::{NodeType, ParseNodeTypeError};

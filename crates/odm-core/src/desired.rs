@@ -42,14 +42,14 @@ pub struct DesiredFact {
 
 /// A `kind`-tagged description of how to check a [`DesiredFact`].
 ///
-/// Internally tagged on `kind`. This slice defines the **shell** variant; the
-/// `file` variant arrives in slice02 without changing how a `shell` spec parses
-/// or emits.
+/// Internally tagged on `kind`. slice01 defined the **shell** variant; slice02
+/// adds **file**. A new kind joins as `kind: <name>` without changing how the
+/// existing variants parse or emit.
 ///
-/// Deliberately **not** `#[non_exhaustive]`: consumers (the shell probe, the
-/// slice02 runner) match it exhaustively, so adding a kind is a *compile error*
-/// at every dispatch site until it is handled — the completeness guarantee we
-/// want, stronger than a silently-tolerated wildcard.
+/// Deliberately **not** `#[non_exhaustive]`: consumers (the probes, the runner)
+/// match it exhaustively, so adding a kind is a *compile error* at every
+/// dispatch site until it is handled — the completeness guarantee we want,
+/// stronger than a silently-tolerated wildcard.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ProbeSpec {
@@ -62,6 +62,16 @@ pub enum ProbeSpec {
         /// The result the command must produce for the fact to *hold*.
         expect: ShellExpect,
     },
+    /// Check a file (relative to the repo root) against `expect`.
+    File {
+        /// Path to the file, **relative to the repo root** (the odm working
+        /// directory). Required.
+        path: String,
+        /// The expectation the file must meet. Absent in the source means "the
+        /// file should exist" — see [`FileExpect`]'s defaults.
+        #[serde(default)]
+        expect: FileExpect,
+    },
 }
 
 /// The expectation a `shell` probe's command must meet to hold.
@@ -73,6 +83,43 @@ pub struct ShellExpect {
     /// stdout is not inspected — only the exit code is compared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stdout_contains: Option<String>,
+}
+
+/// The expectation a `file` probe's path must meet to hold.
+///
+/// `exists` defaults to `true` (the common case: "this file should be there").
+/// `sha256` and `size` are optional refinements — absent means that aspect is
+/// not checked. Unknown sub-fields are a parse error (`deny_unknown_fields`), so
+/// a typo like `sh256:` is caught rather than silently ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileExpect {
+    /// Whether the file is expected to exist. Defaults to `true`; set `false` to
+    /// assert a file is *absent*.
+    #[serde(default = "default_true")]
+    pub exists: bool,
+    /// Optional expected SHA-256 of the file's contents, as 64 lowercase hex
+    /// characters. Absent means the content hash is not checked.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_sha256",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sha256: Option<String>,
+    /// Optional expected size in bytes. Absent means the size is not checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+impl Default for FileExpect {
+    fn default() -> Self {
+        Self { exists: true, sha256: None, size: None }
+    }
+}
+
+/// The serde default for [`FileExpect::exists`].
+fn default_true() -> bool {
+    true
 }
 
 /// Deserializes a fact `id`, rejecting an empty (or whitespace-only) value with
@@ -91,4 +138,22 @@ where
         return Err(serde::de::Error::custom("desired_fact `id` must not be empty"));
     }
     Ok(id)
+}
+
+/// Deserializes an optional `sha256`, rejecting a malformed digest (not 64 hex
+/// characters) with a positioned parse error and normalizing to lowercase. Same
+/// positioned-error discipline as [`deserialize_non_empty_id`].
+fn deserialize_sha256<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let Some(raw) = Option::<String>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.len() == 64 && trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Ok(Some(trimmed.to_ascii_lowercase()))
+    } else {
+        Err(serde::de::Error::custom("`sha256` must be 64 hexadecimal characters"))
+    }
 }

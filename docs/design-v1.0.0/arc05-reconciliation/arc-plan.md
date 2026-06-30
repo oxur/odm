@@ -69,7 +69,7 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`21cfbf1`; 7/7; cov odm-reconcile 96% / odm-core desired.rs 100%); CDC-verified on structure (`slice01-desired-facts-probe/cdc-verification.md`); three-way `ProbeOutcome` + exec-directly shell probe; cargo rows pending CI. | → `done` when slice01 reproduces (CI green). |
-| A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`8675f08`; 7/7; cov odm-reconcile file.rs 97% / runner.rs 97% / shell.rs 100%); `file` probe (exists/sha256/size, `sha2` reuse) + per-node/per-corpus runner with read-through; reads facts from the **store, not the index** (G-5 grep clean — invariant honored by non-triggering); drift/error kept distinct in `OutcomeCounts`; cargo rows pending CI. Branched off `arc05-slice01-…` (slice01 unmerged); rebase on merge. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -140,6 +140,27 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.5 — 2026-06-30
+**slice02 closed (A-2 attested) + bubble-up propagated.** Landed the **`file`** probe
+(`ProbeSpec::File` with `exists`/`sha256`/`size`, reusing the workspace `sha2`) and the
+**probe-runner** (`Runner::run_node` / `run_corpus` → `NodeReport`/`CorpusReport`, drift
+and error kept distinct in `OutcomeCounts`). 7/7 rows attested; clippy clean; no `unsafe`;
+cov file.rs 97% / runner.rs 97% / shell.rs 100%. The slice01 `odm-reconcile` `lib.rs` was
+modularized (`probe`/`shell`/`file`/`runner`) with the public API unchanged.
+**Central decision implemented as recommended (not overridden):** the runner reads
+`desired_facts` from the **store, not the index** — so the carried A4 adapter-fidelity
+invariant is honored **by non-triggering** (no `IndexRecord`/adapter/fidelity/`FORMAT_VERSION`
+change), guarded by the G-5 grep. **Sharpens slice03:** the result model makes severity/
+exit-code mapping a pure function of `OutcomeCounts`, and the `--json` shape is `CorpusReport`
+→ `{nodes:[{node_id,results:[{fact_id,outcome}]}]}`; slice03 must add `Serialize` to
+`ProbeOutcome`/report (left off deliberately — no wire contract yet) under a `reconcile/v1`
+schema marker. **Sharpens slice04 (new open question):** the rollup is a *hot view* off the
+**index**, but reconcile reads the **store** — slice04 must decide how drift reaches the
+rollup without re-introducing the index-vs-store tension (recommended: rollup invokes an
+on-demand corpus reconcile and folds the result in, rather than caching drift in the index);
+settle it explicitly in the slice04 doc. *Plan-keeping note:* CC propagated this bubble-up
+here itself (the PM Part IV step slice01 had left to CDC). Surfaced by: slice02 close.
 
 ### v1.4 — 2026-06-30
 **slice01 closed (A-1 attested; arc opener in) + CDC plan-keeping.** Landed `desired_facts`

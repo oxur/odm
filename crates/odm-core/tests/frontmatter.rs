@@ -9,7 +9,7 @@
 use std::str::FromStr;
 
 use chrono::NaiveDate;
-use odm_core::desired::{DesiredFact, ProbeSpec, ShellExpect};
+use odm_core::desired::{DesiredFact, FileExpect, ProbeSpec, ShellExpect};
 use odm_core::frontmatter::{
     Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
     Supersedes, TornEdge,
@@ -636,6 +636,7 @@ fn desired_facts_round_trip() {
             assert_eq!(expect.exit, 0);
             assert_eq!(expect.stdout_contains, None);
         }
+        ProbeSpec::File { .. } => panic!("expected a shell probe"),
     }
 }
 
@@ -683,5 +684,87 @@ fn desired_facts_malformed_errors_with_position() {
     match Document::parse(&empty_id_again) {
         Err(FrontmatterError::Yaml(msg)) => assert!(msg.contains("`id` must not be empty")),
         other => panic!("expected empty-id error, got {other:?}"),
+    }
+}
+
+// ----- G-1 / G-2 (arc05 slice02): `file` probe spec parse + positioned errors -
+
+#[test]
+fn file_probe_spec_round_trip() {
+    // A file fact with every expectation declared round-trips through the serde
+    // layer, on any node type.
+    let fact = DesiredFact {
+        id: "schema-present".to_string(),
+        describe: "the schema file is intact".to_string(),
+        probe: ProbeSpec::File {
+            path: "db/schema.sql".to_string(),
+            expect: FileExpect { exists: true, sha256: Some("a".repeat(64)), size: Some(2048) },
+        },
+    };
+    let doc = doc_with_facts(NodeType::Project, vec![fact]);
+    let reparsed = Document::parse(&doc.emit().expect("emit")).expect("parse");
+    assert_eq!(reparsed, doc);
+    let emitted = doc.emit().unwrap();
+    assert!(emitted.contains("kind: file"));
+
+    // The minimal source form — `kind: file` + `path`, no `expect` — defaults to
+    // "the file should exist".
+    let text = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: arc\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n\
+         desired_facts:\n  - id: present\n    describe: d\n    probe:\n\
+         \x20     kind: file\n      path: README.md\n---\nbody\n"
+    );
+    let parsed = Document::parse(&text).expect("minimal file spec parses");
+    match &parsed.frontmatter().desired_facts()[0].probe {
+        ProbeSpec::File { path, expect } => {
+            assert_eq!(path, "README.md");
+            assert!(expect.exists);
+            assert_eq!(expect.sha256, None);
+            assert_eq!(expect.size, None);
+        }
+        ProbeSpec::Shell { .. } => panic!("expected a file probe"),
+    }
+}
+
+#[test]
+fn file_probe_spec_malformed_errors_with_position() {
+    let base = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: project\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n"
+    );
+    // Missing required `path`, a non-hex `sha256`, and an unknown `expect`
+    // sub-field are each a positioned parse error (slice01 F-2 consistency).
+    let missing_path = format!(
+        "{base}desired_facts:\n  - id: f\n    describe: d\n    probe:\n      kind: file\n\
+         \x20     expect:\n        exists: true\n---\nbody\n"
+    );
+    let bad_sha = format!(
+        "{base}desired_facts:\n  - id: f\n    describe: d\n    probe:\n      kind: file\n\
+         \x20     path: x\n      expect:\n        sha256: \"not-a-valid-hash\"\n---\nbody\n"
+    );
+    let unknown_field = format!(
+        "{base}desired_facts:\n  - id: f\n    describe: d\n    probe:\n      kind: file\n\
+         \x20     path: x\n      expect:\n        bogus: 1\n---\nbody\n"
+    );
+
+    for (label, text) in [
+        ("missing_path", missing_path),
+        ("bad_sha", bad_sha.clone()),
+        ("unknown_field", unknown_field),
+    ] {
+        match Document::parse(&text) {
+            Err(FrontmatterError::Yaml(msg)) => assert!(
+                msg.contains("line") && msg.contains("column"),
+                "{label}: error must carry a position, got: {msg}"
+            ),
+            other => panic!("{label}: expected a positioned Yaml error, got {other:?}"),
+        }
+    }
+
+    // The bad-sha256 error names the field (a semantic check, not a generic fault).
+    match Document::parse(&bad_sha) {
+        Err(FrontmatterError::Yaml(msg)) => assert!(msg.contains("`sha256` must be 64")),
+        other => panic!("expected sha256 error, got {other:?}"),
     }
 }

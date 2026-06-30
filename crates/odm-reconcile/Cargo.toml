@@ -6,13 +6,16 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Desired-state facts + probes for odm: the Probe trait, the three-way ProbeOutcome, and the shell probe (Arc 05)"
+description = "Desired-state facts + probes for odm: the Probe trait, the three-way ProbeOutcome, the shell + file probes, and the probe-runner (Arc 05)"
 
 [lints]
 workspace = true
 
 [dependencies]
 odm-core = { path = "../odm-core" }
+odm-store = { path = "../odm-store" }
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+chrono.workspace = true
