@@ -70,7 +70,7 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`21cfbf1`; 7/7; cov odm-reconcile 96% / odm-core desired.rs 100%); CDC-verified on structure (`slice01-desired-facts-probe/cdc-verification.md`); three-way `ProbeOutcome` + exec-directly shell probe; cargo rows pending CI. | → `done` when slice01 reproduces (CI green). |
 | A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`e4ca702`; 7/7; cov odm-reconcile file.rs 97% / runner.rs 97% / shell.rs 100%); `file` probe (exists/sha256/size, `sha2` reuse) + per-node/per-corpus runner with read-through; reads facts from the **store, not the index** (G-5 grep clean — invariant honored by non-triggering); drift/error kept distinct in `OutcomeCounts`; cargo rows pending CI. Branched off `arc05-slice01-…` (slice01 unmerged); rebase on merge. | → `done` when slice02 reproduces (CI green). |
-| A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`RECPL03`; 6/6; cov odm-cli reconcile.rs 97%); `odm reconcile` renders drift (clean→no-drift exit 0; drift→exit 1; probe-error→Warning, `--strict`-gated) with `check`-consistent severity via a pure `verdict(OutcomeCounts)`; `--json` `reconcile/v1` (added `Serialize` additively, `ProbeOutcome` tagged on `kind`); store-read `run_corpus`, **no** index reader (invariant un-triggered); cargo rows pending CI. Branched off `arc05-slice02-…`; rebase on merge. | → `done` when slice03 reproduces (CI green). |
 | A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
@@ -140,6 +140,29 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.6 — 2026-06-30
+**slice03 closed (A-3 attested) + bubble-up propagated.** Landed `odm reconcile`
+(`odm-cli`): invokes the slice02 store-read `Runner::run_corpus`, renders drift to
+stdout (per-fact identity + `expected`/`observed`; probe errors at a distinct
+`[error]` severity), and exits `check`-consistently — drift fails (1), a probe
+error is a Warning surfaced always and failing only under `--strict`. The
+severity/exit policy is a **pure** `verdict(&OutcomeCounts)` (unit-tested as a
+table). `--json` emits **`reconcile/v1`**; `ProbeOutcome` + the runner report
+types gained `Serialize` (additive, `ProbeOutcome` internally tagged on `kind`).
+6/6 rows attested; clippy clean; no `unsafe`; cov reconcile.rs 97%. **No new index
+reader** — `run_corpus` reads the store; the A4 invariant stays un-triggered.
+**Sharpens slice04:** (1) the report carries node/fact *ids only*, so rendering
+identity (`#number name`, a fact's `describe`) requires a store join — slice03
+re-loads to do it; slice04 renders the same drift and should **factor the join
+once** (a reconcile-side enrich helper, or the rollup builder — which already
+holds the corpus — joining), not copy it. (2) Confirms the settled drift→rollup
+path: the rollup builder calls the same store-read runner on demand and folds the
+counts in (no index caching). (3) The pure `OutcomeCounts`→severity mapping is
+the natural input to the rollup's drift summary. **Deviation flagged:** output
+uses `writeln!` (matching `check`/`rollup`/`orient` — `odm-cli` has no `oxur-cli`
+dep), not the `oxur_cli` helpers the slice-doc/CLAUDE.md name. *Plan-keeping:* CC
+propagated this bubble-up here itself. Surfaced by: slice03 close.
 
 ### v1.5 — 2026-06-30
 **slice02 closed (A-2 attested) + bubble-up propagated.** Landed the **`file`** probe

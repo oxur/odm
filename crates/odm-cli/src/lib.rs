@@ -14,6 +14,7 @@ mod commands;
 mod context;
 mod json;
 mod orient;
+mod reconcile;
 mod rollup;
 
 use std::process::ExitCode;
@@ -253,6 +254,18 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Reconcile declared `desired_facts` against reality: report drift.
+    ///
+    /// Runs every node's probes. A confirmed drift fails (exit 1); a probe that
+    /// could not run is a warning, surfaced always, failing only under `--strict`.
+    Reconcile {
+        /// CI mode: promote probe errors ("couldn't check") to failures.
+        #[arg(long)]
+        strict: bool,
+        /// Emit JSON (`reconcile/v1`).
+        #[arg(long)]
+        json: bool,
+    },
     /// Orient: vision → current focus → ready/blocked → integrity → drift.
     ///
     /// The default command — bare `odm` runs this. `brief` is an alias.
@@ -458,6 +471,10 @@ pub fn dispatch(
         Command::Context { json } => commands::context(&store, root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
+        // `reconcile` likewise returns its own exit code (0 clean / 1 drift).
+        Command::Reconcile { strict, json } => {
+            return reconcile::reconcile(&store, strict, json, out);
+        }
         Command::Rollup { dry_run, json } => {
             rollup::rollup(&store, root, dry_run, json, out, err)?;
         }

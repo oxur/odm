@@ -16,6 +16,7 @@ description = "Command-line surface for odm: node CRUD over the store"
 odm-core = { path = "../odm-core" }
 odm-store = { path = "../odm-store" }
 odm-index = { path = "../odm-index" }
+odm-reconcile = { path = "../odm-reconcile" }
 clap.workspace = true
 anyhow.workspace = true
 serde = { workspace = true }

@@ -1,5 +1,7 @@
 //! The probe contract: the [`Probe`] trait and its three-way [`ProbeOutcome`].
 
+use serde::Serialize;
+
 /// The result of evaluating one [`DesiredFact`](odm_core::DesiredFact) against
 /// reality.
 ///
@@ -10,7 +12,17 @@
 /// "no drift" — exactly the dishonesty reconciliation exists to prevent. The
 /// reconciler (slice03) maps `Drifted` and `Error` to different severities and
 /// exit codes; do not merge them.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// # Wire shape (`reconcile/v1`, slice03)
+///
+/// `Serialize` is internally tagged on `kind` — `{"kind":"holds"}`,
+/// `{"kind":"drifted","expected":…,"observed":…}`, `{"kind":"error","reason":…}`
+/// — and is part of the versioned `reconcile/v1` contract: evolve it **additively
+/// only** (a new variant or field, never a rename/removal). The `kind` tag is an
+/// explicit, always-serialized discriminant, the same additive-evolution
+/// discipline as `ProbeSpec`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ProbeOutcome {
     /// Observed reality matches the declared expectation.
     Holds,

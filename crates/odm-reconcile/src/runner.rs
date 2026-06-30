@@ -11,13 +11,14 @@ use std::path::Path;
 use odm_core::frontmatter::Document;
 use odm_core::{Id, ProbeSpec};
 use odm_store::{Store, StoreError};
+use serde::Serialize;
 
 use crate::file::FileProbe;
 use crate::probe::{Probe, ProbeOutcome};
 use crate::shell::ShellProbe;
 
 /// One declared fact's evaluation: the fact's node-local id and the outcome.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FactResult {
     /// The fact's node-local id (from the `desired_facts` entry).
     pub fact_id: String,
@@ -27,7 +28,7 @@ pub struct FactResult {
 
 /// One node's results: its id plus a [`FactResult`] per declared fact. A node
 /// with no `desired_facts` yields an **empty** `results` (a no-op, not an error).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NodeReport {
     /// The node whose facts were run.
     pub node_id: Id,
@@ -52,7 +53,7 @@ impl NodeReport {
 /// The corpus-wide collection: a [`NodeReport`] for every node that declared at
 /// least one fact. Factless nodes contribute nothing (they have no
 /// `(fact_id, outcome)` tuples).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CorpusReport {
     /// Per-node reports, in store (creation-id) order. Only nodes with facts.
     pub nodes: Vec<NodeReport>,
@@ -82,7 +83,7 @@ impl CorpusReport {
 
 /// A tally of outcomes by kind, keeping drift and error distinct (never
 /// flattened to a single count).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct OutcomeCounts {
     /// Facts whose probe held.
     pub holds: usize,

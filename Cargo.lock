@@ -1819,6 +1819,7 @@ dependencies = [
  "clap",
  "odm-core",
  "odm-index",
+ "odm-reconcile",
  "odm-store",
  "serde",
  "serde_json",
@@ -1871,6 +1872,7 @@ dependencies = [
  "chrono",
  "odm-core",
  "odm-store",
+ "serde",
  "sha2",
  "tempfile",
 ]
