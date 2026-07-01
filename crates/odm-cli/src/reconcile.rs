@@ -1,16 +1,16 @@
-//! The `odm reconcile` command (arc05 slice03): run the corpus probe-runner and
-//! report drift to stdout, with `check`-consistent severities and exit codes.
+//! The `odm reconcile` command (arc05 slice03) and the shared drift projector
+//! (arc05 slice04).
 //!
 //! Reads `desired_facts` via [`Runner::run_corpus`] (the slice02 **store**-read
 //! runner) — no index reader is added, so the carried A4 adapter-fidelity
-//! invariant stays honored by non-triggering.
+//! invariant stays honored by non-triggering. Since slice04 the runner's report
+//! carries render-identity (node number/name + fact `describe`), so rendering
+//! needs **no second corpus load** (slice03's double-load is resolved).
 
-use std::collections::HashMap;
 use std::io::Write;
 
 use anyhow::Context as _;
-use odm_core::Id;
-use odm_core::frontmatter::Document;
+use odm_core::rollup::{Drift, DriftedFact, ErroredFact};
 use odm_reconcile::{NodeReport, OutcomeCounts, ProbeOutcome, Runner};
 use odm_store::Store;
 use serde::Serialize;
@@ -56,6 +56,48 @@ fn verdict(counts: &OutcomeCounts) -> Verdict {
     }
 }
 
+/// Runs an on-demand corpus reconcile and projects it into the shared
+/// [`odm_core::rollup::Drift`] model — the single compute+project both `rollup`
+/// and `orient` call (slice04 S-6), so the two views cannot diverge.
+///
+/// Store-read (`run_corpus`); drift is derived and time-varying, never cached in
+/// the index (S-5).
+///
+/// # Errors
+///
+/// Returns an error if the corpus cannot be loaded from the store.
+pub(crate) fn compute_drift(store: &Store) -> anyhow::Result<Drift> {
+    let report = Runner::new(store).run_corpus().context("running the corpus reconcile")?;
+    let mut holds = 0;
+    let mut drifted = Vec::new();
+    let mut errored = Vec::new();
+    for node in &report.nodes {
+        for fact in &node.results {
+            match &fact.outcome {
+                ProbeOutcome::Holds => holds += 1,
+                ProbeOutcome::Drifted { expected, observed } => drifted.push(DriftedFact {
+                    node_id: node.node_id,
+                    number: node.number,
+                    name: node.name.clone(),
+                    fact_id: fact.fact_id.clone(),
+                    describe: fact.describe.clone(),
+                    expected: expected.clone(),
+                    observed: observed.clone(),
+                }),
+                ProbeOutcome::Error { reason } => errored.push(ErroredFact {
+                    node_id: node.node_id,
+                    number: node.number,
+                    name: node.name.clone(),
+                    fact_id: fact.fact_id.clone(),
+                    describe: fact.describe.clone(),
+                    reason: reason.clone(),
+                }),
+            }
+        }
+    }
+    Ok(Drift::new(holds, drifted, errored))
+}
+
 /// Runs the corpus reconcile and renders the report to `out`, returning the
 /// exit code ([`EXIT_OK`] when clean / warnings-without-`--strict`,
 /// [`EXIT_VIOLATIONS`] on drift or, under `--strict`, a probe error).
@@ -74,26 +116,18 @@ pub(crate) fn reconcile(
     let counts = report.counts();
     let code = verdict(&counts).exit_code(strict);
 
-    // The report carries node/fact ids only; join with the store's documents for
-    // each node's number/name and each fact's `describe` — the render identity.
-    let documents = store.load_all().context("loading nodes to label the report")?;
-    let by_id: HashMap<Id, &Document> =
-        documents.iter().map(|doc| (doc.frontmatter().id(), doc)).collect();
-    let views: Vec<NodeView<'_>> =
-        report.nodes.iter().map(|node| NodeView::build(node, &by_id)).collect();
-
     if json {
         let report_json = ReconcileReport {
             schema: RECONCILE_SCHEMA,
             ok: code == EXIT_OK,
             counts: CountsJson::from(&counts),
-            nodes: views.iter().map(NodeJson::from).collect(),
+            nodes: report.nodes.iter().map(NodeJson::from).collect(),
         };
         writeln!(out, "{}", serde_json::to_string_pretty(&report_json)?)?;
         return Ok(code);
     }
 
-    render_human(out, &counts, &views, strict)?;
+    render_human(out, &counts, &report.nodes, strict)?;
     Ok(code)
 }
 
@@ -103,7 +137,7 @@ pub(crate) fn reconcile(
 fn render_human(
     out: &mut dyn Write,
     counts: &OutcomeCounts,
-    views: &[NodeView<'_>],
+    nodes: &[NodeReport],
     strict: bool,
 ) -> anyhow::Result<()> {
     if counts.drifted == 0 && counts.errored == 0 {
@@ -120,9 +154,9 @@ fn render_human(
         "reconcile: {} drifted, {} couldn't-check ({} held)",
         counts.drifted, counts.errored, counts.holds
     )?;
-    for node in views {
-        for fact in &node.facts {
-            match fact.outcome {
+    for node in nodes {
+        for fact in &node.results {
+            match &fact.outcome {
                 ProbeOutcome::Holds => {}
                 ProbeOutcome::Drifted { expected, observed } => {
                     writeln!(
@@ -148,50 +182,6 @@ fn render_human(
         writeln!(out, "(probe errors do not fail; run with --strict to enforce)")?;
     }
     Ok(())
-}
-
-/// A node's results joined with its render identity (number, name) and each
-/// fact's `describe`. Borrows the loaded documents and the report; the single
-/// source both the human and `--json` renderings derive from (no drift between
-/// the two views).
-struct NodeView<'a> {
-    node_id: Id,
-    number: u32,
-    name: &'a str,
-    facts: Vec<FactView<'a>>,
-}
-
-/// One fact's result joined with its declared `describe`.
-struct FactView<'a> {
-    fact_id: &'a str,
-    describe: &'a str,
-    outcome: &'a ProbeOutcome,
-}
-
-impl<'a> NodeView<'a> {
-    /// Joins one [`NodeReport`] with its document for the render identity. A
-    /// node absent from the corpus map (a race) renders with placeholder
-    /// identity rather than failing the whole report.
-    fn build(node: &'a NodeReport, by_id: &HashMap<Id, &'a Document>) -> Self {
-        let document = by_id.get(&node.node_id).copied();
-        let (number, name) = document
-            .map(|doc| (doc.frontmatter().number(), doc.frontmatter().name()))
-            .unwrap_or((0, "<unknown>"));
-        let declared = document.map(|doc| doc.frontmatter().desired_facts()).unwrap_or(&[]);
-        let facts = node
-            .results
-            .iter()
-            .map(|result| FactView {
-                fact_id: &result.fact_id,
-                describe: declared
-                    .iter()
-                    .find(|fact| fact.id == result.fact_id)
-                    .map_or("", |fact| fact.describe.as_str()),
-                outcome: &result.outcome,
-            })
-            .collect();
-        NodeView { node_id: node.node_id, number, name, facts }
-    }
 }
 
 /// The `reconcile/v1` JSON envelope — a 1:1 projection of the report.
@@ -230,13 +220,13 @@ struct NodeJson {
     results: Vec<FactJson>,
 }
 
-impl From<&NodeView<'_>> for NodeJson {
-    fn from(view: &NodeView<'_>) -> Self {
+impl From<&NodeReport> for NodeJson {
+    fn from(node: &NodeReport) -> Self {
         Self {
-            node_id: view.node_id.to_string(),
-            number: view.number,
-            name: view.name.to_string(),
-            results: view.facts.iter().map(FactJson::from).collect(),
+            node_id: node.node_id.to_string(),
+            number: node.number,
+            name: node.name.clone(),
+            results: node.results.iter().map(FactJson::from).collect(),
         }
     }
 }
@@ -250,11 +240,11 @@ struct FactJson {
     outcome: ProbeOutcome,
 }
 
-impl From<&FactView<'_>> for FactJson {
-    fn from(fact: &FactView<'_>) -> Self {
+impl From<&odm_reconcile::FactResult> for FactJson {
+    fn from(fact: &odm_reconcile::FactResult) -> Self {
         Self {
-            fact_id: fact.fact_id.to_string(),
-            describe: fact.describe.to_string(),
+            fact_id: fact.fact_id.clone(),
+            describe: fact.describe.clone(),
             outcome: fact.outcome.clone(),
         }
     }

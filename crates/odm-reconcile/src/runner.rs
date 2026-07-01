@@ -17,11 +17,14 @@ use crate::file::FileProbe;
 use crate::probe::{Probe, ProbeOutcome};
 use crate::shell::ShellProbe;
 
-/// One declared fact's evaluation: the fact's node-local id and the outcome.
+/// One declared fact's evaluation: the fact's identity and the outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FactResult {
     /// The fact's node-local id (from the `desired_facts` entry).
     pub fact_id: String,
+    /// The fact's human description (`describe`) — carried for rendering so
+    /// consumers need not re-load the node (slice04 render-identity).
+    pub describe: String,
     /// The three-way outcome of probing it.
     pub outcome: ProbeOutcome,
 }
@@ -32,6 +35,10 @@ pub struct FactResult {
 pub struct NodeReport {
     /// The node whose facts were run.
     pub node_id: Id,
+    /// The node's human number — carried for rendering (slice04 render-identity).
+    pub number: u32,
+    /// The node's name — carried for rendering (slice04 render-identity).
+    pub name: String,
     /// One result per declared fact, in declaration order.
     pub results: Vec<FactResult>,
 }
@@ -134,17 +141,22 @@ impl<'a> Runner<'a> {
     #[must_use]
     pub fn run_node(&self, document: &Document) -> NodeReport {
         let root = self.store.root();
-        let node_id = document.frontmatter().id();
-        let results = document
-            .frontmatter()
+        let frontmatter = document.frontmatter();
+        let results = frontmatter
             .desired_facts()
             .iter()
             .map(|fact| FactResult {
                 fact_id: fact.id.clone(),
+                describe: fact.describe.clone(),
                 outcome: evaluate_spec(&fact.probe, root),
             })
             .collect();
-        NodeReport { node_id, results }
+        NodeReport {
+            node_id: frontmatter.id(),
+            number: frontmatter.number(),
+            name: frontmatter.name().to_string(),
+            results,
+        }
     }
 
     /// Runs every node's declared facts across the corpus, reading **current**

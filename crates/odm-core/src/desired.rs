@@ -7,7 +7,7 @@
 //!
 //! This module is the **declaration** layer only: it models the facts and
 //! round-trips them through the frontmatter serde layer. *Evaluating* a fact
-//! against reality is the job of the `Probe` trait in `odm-reconcile` (the
+//! against reality is the job of the `Probe` trait in the `reconcile` crate (the
 //! shell probe is the first impl, arc05 slice01); the probe-runner that
 //! executes a whole node's facts is slice02.
 //!
@@ -56,7 +56,7 @@ pub enum ProbeSpec {
     /// Run an author-declared command and compare its result to `expect`.
     Shell {
         /// The command to run, as `program arg1 arg2 …` (whitespace-tokenized).
-        /// See the shell probe's docs in `odm-reconcile` for the trust model
+        /// See the shell probe's docs in the `reconcile` crate for the trust model
         /// and the no-shell-metacharacters boundary.
         run: String,
         /// The result the command must produce for the fact to *hold*.

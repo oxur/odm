@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use clap::Parser;
 use odm_cli::Cli;
 use odm_core::frontmatter::{Document, Frontmatter};
-use odm_core::{Id, NodeType, Origin};
+use odm_core::{DesiredFact, Id, NodeType, Origin, ProbeSpec, ShellExpect};
 use odm_store::Store;
 use tempfile::TempDir;
 
@@ -157,21 +157,82 @@ fn rollup_origin_view_groups_by_provenance() {
     assert!(amendment.contains("Amended slice"), "amendment group:\n{md}");
 }
 
-// ----- R-7: drift section is present but reads "not yet tracked (A5)" --------
+// ----- S-3/S-4 (arc05 slice04): real drift in rollup; placeholder gone -------
+
+/// Builds a node declaring one shell fact (`run` expected to exit 0).
+fn fact_node(number: u32, name: &str, fact_id: &str, describe: &str, run: &str) -> Document {
+    let fm =
+        Frontmatter::new(Id::new(), number, NodeType::Slice, name, day(), day(), Origin::Planned)
+            .with_desired_facts(vec![DesiredFact {
+                id: fact_id.to_string(),
+                describe: describe.to_string(),
+                probe: ProbeSpec::Shell {
+                    run: run.to_string(),
+                    expect: ShellExpect { exit: 0, stdout_contains: None },
+                },
+            }]);
+    Document::new(fm, "body\n")
+}
 
 #[test]
-fn rollup_drift_placeholder_no_fake_data() {
+fn rollup_clean_no_drift() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
-    run(root, &["new", "slice", "Only"]);
+    run(root, &["new", "slice", "Only"]); // no declared facts → clean
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
 
     assert!(md.contains("## Drift"), "a Drift section is structurally present:\n{md}");
     let drift = md.split("## Drift").nth(1).unwrap();
-    assert!(drift.contains("Not yet tracked (A5)"), "drift reads the A5 placeholder:\n{md}");
+    assert!(drift.contains("No drift"), "clean corpus → no drift:\n{md}");
+    // The A3 placeholder is gone.
+    assert!(!md.contains("not yet tracked"), "placeholder must be gone:\n{md}");
+    assert!(!md.contains("Not yet tracked"), "placeholder must be gone:\n{md}");
+}
+
+#[test]
+fn rollup_drift_reported() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    // `false` exits 1 where 0 was expected → drift; a missing binary → couldn't-check.
+    seed(root, || fact_node(7, "DB layer", "db-up", "the prod DB answers", "false"));
+    seed(root, || {
+        fact_node(9, "Reachability", "host", "host reachable", "odm-no-such-binary-xyzzy")
+    });
+
+    assert!(run(root, &["rollup"]).ok);
+    let md = read_rollup(root);
+    let drift = md.split("## Drift").nth(1).unwrap();
+    assert!(drift.contains("#7 DB layer"), "drift identity:\n{md}");
+    assert!(drift.contains("db-up"), "fact id:\n{md}");
+    assert!(drift.contains("the prod DB answers"), "describe:\n{md}");
+    assert!(drift.contains("expected:") && drift.contains("observed:"), "diff:\n{md}");
+    // The couldn't-check fact renders distinctly with its reason.
+    assert!(drift.contains("#9 Reachability"), "errored identity:\n{md}");
+    assert!(drift.contains("couldn't check"), "errored marker:\n{md}");
+    assert!(drift.contains("reason:"), "errored reason:\n{md}");
+}
+
+#[test]
+fn rollup_json_includes_drift() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    seed(root, || fact_node(7, "DB layer", "db-up", "the prod DB answers", "false"));
+
+    let r = run(root, &["rollup", "--json"]);
+    assert!(r.ok);
+    let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    assert_eq!(v["schema"], "rollup/v1");
+    assert_eq!(v["drift"]["tracked"], true);
+    assert_eq!(v["drift"]["counts"]["drifted"], 1);
+    let d = &v["drift"]["drifted"][0];
+    assert_eq!(d["number"], 7);
+    assert_eq!(d["fact_id"], "db-up");
+    assert!(d["expected"].is_string() && d["observed"].is_string());
 }
 
 // ----- R-8: no deferred surfacing — no section, no `deferred` status ---------

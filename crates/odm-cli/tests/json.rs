@@ -298,7 +298,11 @@ fn rollup_json_shape_locked() {
     assert!(v["tree"].is_array() && v["ready"].is_array() && v["blocked"].is_array());
     assert!(v["tears"].is_array() && v["deferred"].is_array());
     assert_eq!(keys(&v["provenance"]), ["amendment", "discovered", "planned"]);
-    assert_eq!(keys(&v["drift"]), ["tracked"]);
+    // A5 slice04: the drift slot is populated — additive over the A3 `{tracked}`
+    // shape (`tracked` retained, projection fields added alongside).
+    assert_eq!(keys(&v["drift"]), ["counts", "drifted", "errored", "tracked"]);
+    assert_eq!(v["drift"]["tracked"], true);
+    assert_eq!(keys(&v["drift"]["counts"]), ["drifted", "errored", "holds"]);
 
     // A tree node's field set.
     assert_eq!(

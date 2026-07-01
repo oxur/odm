@@ -194,3 +194,60 @@ fn rollup_status_gate_order_empty_for_documents() {
     assert_eq!(model.tree.len(), 1);
     assert!(model.tree[0].status.is_empty(), "no gate-set ⇒ empty status vector");
 }
+
+// ----- S-1 (arc05 slice04): the Drift projection shape ----------------------
+
+#[test]
+fn drift_projection_shape() {
+    use odm_core::rollup::{Drift, DriftedFact, ErroredFact};
+
+    // Empty / clean defaults.
+    let empty = Drift::default();
+    assert!(empty.is_clean());
+    assert!(empty.is_empty());
+    assert_eq!(empty, Drift::new(0, Vec::new(), Vec::new()));
+
+    let id = Id::from_str("01ARZ3NDEKTSV4RRFFQ69G5FAV").unwrap();
+    let drift = Drift::new(
+        2,
+        vec![DriftedFact {
+            node_id: id,
+            number: 7,
+            name: "DB layer".to_string(),
+            fact_id: "db-up".to_string(),
+            describe: "the prod DB answers".to_string(),
+            expected: "exit 0".to_string(),
+            observed: "exit 1".to_string(),
+        }],
+        vec![ErroredFact {
+            node_id: id,
+            number: 3,
+            name: "Reachability".to_string(),
+            fact_id: "host".to_string(),
+            describe: "host reachable".to_string(),
+            reason: "could not run `ping`".to_string(),
+        }],
+    );
+
+    // Holds counted; drift and error kept distinct (no flattening).
+    assert_eq!(drift.holds, 2);
+    assert_eq!(drift.drifted.len(), 1);
+    assert_eq!(drift.errored.len(), 1);
+    assert!(!drift.is_clean());
+    assert!(!drift.is_empty());
+
+    // Drifted entries carry identity + expected/observed.
+    let d = &drift.drifted[0];
+    assert_eq!((d.number, d.name.as_str(), d.fact_id.as_str()), (7, "DB layer", "db-up"));
+    assert_eq!((d.expected.as_str(), d.observed.as_str()), ("exit 0", "exit 1"));
+
+    // Errored entries carry identity + reason.
+    let e = &drift.errored[0];
+    assert_eq!((e.number, e.fact_id.as_str()), (3, "host"));
+    assert!(e.reason.contains("ping"));
+
+    // holds-only is clean but not empty.
+    let holds_only = Drift::new(3, Vec::new(), Vec::new());
+    assert!(holds_only.is_clean());
+    assert!(!holds_only.is_empty());
+}

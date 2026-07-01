@@ -71,13 +71,13 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 | A-1 | slice01 (desired_facts + Probe trait + shell probe) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`21cfbf1`; 7/7; cov odm-reconcile 96% / odm-core desired.rs 100%); CDC-verified on structure (`slice01-desired-facts-probe/cdc-verification.md`); three-way `ProbeOutcome` + exec-directly shell probe; cargo rows pending CI. | → `done` when slice01 reproduces (CI green). |
 | A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`e4ca702`; 7/7; cov odm-reconcile file.rs 97% / runner.rs 97% / shell.rs 100%); `file` probe (exists/sha256/size, `sha2` reuse) + per-node/per-corpus runner with read-through; reads facts from the **store, not the index** (G-5 grep clean — invariant honored by non-triggering); drift/error kept distinct in `OutcomeCounts`; cargo rows pending CI. Branched off `arc05-slice01-…` (slice01 unmerged); rebase on merge. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`266fc38`; 6/6; cov odm-cli reconcile.rs 97%); `odm reconcile` renders drift (clean→no-drift exit 0; drift→exit 1; probe-error→Warning, `--strict`-gated) with `check`-consistent severity via a pure `verdict(OutcomeCounts)`; `--json` `reconcile/v1` (added `Serialize` additively, `ProbeOutcome` tagged on `kind`); store-read `run_corpus`, **no** index reader (invariant un-triggered); cargo rows pending CI. Branched off `arc05-slice02-…`; rebase on merge. | → `done` when slice03 reproduces (CI green). |
-| A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`DRIFT04`; 7/7; cov touched paths ≥ 94% line); `odm_core::rollup::Drift` fleshed (plain data, no reconcile dep) + `Rollup::with_drift`; reconcile report enriched with identity (slice03 double-load resolved); `rollup`/`orient` render real drift via one shared `compute_drift` projector (store-read `run_corpus`, no index change); `--json` `drift` slot populated additively (no version bump); the "not yet tracked (A5)" placeholder is gone. cargo rows pending CI. Branched off `arc05-slice03-…`; rebase on merge. | → `done` when slice04 reproduces (CI green). |
 | A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-7 | slice07 (scheduled reconcile) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-8 | **Compose:** a declared `desired_fact` whose reality diverges is detected and reported as drift by `odm reconcile` | arc-scale demo: declare a fact, diverge reality, observe drift | serious | arc-plan / 0001-C2 | open | | reproduce at arc scale |
 | A-9 | **Compose:** both probe kinds work end-to-end — a **shell** probe and a **file** probe | arc-scale demo: one of each, exercised | serious | arc-plan | open | | reproduce at arc scale |
-| A-10 | **Compose:** drift surfaces in `rollup`/`orient` — the A3 "not yet tracked (A5)" placeholder is gone, replaced by real drift (and "no drift" when clean) | arc-scale demo: rollup/orient before vs. after a divergence | serious | arc-plan / Q-A3-2 | open | | reproduce at arc scale |
+| A-10 | **Compose:** drift surfaces in `rollup`/`orient` — the A3 "not yet tracked (A5)" placeholder is gone, replaced by real drift (and "no drift" when clean) | arc-scale demo: rollup/orient before vs. after a divergence | serious | arc-plan / Q-A3-2 | open | mechanism-complete (slice04, `DRIFT04`): placeholder gone in both views; real drift + honest "no drift"; additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-11 | **Compose:** the `affects` edge powers a stale-doc-vs-committed-decision finding in `check` | arc-scale demo: a doc contradicting a committed decision → flagged | serious | arc-plan / 0001-C5 | open | | reproduce at arc scale |
 | A-12 | **Compose:** deferred nodes are surfaced with a checkable re-entry predicate (the Q-A3-1 deferral cashed) | arc-scale demo: a deferred node + its predicate surfaced in rollup/orient | serious | arc-plan / Q-A3-1 | open | | reproduce at arc scale |
 | A-13 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
@@ -140,6 +140,30 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.7 — 2026-07-01
+**slice04 closed (A-4 attested; A-10 mechanism-complete) + bubble-up propagated.**
+Retired the A3 drift placeholder (Q-A3-2): `rollup` and `orient` now render **real
+drift**. `odm_core::rollup::Drift` fleshed into a plain-data projection (counts +
+drifted/errored entries with identity + expected/observed | reason; **no**
+`reconcile`-crate dep — layering held via `Rollup::with_drift`). The reconcile
+report gained render-identity (node number/name + fact `describe`), **resolving
+slice03's double-load** — `reconcile`/`rollup`/`orient` render with no second store
+read. One shared `odm-cli` projector (`compute_drift` → store-read `run_corpus` →
+`Drift`) feeds **both** views (they cannot diverge). `--json` `drift` slot
+populated **additively** (`tracked` retained; no version bump). 7/7 attested;
+clippy clean; no `unsafe`; touched-path coverage ≥ 94% line (a slice02 gap in
+`desired.rs` — only ever measured via odm-reconcile — surfaced and fixed). Drift
+stays **store-read/on-demand, never index-cached** (S-5); the A4 invariant is
+un-triggered. **Two findings for slice07/arc-close:** (1) `orient` (bare `odm`)
+now runs every probe on each invocation — a regression against the "one cheap
+call" ethos; recommend slice07 cache reconcile output (`.odm/` drift snapshot +
+timestamp) and have `orient` *read* cached drift, refreshing only on `reconcile`.
+(2) The persisted `ROLLUP.md` early-cutoff keys on the corpus meta-fingerprint,
+which does not cover reality — committed drift can go stale, and `compute_drift`
+runs probes even when the cutoff then skips the write; the cached-snapshot
+approach dissolves both. *Plan-keeping:* CC propagated this bubble-up here itself.
+Surfaced by: slice04 close.
 
 ### v1.6 — 2026-06-30
 **slice03 closed (A-3 attested) + bubble-up propagated.** Landed `odm reconcile`

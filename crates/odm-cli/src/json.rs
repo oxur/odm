@@ -190,16 +190,88 @@ impl From<&Provenance> for ProvenanceJson {
     }
 }
 
-/// The drift slot. Drift/`reconcile` is A5 (Q-A3-2); `tracked` is always `false`
-/// until then. `#[non_exhaustive]` on the model lets A5 add fields.
+/// The drift slot, populated as of A5 slice04 (Q-A3-2). **Additive** over the A3
+/// shape: `tracked` is retained (now always `true` — drift *is* tracked) and the
+/// projection fields are added alongside, so a consumer pinned on `rollup/v1` /
+/// `orient/v1` that only read `tracked` is unaffected.
 #[derive(Serialize)]
 pub(crate) struct DriftJson {
+    /// Whether drift is tracked by the tool (true since A5).
     tracked: bool,
+    /// Outcome tally.
+    counts: DriftCountsJson,
+    /// Facts whose observed reality diverged from the declaration.
+    drifted: Vec<DriftedFactJson>,
+    /// Facts whose probe could not be evaluated.
+    errored: Vec<ErroredFactJson>,
+}
+
+/// JSON tally of drift outcomes.
+#[derive(Serialize)]
+pub(crate) struct DriftCountsJson {
+    holds: usize,
+    drifted: usize,
+    errored: usize,
+}
+
+/// JSON shape of one drifted fact (identity + expected/observed).
+#[derive(Serialize)]
+pub(crate) struct DriftedFactJson {
+    node_id: String,
+    number: u32,
+    name: String,
+    fact_id: String,
+    describe: String,
+    expected: String,
+    observed: String,
+}
+
+/// JSON shape of one couldn't-check fact (identity + reason).
+#[derive(Serialize)]
+pub(crate) struct ErroredFactJson {
+    node_id: String,
+    number: u32,
+    name: String,
+    fact_id: String,
+    describe: String,
+    reason: String,
 }
 
 impl From<&Drift> for DriftJson {
-    fn from(_: &Drift) -> Self {
-        Self { tracked: false }
+    fn from(drift: &Drift) -> Self {
+        Self {
+            tracked: true,
+            counts: DriftCountsJson {
+                holds: drift.holds,
+                drifted: drift.drifted.len(),
+                errored: drift.errored.len(),
+            },
+            drifted: drift
+                .drifted
+                .iter()
+                .map(|d| DriftedFactJson {
+                    node_id: d.node_id.to_string(),
+                    number: d.number,
+                    name: d.name.clone(),
+                    fact_id: d.fact_id.clone(),
+                    describe: d.describe.clone(),
+                    expected: d.expected.clone(),
+                    observed: d.observed.clone(),
+                })
+                .collect(),
+            errored: drift
+                .errored
+                .iter()
+                .map(|e| ErroredFactJson {
+                    node_id: e.node_id.to_string(),
+                    number: e.number,
+                    name: e.name.clone(),
+                    fact_id: e.fact_id.clone(),
+                    describe: e.describe.clone(),
+                    reason: e.reason.clone(),
+                })
+                .collect(),
+        }
     }
 }
 
@@ -306,7 +378,8 @@ impl OrientJson {
             ready: Vec::new(),
             blocked: Vec::new(),
             integrity: Vec::new(),
-            drift: DriftJson { tracked: false },
+            // No project selected → no reconcile run; an empty (clean) drift slot.
+            drift: (&Drift::default()).into(),
             hint: Some(hint),
         }
     }

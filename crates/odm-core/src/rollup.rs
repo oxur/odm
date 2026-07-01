@@ -11,13 +11,15 @@
 //! [`Satisfaction`](crate::satisfaction) for edge satisfaction — never
 //! reimplementing graph or recompose logic.
 //!
-//! Two sections are deliberately **slots, not yet wired** (arc03 open questions):
+//! One section is a **slot, not yet wired** (an arc03 open question):
 //!
-//! - [`Drift`] — drift/`reconcile` is A5; the slot is present but carries no
-//!   data and renders "not yet tracked (A5)" (Q-A3-2).
 //! - [`Deferred`] — deferred-node surfacing + the re-entry predicate land with
-//!   A5; the slot is defined but always **empty** here, and no `deferred` status
-//!   variant is invented to populate it (Q-A3-1).
+//!   A5 slice06; the slot is defined but always **empty** here, and no `deferred`
+//!   status variant is invented to populate it (Q-A3-1).
+//!
+//! The [`Drift`] slot is a real projection as of A5 slice04 (Q-A3-2): `odm-cli`
+//! runs an on-demand reconcile and injects it via [`Rollup::with_drift`]. The
+//! pure [`Rollup::assemble`] still leaves it empty (it cannot run probes).
 
 use std::collections::{HashMap, HashSet};
 
@@ -146,13 +148,85 @@ pub struct Provenance {
     pub amendment: Vec<NodeRef>,
 }
 
-/// The drift slot. Drift detection is `reconcile` (A5); until then this carries
-/// no data and a renderer shows "not yet tracked (A5)" (Q-A3-2). It is
-/// `#[non_exhaustive]` so A5 can add fields without a breaking change — keeping
-/// the rollup shape stable across that wiring.
+/// The drift projection folded into the rollup/orient views (A5 — Q-A3-2):
+/// declared `desired_facts` diffed against observed reality.
+///
+/// **Plain data — the *shape*, owned by `odm-core`.** Probes are I/O and live in
+/// the `reconcile` crate, which depends on `odm-core` (never the reverse); so
+/// `odm-cli` runs the reconcile, projects the result into this struct, and
+/// injects it with [`Rollup::with_drift`]. No `reconcile`-crate type leaks here.
+///
+/// [`Rollup::assemble`] leaves this at [`Drift::default`] (empty) — the pure
+/// assembly cannot run probes. Still `#[non_exhaustive]` (additive-friendly), so
+/// a renderer must tolerate fields added later.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct Drift {}
+pub struct Drift {
+    /// Number of declared facts whose probe held — for an honest summary
+    /// ("N fact(s) hold") distinct from "no facts declared" ([`Drift::is_empty`]).
+    pub holds: usize,
+    /// Facts whose observed reality diverged from the declaration.
+    pub drifted: Vec<DriftedFact>,
+    /// Facts whose probe could not be evaluated ("couldn't check").
+    pub errored: Vec<ErroredFact>,
+}
+
+impl Drift {
+    /// Builds a drift projection from a reconcile run's tallies.
+    #[must_use]
+    pub fn new(holds: usize, drifted: Vec<DriftedFact>, errored: Vec<ErroredFact>) -> Self {
+        Self { holds, drifted, errored }
+    }
+
+    /// `true` when nothing diverged and no probe errored (the corpus is clean).
+    /// `holds` may still be non-zero — a clean run over declared facts.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.drifted.is_empty() && self.errored.is_empty()
+    }
+
+    /// `true` when no facts were checked at all (none declared, nothing ran).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.holds == 0 && self.is_clean()
+    }
+}
+
+/// One declared fact whose observed reality diverged from its declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriftedFact {
+    /// The declaring node's stable id.
+    pub node_id: Id,
+    /// The declaring node's human number.
+    pub number: u32,
+    /// The declaring node's name.
+    pub name: String,
+    /// The fact's node-local id.
+    pub fact_id: String,
+    /// The human description of what should be true.
+    pub describe: String,
+    /// What the fact declared should be true.
+    pub expected: String,
+    /// What was actually observed.
+    pub observed: String,
+}
+
+/// One declared fact whose probe could not be evaluated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErroredFact {
+    /// The declaring node's stable id.
+    pub node_id: Id,
+    /// The declaring node's human number.
+    pub number: u32,
+    /// The declaring node's name.
+    pub name: String,
+    /// The fact's node-local id.
+    pub fact_id: String,
+    /// The human description of what should be true.
+    pub describe: String,
+    /// Why the probe could not be evaluated.
+    pub reason: String,
+}
 
 /// The deferred slot. Deferred-node surfacing + the re-entry predicate land with
 /// A5 (Q-A3-1); this is defined but always **empty** here, and no `deferred`
@@ -198,8 +272,10 @@ impl Rollup {
     /// [`NodeGraph::blocked`] over a [`Satisfaction`], active tears from
     /// [`NodeGraph::active_tears`] (sourced via
     /// [`frontmatter_tears`](crate::graph::frontmatter_tears)), and provenance
-    /// by grouping on [`Frontmatter::origin`]. The [`Drift`] and [`Deferred`]
-    /// slots are present but empty (A5).
+    /// by grouping on [`Frontmatter::origin`]. The [`Drift`] slot is left empty
+    /// (`odm-cli` injects the on-demand reconcile projection via
+    /// [`Rollup::with_drift`] — assembly is pure and cannot run probes);
+    /// [`Deferred`] is empty until slice06.
     #[must_use]
     pub fn assemble(nodes: &[Frontmatter], gates: &GateSets, threshold: Evidence) -> Self {
         let by_id: HashMap<Id, &Frontmatter> = nodes.iter().map(|f| (f.id(), f)).collect();
@@ -279,6 +355,15 @@ impl Rollup {
             drift: Drift::default(),
             deferred: Deferred::default(),
         }
+    }
+
+    /// Returns this rollup with its [`Drift`] slot set to `drift` — the on-demand
+    /// reconcile projection computed by `odm-cli`. Construct-complete: assemble
+    /// the pure model, then attach the (I/O-derived) drift before rendering.
+    #[must_use]
+    pub fn with_drift(mut self, drift: Drift) -> Self {
+        self.drift = drift;
+        self
     }
 }
 

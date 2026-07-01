@@ -15,7 +15,7 @@ use chrono::NaiveDate;
 use clap::Parser;
 use odm_cli::Cli;
 use odm_core::frontmatter::{Dependency, Document, Frontmatter};
-use odm_core::{Id, NodeType, Origin};
+use odm_core::{DesiredFact, Id, NodeType, Origin, ProbeSpec, ShellExpect};
 use odm_store::Store;
 use tempfile::TempDir;
 
@@ -275,13 +275,26 @@ fn orient_ready_blocked_softsat_all_block_reasons() {
     assert!(blocked.contains("blocked-by: #4 Extdep"), "external block reason:\n{}", r.out);
 }
 
-// ----- O-7: drift line reads the A5 placeholder -----------------------------
+// ----- S-4 (arc05 slice04): real drift in orient; placeholder gone ----------
+
+/// A shell fact expected to exit 0.
+fn shell_fact(id: &str, describe: &str, run: &str) -> DesiredFact {
+    DesiredFact {
+        id: id.to_string(),
+        describe: describe.to_string(),
+        probe: ProbeSpec::Shell {
+            run: run.to_string(),
+            expect: ShellExpect { exit: 0, stdout_contains: None },
+        },
+    }
+}
 
 #[test]
-fn orient_drift_placeholder() {
+fn orient_clean_no_drift() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
+    // Single project (auto-resolved), no declared facts → clean.
     persist(
         root,
         Document::new(fm('P', 1, NodeType::Project, "Proj", Origin::Planned), VISION_BODY),
@@ -290,7 +303,62 @@ fn orient_drift_placeholder() {
     let r = run(root, &["orient"]);
     assert!(r.ok);
     let drift = r.out.split("DRIFT").nth(1).unwrap();
-    assert!(drift.contains("not yet tracked (A5)"), "drift placeholder:\n{}", r.out);
+    assert!(drift.contains("no drift"), "clean corpus → no drift:\n{}", r.out);
+    assert!(!r.out.contains("not yet tracked"), "placeholder must be gone:\n{}", r.out);
+}
+
+#[test]
+fn orient_drift_reported() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(
+        root,
+        Document::new(fm('P', 1, NodeType::Project, "Proj", Origin::Planned), VISION_BODY),
+    );
+    // A slice declaring a drifting fact (`false` exits 1 where 0 expected).
+    persist(
+        root,
+        Document::new(
+            fm('S', 7, NodeType::Slice, "DB layer", Origin::Planned)
+                .with_desired_facts(vec![shell_fact("db-up", "the prod DB answers", "false")]),
+            "body\n",
+        ),
+    );
+
+    let r = run(root, &["orient"]);
+    assert!(r.ok);
+    let drift = r.out.split("DRIFT").nth(1).unwrap();
+    assert!(drift.contains("#7 DB layer"), "drift identity:\n{}", r.out);
+    assert!(drift.contains("db-up"), "fact id:\n{}", r.out);
+    assert!(drift.contains("expected") && drift.contains("observed"), "diff:\n{}", r.out);
+}
+
+#[test]
+fn orient_json_includes_drift() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(
+        root,
+        Document::new(fm('P', 1, NodeType::Project, "Proj", Origin::Planned), VISION_BODY),
+    );
+    persist(
+        root,
+        Document::new(
+            fm('S', 7, NodeType::Slice, "DB layer", Origin::Planned)
+                .with_desired_facts(vec![shell_fact("db-up", "the prod DB answers", "false")]),
+            "body\n",
+        ),
+    );
+
+    let r = run(root, &["orient", "--json"]);
+    assert!(r.ok);
+    let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    assert_eq!(v["schema"], "orient/v1");
+    assert_eq!(v["drift"]["tracked"], true);
+    assert_eq!(v["drift"]["counts"]["drifted"], 1);
+    assert_eq!(v["drift"]["drifted"][0]["fact_id"], "db-up");
 }
 
 // ----- O-9: no-current-project fallbacks, all exit 0 ------------------------

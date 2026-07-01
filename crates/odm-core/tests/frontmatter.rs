@@ -768,3 +768,37 @@ fn file_probe_spec_malformed_errors_with_position() {
         other => panic!("expected sha256 error, got {other:?}"),
     }
 }
+
+#[test]
+fn file_expect_defaults_exists_and_accepts_null_sha256() {
+    // `expect` present but `exists` omitted → defaults to true (the serde default).
+    let valid = "a".repeat(64);
+    let text = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: arc\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n\
+         desired_facts:\n  - id: f\n    describe: d\n    probe:\n      kind: file\n\
+         \x20     path: x\n      expect:\n        sha256: {valid}\n---\nbody\n"
+    );
+    match &Document::parse(&text).expect("parses").frontmatter().desired_facts()[0].probe {
+        ProbeSpec::File { expect, .. } => {
+            assert!(expect.exists, "exists defaults to true when omitted");
+            assert_eq!(expect.sha256.as_deref(), Some(valid.as_str()));
+        }
+        ProbeSpec::Shell { .. } => panic!("expected a file probe"),
+    }
+
+    // An explicit `sha256: null` deserializes to None (the optional-null branch).
+    let text_null = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: arc\nname: n\n\
+         created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n\
+         desired_facts:\n  - id: f\n    describe: d\n    probe:\n      kind: file\n\
+         \x20     path: x\n      expect:\n        exists: false\n        sha256: null\n---\nbody\n"
+    );
+    match &Document::parse(&text_null).expect("parses").frontmatter().desired_facts()[0].probe {
+        ProbeSpec::File { expect, .. } => {
+            assert!(!expect.exists);
+            assert_eq!(expect.sha256, None);
+        }
+        ProbeSpec::Shell { .. } => panic!("expected a file probe"),
+    }
+}

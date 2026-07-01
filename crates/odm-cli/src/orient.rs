@@ -84,8 +84,11 @@ pub fn orient(
         .with_context(|| format!("loading project {project_id} for orient"))?;
 
     // Reuse the slice02 model + the check aggregation, both over the index-backed
-    // frontmatters (no re-derivation).
-    let model = Rollup::assemble(&frontmatters, &gates, threshold);
+    // frontmatters (no re-derivation). Drift is injected from a separate on-demand
+    // store-read reconcile (the shared projector `rollup` also uses — S-5/S-6),
+    // since the index carries no `desired_facts`.
+    let model = Rollup::assemble(&frontmatters, &gates, threshold)
+        .with_drift(crate::reconcile::compute_drift(store)?);
     let findings = commands::integrity_findings(store, root, &frontmatters)?;
 
     if json {
@@ -262,9 +265,34 @@ fn render_orient(
         }
     }
 
-    // 5. Drift: the A5 placeholder (Q-A3-2).
+    // 5. Drift (A5 slice04 — Q-A3-2): real drift from an on-demand reconcile.
     let _ = writeln!(s, "\nDRIFT");
-    let _ = writeln!(s, "  not yet tracked (A5)");
+    let drift = &model.drift;
+    if drift.is_clean() {
+        let _ = writeln!(s, "  no drift");
+    } else {
+        let _ = writeln!(
+            s,
+            "  {} drifted, {} couldn't-check ({} holding)",
+            drift.drifted.len(),
+            drift.errored.len(),
+            drift.holds
+        );
+        for d in &drift.drifted {
+            let _ = writeln!(
+                s,
+                "  ✗ #{} {} / {}: expected {}, observed {}",
+                d.number, d.name, d.fact_id, d.expected, d.observed
+            );
+        }
+        for e in &drift.errored {
+            let _ = writeln!(
+                s,
+                "  ? #{} {} / {} (couldn't check): {}",
+                e.number, e.name, e.fact_id, e.reason
+            );
+        }
+    }
 
     s
 }

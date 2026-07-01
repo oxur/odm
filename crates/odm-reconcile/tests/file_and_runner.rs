@@ -259,3 +259,25 @@ fn report_distinguishes_drift_from_error() {
     assert_eq!(counts.errored, 1, "exactly one error — distinct from drift");
     assert_eq!(counts.total(), 3);
 }
+
+// ----- S-2 (arc05 slice04): the report carries render-identity ---------------
+
+#[test]
+fn report_carries_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = odm_store::Store::open(dir.path());
+    let runner = Runner::new(&store);
+
+    // A node with a describing fact: the report must carry number/name/describe
+    // so renderers need no second load.
+    let mut fact = shell_fact("built", "true", 0);
+    fact.describe = "the crate builds cleanly".to_string();
+    let doc = node(N1, vec![fact]);
+    let report = runner.run_node(&doc);
+
+    assert_eq!(report.node_id, Id::from_str(N1).unwrap());
+    assert_eq!(report.number, 1);
+    assert_eq!(report.name, "n");
+    assert_eq!(report.results[0].fact_id, "built");
+    assert_eq!(report.results[0].describe, "the crate builds cleanly");
+}

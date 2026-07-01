@@ -98,7 +98,11 @@ pub fn rollup(
         .snapshot;
     let fingerprint = to_hex(&snapshot.meta_fingerprint());
     let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
-    let model = Rollup::assemble(&frontmatters, &gates, threshold);
+    // The model is index-backed, but the index carries no `desired_facts` (slice02):
+    // drift comes from a separate on-demand, store-read reconcile (S-5), never the
+    // index. `orient` uses the same shared projector so the two views can't diverge.
+    let model = Rollup::assemble(&frontmatters, &gates, threshold)
+        .with_drift(crate::reconcile::compute_drift(store)?);
 
     // `--json` is a non-writing output mode: serialize the same model to stdout.
     if json {
@@ -303,10 +307,36 @@ fn render_origin_group(s: &mut String, title: &str, nodes: &[NodeRef]) {
     let _ = writeln!(s);
 }
 
-/// Renders the drift section. Drift/`reconcile` is A5 (Q-A3-2): the section is
-/// structurally present but reads "not yet tracked (A5)" with no fabricated
-/// data. A5 wires real drift output here once `reconcile` lands.
-fn render_drift(s: &mut String, _model: &Rollup) {
+/// Renders the drift section from the injected [`Drift`](odm_core::rollup::Drift)
+/// projection (A5 slice04 — Q-A3-2): per-fact drift/couldn't-check with identity
+/// and expected/observed. A clean corpus renders an honest "no drift" — never
+/// fabricated rows.
+fn render_drift(s: &mut String, model: &Rollup) {
     let _ = writeln!(s, "## Drift\n");
-    let _ = writeln!(s, "_Not yet tracked (A5)._");
+    let drift = &model.drift;
+    if drift.is_clean() {
+        let _ = writeln!(s, "_No drift._\n");
+        return;
+    }
+    let _ = writeln!(
+        s,
+        "{} drifted, {} couldn't-check ({} holding).\n",
+        drift.drifted.len(),
+        drift.errored.len(),
+        drift.holds
+    );
+    for d in &drift.drifted {
+        let _ = writeln!(s, "- #{} {} / {} — {}", d.number, d.name, d.fact_id, d.describe);
+        let _ = writeln!(s, "  - expected: {}", d.expected);
+        let _ = writeln!(s, "  - observed: {}", d.observed);
+    }
+    for e in &drift.errored {
+        let _ = writeln!(
+            s,
+            "- #{} {} / {} (couldn't check) — {}",
+            e.number, e.name, e.fact_id, e.describe
+        );
+        let _ = writeln!(s, "  - reason: {}", e.reason);
+    }
+    let _ = writeln!(s);
 }
