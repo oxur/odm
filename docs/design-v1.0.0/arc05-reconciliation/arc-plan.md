@@ -22,6 +22,12 @@ program-level facts. Drift folds into the generated rollup/orient — **replacin
 **`affects` edge + stale-doc-vs-decision check** (C5) and **deferred-node surfacing +
 re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 
+**Freshness is incremental and automatic, not scheduled (v1.8 redirection).** Drift does
+not wait on a manual/scheduled `reconcile` (laggy → misses the very divergences we exist to
+catch). Instead it rides the A4 stat-cache: **before every command**, a cheap incremental
+pass re-processes *only what changed* and updates persisted drift metadata. See
+**## Freshness model** below — this is the arc's defining architectural choice.
+
 ## Exit criteria (arc acceptance)
 
 - A node can declare `desired_facts`; `odm reconcile` runs their probes and reports
@@ -33,7 +39,53 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
 - The `affects` edge powers a stale-doc-vs-committed-decision check folded into `check`.
 - **Deferred nodes are surfaced with their checkable re-entry predicate** — the Q-A3-1
   deferral is cashed (representation + surfacing + predicate evaluation).
-- `reconcile --schedule` supports recurring drift checks.
+- **Drift stays fresh incrementally on every command** (v1.8): input-derived facts are
+  always fresh via the A4 stat-cache (near-zero cost, no auto-spawn); environment/volatile
+  facts carry honest "last checked" staleness and refresh only on explicit `odm reconcile`
+  (or a declared cheap trigger). Bare `odm` never auto-runs volatile probes.
+- ~~`reconcile --schedule` supports recurring drift checks.~~ **(demoted, v1.8)** — scheduled
+  is no longer the freshness mechanism (it was the laggy thing we're replacing); an optional
+  off-command refresh for volatile facts *may* remain, but freshness is incremental-on-read.
+
+## Freshness model (the v1.8 incremental-drift redirection)
+
+> **Design of record: ODD-0019** (`docs/design/04-accepted/0019-incremental-drift-probes-as-rules-honest-staleness.md`)
+> — the full ADR (context, forces, decision, lineage, alternatives). This section is the
+> arc-plan summary; ODD-0019 is authoritative.
+>
+> **Resolved with Duncan 2026-07-01.** Surfaced by slice04's finding (bare `odm`/orient ran
+> every probe on each invocation — a regression against the "one cheap call" ethos) + the
+> insight that scheduled/manual reconcile is too laggy and *continually misses items* — the
+> exact failure A5 exists to kill.
+
+**Probes are input-tracked rules (ODD-0014 lineage: Salsa backdating, Ninja `restat`, Buck2
+dep-files, verifying traces).** Two classes:
+
+1. **Input-derived facts** — a `file` probe, or a `shell` probe that is a pure function of
+   **declared input files/globs**. The reconciler **stat-caches the inputs** (reusing the A4
+   warm-path racy-correct content-hash from slice03) and re-probes **only when an input
+   changed**; unchanged → the cached outcome stands. → **always fresh on every command, cost
+   proportional to the change.** The dominant case for plan-state facts (artifact exists,
+   config present, ROLLUP matches).
+2. **Environment / volatile facts** — external state (a service, the network) with **no
+   filesystem signal** (the marquee ODD-0001 C2 prod-DB-503). These cannot be made fresh by
+   stat. **Honest staleness:** the persisted drift snapshot carries a per-fact "last checked"
+   timestamp; `orient`/`rollup` render input-derived drift as fresh and volatile drift as
+   "last checked Xm ago"; volatile probes re-run **only** on explicit `odm reconcile` (or a
+   declared cheap trigger) — **bare `odm` never auto-spawns them** (kills the slice04
+   regression + the shell-probe trust-surface concern).
+
+**Mechanism:** a persisted **drift snapshot** under `.odm/` (next to the index), on the same
+reconcile-then-read discipline the index uses. Every command runs a cheap incremental drift
+pass *before* reading (stat-cache the input-derived probes' inputs → re-probe the changed →
+update the snapshot; leave volatile outcomes, stamp their staleness). This composes A5 onto
+A4 directly — the two arcs share the stat-cache spine.
+
+**Probe-model extension (additive):** the `desired_facts` spec gains optional `inputs`
+(paths/globs → input-derived) and/or a `volatile` marker (→ environment). Additive to
+slice01's model (internally-tagged, non-`#[non_exhaustive]` — the `ProbeSpec` evolution
+discipline already in place). Absent `inputs` on a `shell` probe ⇒ volatile by default
+(conservative: honest staleness rather than a false-fresh).
 
 ## Slices (dependency-ordered, one-line scope)
 
@@ -56,8 +108,26 @@ re-entry predicate** (Q-A3-1, deferred from A3) land. The `odm-reconcile` crate.
    representation carrying a checkable re-entry condition (a `desired_fact`/probe);
    surfaced in rollup/orient; predicate evaluated by the reconciler. Fills the
    defined-but-empty A3 slot.
-7. **slice07 — scheduled reconcile.** `reconcile --schedule` for recurring drift checks;
-   drift folded into the rollup on a cadence.
+7. ~~**slice07 — scheduled reconcile.**~~ **Superseded by the v1.8 freshness model** (see
+   above). Replaced by the two freshness slices below.
+
+**PROPOSED reworked tail (v1.8 — pending operator sequence confirmation; ledger renumber
+held until then, to avoid a premature A4-style bridge):**
+
+7. **slice07 — probes-as-rules: `inputs`/`volatile` + persisted `.odm/` drift snapshot +
+   incremental runner.** Extend the probe spec (declared `inputs`, `volatile` marker); add
+   the incremental reconcile that stat-caches input-derived probes' inputs (reuse A4/slice03
+   racy-correct hashing), persists the drift snapshot with per-fact last-checked stamps, and
+   re-probes only the changed. The heart of the freshness model.
+8. **slice08 — freshness-on-every-command + honest staleness.** Wire the incremental drift
+   pass into the command read-path (reconcile-then-read); `orient`/`rollup` render
+   input-derived drift as fresh and volatile drift as "last checked Xm ago"; bare `odm` runs
+   zero volatile probes. (Optional: a thin off-command refresh for volatile facts — the only
+   residue of the old "scheduled" idea.)
+
+> **Sequencing (open):** slices 05 (`affects`/stale-doc) and 06 (deferred surfacing) are
+> independent of the freshness rework and could land before or after 07/08. Operator's call
+> whether freshness (07/08) jumps the queue ahead of 05/06.
 
 ## Arc Ledger
 
@@ -140,6 +210,25 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.8 — 2026-07-01
+**Freshness-model redirection (incremental drift, not scheduled) — operator design decision.**
+Duncan redirected the arc's freshness architecture: scheduled/manual `reconcile` is too laggy
+and *continually misses items* (the exact failure A5 exists to kill), so drift freshness must
+ride the **A4 stat-cache** — before every command, cheaply re-process only what changed and
+update persisted drift metadata. Added a **## Freshness model** section: probes are
+input-tracked rules (ODD-0014 lineage), split into **input-derived** (stat-cache incremental
+→ always fresh, near-zero cost) and **environment/volatile** (no fs signal → **honest
+staleness**: "last checked Xm ago", refresh only on explicit `reconcile`; bare `odm` never
+auto-spawns them — resolving slice04's orient-runs-probes regression + the shell-probe
+trust-surface concern). Updated Capability + Exit criteria; **demoted `reconcile --schedule`**
+(no longer the freshness mechanism). Proposed a reworked tail: **slice07** (probes-as-rules:
+`inputs`/`volatile` + persisted `.odm/` drift snapshot + incremental runner) and **slice08**
+(freshness-on-every-command + honest-staleness rendering), superseding the old scheduled
+slice07. **Ledger renumber deliberately held** (proposed breakdown pending operator sequence
+confirmation — avoids a premature A4-style bridge). Open: whether 07/08 (freshness) jump
+ahead of 05/06 (`affects`, deferred). Surfaced by: slice04 close finding + Duncan's
+redirection (2026-07-01).
 
 ### v1.7 — 2026-07-01
 **slice04 closed (A-4 attested; A-10 mechanism-complete) + bubble-up propagated.**
