@@ -37,7 +37,7 @@
 
 ## Closure
 
-Closed at commit `STALE05` on 2026-07-02. Verified by: CC (self-attested); CDC to
+Closed at commit `ab5420a` on 2026-07-02. Verified by: CC (self-attested); CDC to
 reproduce. Rows: 6. Done: 6. Deferred: 0. No-op: 0.
 
 > Per LEDGER-DISCIPLINE v2.0 §A, all evidence is **attested** (CC built and ran
