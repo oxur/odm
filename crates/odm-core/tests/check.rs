@@ -145,3 +145,82 @@ fn all_edge_kinds_are_link_checked() {
         .count();
     assert_eq!(dangling, 6, "all six edge kinds with a missing target are flagged");
 }
+
+// ----- T-1/T-2/T-3 (arc05 slice05): stale-doc-vs-decision (C5) ---------------
+
+fn dm(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+}
+
+/// A node with `created` fixed early and an explicit `updated` date.
+fn doc_updated(id_s: &str, number: u32, name: &str, updated: NaiveDate) -> Frontmatter {
+    Frontmatter::new(
+        id(id_s),
+        number,
+        NodeType::Note,
+        name,
+        dm(2026, 6, 1),
+        updated,
+        Origin::Planned,
+    )
+}
+
+fn stale_findings(nodes: &[Frontmatter]) -> Vec<odm_core::check::Finding> {
+    check(nodes).into_iter().filter(|f| matches!(f.violation, Violation::StaleDoc { .. })).collect()
+}
+
+#[test]
+fn check_flags_stale_doc_after_decision() {
+    // Decision A (updated 06-25) `affects` doc B (updated 06-22): A moved after B.
+    let mut a = doc_updated(A, 1, "Decision", dm(2026, 6, 25));
+    a.edges_mut().affects = vec![id(B)];
+    let b = doc_updated(B, 2, "Doc", dm(2026, 6, 22));
+
+    let stale = stale_findings(&[a, b]);
+    assert_eq!(stale.len(), 1);
+    let f = &stale[0];
+    // Subject is B — the potentially-stale doc.
+    assert_eq!(f.node, id(B));
+    assert_eq!(f.name, "Doc");
+    match &f.violation {
+        Violation::StaleDoc {
+            decision,
+            decision_number,
+            decision_name,
+            decision_updated,
+            doc_updated,
+        } => {
+            assert_eq!(*decision, id(A));
+            assert_eq!(*decision_number, 1);
+            assert_eq!(decision_name, "Decision");
+            assert_eq!(*decision_updated, dm(2026, 6, 25));
+            assert_eq!(*doc_updated, dm(2026, 6, 22));
+        }
+        other => panic!("expected StaleDoc, got {other:?}"),
+    }
+}
+
+#[test]
+fn check_fresh_doc_not_flagged() {
+    // B (updated 06-25) is at-or-after its governing decision A (updated 06-20):
+    // no false positive.
+    let mut a = doc_updated(A, 1, "Decision", dm(2026, 6, 20));
+    a.edges_mut().affects = vec![id(B)];
+    let b = doc_updated(B, 2, "Doc", dm(2026, 6, 25));
+    assert!(stale_findings(&[a, b]).is_empty());
+}
+
+#[test]
+fn check_stale_doc_same_day_not_flagged() {
+    // Decision and doc edited the same day → `>` (not `>=`) → not flagged
+    // (day-granularity: sub-day ordering is not tracked).
+    let mut a = doc_updated(A, 1, "Decision", dm(2026, 6, 24));
+    a.edges_mut().affects = vec![id(B)];
+    let b = doc_updated(B, 2, "Doc", dm(2026, 6, 24));
+    assert!(stale_findings(&[a, b]).is_empty());
+
+    // A dangling `affects` target is not this pass's concern (link-integrity's).
+    let mut c = doc_updated(C, 3, "Decision2", dm(2026, 6, 25));
+    c.edges_mut().affects = vec![id(MISSING)];
+    assert!(stale_findings(&[c]).is_empty());
+}

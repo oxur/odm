@@ -569,6 +569,77 @@ fn check_json_v1() {
     assert!(cv["findings"].as_array().unwrap().is_empty());
 }
 
+// ----- T-2/T-5 (arc05 slice05): stale-doc-vs-decision (C5) ------------------
+
+const STALE_A: &str = "01ARZ3NDEKTSV4RRFFQ69G5FA0";
+const STALE_B: &str = "01ARZ3NDEKTSV4RRFFQ69G5FB0";
+
+fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+}
+
+/// Builds a `note` node with an explicit `updated` date.
+fn doc_node(id_s: &str, number: u32, name: &str, updated: NaiveDate) -> Frontmatter {
+    Frontmatter::new(
+        Id::from_str(id_s).unwrap(),
+        number,
+        NodeType::Note,
+        name,
+        ymd(2026, 6, 1),
+        updated,
+        Origin::Planned,
+    )
+}
+
+/// Seeds "Decision A `affects` Doc B" with A updated after B (a stale doc).
+fn seed_stale_pair(root: &Path) {
+    let mut a = doc_node(STALE_A, 1, "Decision", ymd(2026, 6, 25));
+    a.edges_mut().affects = vec![Id::from_str(STALE_B).unwrap()];
+    let b = doc_node(STALE_B, 2, "Doc", ymd(2026, 6, 20));
+    let store = Store::open(root);
+    store.persist(&Document::new(a, "body\n")).unwrap();
+    store.persist(&Document::new(b, "body\n")).unwrap();
+}
+
+#[test]
+fn check_stale_doc_is_warning() {
+    let dir = TempDir::new().unwrap();
+    seed_stale_pair(dir.path());
+
+    // Advisory: surfaced, but does not fail the exit without --strict.
+    let r = run(dir.path(), &["check"]);
+    assert_eq!(r.code, Some(0), "stale-doc is a warning\nout: {}\nerr: {}", r.out, r.err);
+    assert!(r.out.contains("stale-doc"), "finding surfaced:\n{}", r.out);
+    assert!(r.out.contains("warning"), "at warning severity:\n{}", r.out);
+    // Both identities + the temporal signal are named.
+    assert!(
+        r.out.contains("Decision") && r.out.contains("2026-06-25"),
+        "names decision:\n{}",
+        r.out
+    );
+
+    // --strict promotes the warning to a failing exit.
+    assert_eq!(run(dir.path(), &["check", "--strict"]).code, Some(1));
+}
+
+#[test]
+fn check_json_includes_stale_doc() {
+    let dir = TempDir::new().unwrap();
+    seed_stale_pair(dir.path());
+
+    let r = run(dir.path(), &["check", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    // Additive — no schema version bump.
+    assert_eq!(v["schema"], "check/v1");
+    assert_eq!(v["ok"], true, "warnings don't fail without --strict");
+    assert!(v["warnings"].as_u64().unwrap() >= 1);
+    let findings = v["findings"].as_array().unwrap();
+    let stale = findings.iter().find(|f| f["code"] == "stale-doc").expect("a stale-doc finding");
+    assert_eq!(stale["severity"], "warning");
+    assert_eq!(stale["number"], 2, "subject is the potentially-stale doc B");
+    assert!(stale["detail"].as_str().unwrap().contains("Decision"));
+}
+
 // ===========================================================================
 // derived order: next / blocked / path --json (H-12)
 // ===========================================================================

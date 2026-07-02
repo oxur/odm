@@ -142,13 +142,13 @@ held until then, to avoid a premature A4-style bridge):**
 | A-2 | slice02 (file probe + probe execution) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`e4ca702`; 7/7; cov odm-reconcile file.rs 97% / runner.rs 97% / shell.rs 100%); `file` probe (exists/sha256/size, `sha2` reuse) + per-node/per-corpus runner with read-through; reads facts from the **store, not the index** (G-5 grep clean — invariant honored by non-triggering); drift/error kept distinct in `OutcomeCounts`; cargo rows pending CI. Branched off `arc05-slice01-…` (slice01 unmerged); rebase on merge. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`266fc38`; 6/6; cov odm-cli reconcile.rs 97%); `odm reconcile` renders drift (clean→no-drift exit 0; drift→exit 1; probe-error→Warning, `--strict`-gated) with `check`-consistent severity via a pure `verdict(OutcomeCounts)`; `--json` `reconcile/v1` (added `Serialize` additively, `ProbeOutcome` tagged on `kind`); store-read `run_corpus`, **no** index reader (invariant un-triggered); cargo rows pending CI. Branched off `arc05-slice02-…`; rebase on merge. | → `done` when slice03 reproduces (CI green). |
 | A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`bcde1ea`; 7/7; cov touched paths ≥ 94% line); `odm_core::rollup::Drift` fleshed (plain data, no reconcile dep) + `Rollup::with_drift`; reconcile report enriched with identity (slice03 double-load resolved); `rollup`/`orient` render real drift via one shared `compute_drift` projector (store-read `run_corpus`, no index change); `--json` `drift` slot populated additively (no version bump); the "not yet tracked (A5)" placeholder is gone. cargo rows pending CI. Branched off `arc05-slice03-…`; rebase on merge. | → `done` when slice04 reproduces (CI green). |
-| A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`STALE05`; 6/6; cov check.rs 99% / commands.rs 92% line); `odm check` flags a potentially-stale doc when `A affects B` and `A.updated > B.updated` — a `Violation::StaleDoc` (subject B, carrying A + both dates), Warning-tier (`--strict`-gated), structural/temporal not semantic (day-granularity `>` not `>=`); `--json` additive (`check/v1` unchanged); reads `affects`/`updated` off the index — **no** index change (invariant un-triggered). cargo rows pending CI. Branched off `arc05-slice04-…`; rebase on merge. | → `done` when slice05 reproduces (CI green). |
 | A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-7 | slice07 (scheduled reconcile) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-8 | **Compose:** a declared `desired_fact` whose reality diverges is detected and reported as drift by `odm reconcile` | arc-scale demo: declare a fact, diverge reality, observe drift | serious | arc-plan / 0001-C2 | open | | reproduce at arc scale |
 | A-9 | **Compose:** both probe kinds work end-to-end — a **shell** probe and a **file** probe | arc-scale demo: one of each, exercised | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** drift surfaces in `rollup`/`orient` — the A3 "not yet tracked (A5)" placeholder is gone, replaced by real drift (and "no drift" when clean) | arc-scale demo: rollup/orient before vs. after a divergence | serious | arc-plan / Q-A3-2 | open | mechanism-complete (slice04, `bcde1ea`): placeholder gone in both views; real drift + honest "no drift"; additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
-| A-11 | **Compose:** the `affects` edge powers a stale-doc-vs-committed-decision finding in `check` | arc-scale demo: a doc contradicting a committed decision → flagged | serious | arc-plan / 0001-C5 | open | | reproduce at arc scale |
+| A-11 | **Compose:** the `affects` edge powers a stale-doc-vs-committed-decision finding in `check` | arc-scale demo: a doc contradicting a committed decision → flagged | serious | arc-plan / 0001-C5 | open | mechanism-complete (slice05, `STALE05`): `A affects B` + `A.updated > B.updated` → `stale-doc` Warning in `check`; structural/temporal, `--strict`-gated, additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-12 | **Compose:** deferred nodes are surfaced with a checkable re-entry predicate (the Q-A3-1 deferral cashed) | arc-scale demo: a deferred node + its predicate surfaced in rollup/orient | serious | arc-plan / Q-A3-1 | open | | reproduce at arc scale |
 | A-13 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
@@ -210,6 +210,29 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v1.9 — 2026-07-02
+**slice05 closed (A-5 attested; A-11 mechanism-complete) + bubble-up propagated.**
+Cashed ODD-0001 **C5**: `odm check` gains a **stale-doc** finding — for each
+`A affects B` where the governing decision `A` was `updated` after the doc `B`
+(`A.updated > B.updated`), `B` is flagged as potentially stale (subject B,
+carrying A + both dates). **Structural + temporal, never semantic** (the `affects`
+edge *is* the committed-decision assertion; day-granularity uses `>` not `>=`, so
+same-day edits aren't nagged). **Warning-tier**, advisory without `--strict` and
+failing under it — implemented via a new `violation_severity` helper (the
+aggregation previously hardcoded `Error` for all `odm_core::check` findings).
+`--json` **additive** (`check/v1` unchanged). Reads `affects`/`updated` off the
+index (both indexed since A4) — **no** index change; the A4 invariant stays
+un-triggered. 6/6 attested; clippy clean; no `unsafe`; cov check.rs 99% /
+commands.rs 92% line. Independent of the freshness rework (07/08). **Sharpens
+slice06:** the pure-`check` extension pattern (a `check_*` helper + a CLI
+severity/label/detail/fix mapping + an additive JSON finding kind) is the
+template for deferred surfacing, and `violation_severity` is now the hook for any
+further advisory structural finding. **Verify-amend (flagged):** T-2's
+`check_stale_doc_is_warning` is a `-p odm-cli` test (severity/exit are CLI
+concerns; `odm-core::check` has no severity model), not `-p odm-core` as the row
+wrote. *Plan-keeping:* CC propagated this bubble-up here itself. Surfaced by:
+slice05 close.
 
 ### v1.8 — 2026-07-01
 **Freshness-model redirection (incremental drift, not scheduled) — operator design decision.**

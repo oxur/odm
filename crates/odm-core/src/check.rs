@@ -14,6 +14,10 @@
 //!    resolves to a node in the corpus (no dangling refs).
 //! 3. **Supersession-chain integrity** — no node supersedes itself, and the
 //!    `supersedes` relation has no cycles.
+//! 4. **Stale-doc-vs-decision** (arc05 slice05, ODD-0001 C5) — a doc governed by
+//!    a committed decision (`A affects B`) whose decision was `updated` after it
+//!    (`A.updated > B.updated`) is flagged as potentially stale. Structural +
+//!    temporal only, never semantic (see [`Violation::StaleDoc`]).
 //!
 //! Graph-level checks (cycles-without-tears, out-of-order/staleness,
 //! recomposition, below-threshold satisfaction) are deliberately **not** here;
@@ -22,6 +26,8 @@
 //! onto the findings vector — see [`check`].
 
 use std::collections::{BTreeMap, BTreeSet};
+
+use chrono::NaiveDate;
 
 use crate::Id;
 use crate::frontmatter::Frontmatter;
@@ -67,6 +73,34 @@ pub enum Violation {
         /// The ids forming the cycle.
         cycle: Vec<Id>,
     },
+    /// A doc may be **stale** relative to a committed decision that governs it:
+    /// the decision `A` (which declares `A affects B`) was `updated` *after* the
+    /// doc `B` it governs (`A.updated > B.updated`), so `B` may not reflect `A`
+    /// (ODD-0001 C5). The subject [`Finding`] is `B` (the potentially-stale doc);
+    /// this carries the governing decision `A` and both dates.
+    ///
+    /// **Structural + temporal, never semantic.** The `affects` edge *is* the
+    /// author's assertion that `A` is a committed decision governing `B`; this
+    /// check never inspects content or claims `B` *contradicts* `A` — it flags
+    /// *potential* staleness for a human to judge (the same boundary
+    /// recomposition-integrity draws: no automatic semantic detection).
+    ///
+    /// **Day granularity:** `updated` is a [`NaiveDate`], so the comparison is
+    /// `>` (strictly later day), not `>=` — a decision and a doc edited on the
+    /// **same day** are not distinguished and are **not** flagged (avoids nagging
+    /// on a coordinated same-day edit; sub-day ordering is simply not tracked).
+    StaleDoc {
+        /// The governing decision node (`A`).
+        decision: Id,
+        /// `A`'s human number.
+        decision_number: u32,
+        /// `A`'s name.
+        decision_name: String,
+        /// When `A` (the decision) was last updated.
+        decision_updated: NaiveDate,
+        /// When `B` (this doc) was last updated.
+        doc_updated: NaiveDate,
+    },
 }
 
 /// Validates the structure of a node corpus, returning all findings.
@@ -87,6 +121,7 @@ pub fn check(nodes: &[Frontmatter]) -> Vec<Finding> {
         check_link_integrity(fm, &ids, &mut findings);
     }
     check_supersession(&ordered, &mut findings);
+    check_stale_docs(&ordered, &mut findings);
 
     findings
 }
@@ -216,6 +251,37 @@ fn check_supersession(ordered: &[&Frontmatter], findings: &mut Vec<Finding>) {
             match succ.get(&cur) {
                 Some(&next) => cur = next,
                 None => break, // chain terminates — good
+            }
+        }
+    }
+}
+
+/// Stale-doc-vs-decision (ODD-0001 C5): for each `A affects B` where the
+/// governing decision `A` was `updated` strictly after the doc `B`
+/// (`A.updated > B.updated`), flag `B` as potentially stale relative to `A`.
+///
+/// Structural + temporal, **never semantic** — see [`Violation::StaleDoc`] for
+/// the `affects`-is-the-commitment reasoning and the `NaiveDate` day-granularity
+/// limitation (`>` not `>=`). A dangling `affects` target is not this pass's
+/// concern (link-integrity already reports it); an unresolved target is skipped.
+fn check_stale_docs(ordered: &[&Frontmatter], findings: &mut Vec<Finding>) {
+    let by_id: BTreeMap<Id, &Frontmatter> = ordered.iter().map(|fm| (fm.id(), *fm)).collect();
+    for &decision in ordered {
+        for &doc_id in &decision.edges().affects {
+            let Some(&doc) = by_id.get(&doc_id) else {
+                continue; // dangling `affects` — reported by link-integrity
+            };
+            if decision.updated() > doc.updated() {
+                findings.push(finding(
+                    doc,
+                    Violation::StaleDoc {
+                        decision: decision.id(),
+                        decision_number: decision.number(),
+                        decision_name: decision.name().to_string(),
+                        decision_updated: decision.updated(),
+                        doc_updated: doc.updated(),
+                    },
+                ));
             }
         }
     }

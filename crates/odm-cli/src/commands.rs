@@ -936,6 +936,7 @@ fn violation_label(v: &Violation) -> &'static str {
         Violation::DanglingEdge { .. } => "dangling-edge",
         Violation::SelfSupersede => "self-supersede",
         Violation::SupersessionCycle { .. } => "supersession-cycle",
+        Violation::StaleDoc { .. } => "stale-doc",
         // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
         // generically rather than failing the build when they appear.
         _ => "violation",
@@ -953,6 +954,16 @@ fn violation_detail(v: &Violation) -> String {
             format!("`{edge}` references {target}, which is not in the corpus")
         }
         Violation::SelfSupersede => "`supersedes` points at the node itself".to_string(),
+        Violation::StaleDoc {
+            decision_number,
+            decision_name,
+            decision_updated,
+            doc_updated,
+            ..
+        } => format!(
+            "may be stale: governing decision #{decision_number} {decision_name:?} was updated \
+             {decision_updated}, after this doc (updated {doc_updated})"
+        ),
         Violation::SupersessionCycle { cycle } => {
             let ids: Vec<String> = cycle.iter().map(ToString::to_string).collect();
             format!("`supersedes` forms a cycle: {}", ids.join(" -> "))
@@ -989,7 +1000,22 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
         Violation::SupersessionCycle { .. } => {
             format!("edit {file}: break the `supersedes` cycle by removing one link")
         }
+        Violation::StaleDoc { decision_number, decision_name, .. } => format!(
+            "review {file} against #{decision_number} {decision_name:?}; bump its `updated` \
+             once reconciled (or `odm rename`-touch it)"
+        ),
         _ => format!("inspect {file}"),
+    }
+}
+
+/// The severity for a structural finding. All v1/v2 structural violations are
+/// hard errors *except* the advisory stale-doc warning (slice05): possible
+/// staleness is a human-judgment signal, not a proven defect, so it fails only
+/// under `--strict` (like the recomposition/staleness warnings).
+fn violation_severity(v: &Violation) -> Severity {
+    match v {
+        Violation::StaleDoc { .. } => Severity::Warning,
+        _ => Severity::Error,
     }
 }
 
@@ -1085,10 +1111,11 @@ fn aggregate(
 
     let mut entries = Vec::new();
 
-    // (a) schema + link-integrity + supersession (v1) — hard errors.
+    // (a) schema + link-integrity + supersession (v1) — hard errors; the
+    // stale-doc finding (slice05) is a Warning (advisory, --strict-gated).
     for f in odm_core::check::check(frontmatters) {
         entries.push(CheckEntry {
-            severity: Severity::Error,
+            severity: violation_severity(&f.violation),
             code: violation_label(&f.violation),
             node: Some(f.node),
             number: Some(f.number),
