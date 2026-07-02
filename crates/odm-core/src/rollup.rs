@@ -11,15 +11,10 @@
 //! [`Satisfaction`](crate::satisfaction) for edge satisfaction — never
 //! reimplementing graph or recompose logic.
 //!
-//! One section is a **slot, not yet wired** (an arc03 open question):
-//!
-//! - [`Deferred`] — deferred-node surfacing + the re-entry predicate land with
-//!   A5 slice06; the slot is defined but always **empty** here, and no `deferred`
-//!   status variant is invented to populate it (Q-A3-1).
-//!
-//! The [`Drift`] slot is a real projection as of A5 slice04 (Q-A3-2): `odm-cli`
-//! runs an on-demand reconcile and injects it via [`Rollup::with_drift`]. The
-//! pure [`Rollup::assemble`] still leaves it empty (it cannot run probes).
+//! The [`Drift`] (A5 slice04 — Q-A3-2) and [`Deferred`] (A5 slice06 — Q-A3-1)
+//! slots are real projections: `odm-cli` runs an on-demand reconcile and injects
+//! them via [`Rollup::with_drift`] / [`Rollup::with_deferred`]. The pure
+//! [`Rollup::assemble`] still leaves both empty (it cannot run probes).
 
 use std::collections::{HashMap, HashSet};
 
@@ -228,15 +223,64 @@ pub struct ErroredFact {
     pub reason: String,
 }
 
-/// The deferred slot. Deferred-node surfacing + the re-entry predicate land with
-/// A5 (Q-A3-1); this is defined but always **empty** here, and no `deferred`
-/// status variant is invented to fill it. A renderer emits no deferred section
-/// while it is empty.
+/// The deferred projection (A5 slice06 — Q-A3-1): nodes that parked themselves
+/// with a checkable re-entry condition, each with *why* and *whether it's ready
+/// to resume*.
+///
+/// **Plain data — the *shape*, owned by `odm-core`** (same layering as [`Drift`]):
+/// `odm-cli` runs the re-entry probe (reconcile, I/O) and injects this via
+/// [`Rollup::with_deferred`]. [`Rollup::assemble`] leaves it empty. Still
+/// `#[non_exhaustive]` (additive-friendly); a renderer emits no section when
+/// [`is_empty`](Deferred::is_empty).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Deferred {
-    /// Deferred nodes — always empty in A3; populated with A5.
-    pub nodes: Vec<NodeRef>,
+    /// The deferred nodes, in corpus order.
+    pub nodes: Vec<DeferredNode>,
+}
+
+impl Deferred {
+    /// Builds a deferred projection.
+    #[must_use]
+    pub fn new(nodes: Vec<DeferredNode>) -> Self {
+        Self { nodes }
+    }
+
+    /// `true` when no node is deferred (a renderer emits no deferred section).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+}
+
+/// One deferred node: why it was parked and whether its re-entry predicate now
+/// holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeferredNode {
+    /// The deferred node's stable id.
+    pub node_id: Id,
+    /// The node's human number.
+    pub number: u32,
+    /// The node's name.
+    pub name: String,
+    /// Why the node was parked (`deferred.because`).
+    pub because: String,
+    /// The re-entry status — whether the referenced `desired_fact` now holds.
+    pub reentry: Reentry,
+}
+
+/// A deferred node's re-entry status, from evaluating its `reenter_when` fact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reentry {
+    /// The re-entry fact **holds** — the node is ready to resume.
+    Ready,
+    /// The re-entry fact has **not** held (it drifted, errored, or does not
+    /// resolve) — still deferred, waiting on `describe` (the fact's human
+    /// description, or a note that the referenced fact is missing).
+    Waiting {
+        /// What the node is waiting on (the re-entry fact's `describe`).
+        describe: String,
+    },
 }
 
 /// The assembled whole-plan view (ODD-0013 §6). A pure value: it owns its data
@@ -363,6 +407,15 @@ impl Rollup {
     #[must_use]
     pub fn with_drift(mut self, drift: Drift) -> Self {
         self.drift = drift;
+        self
+    }
+
+    /// Returns this rollup with its [`Deferred`] slot set to `deferred` — the
+    /// on-demand reconcile projection computed by `odm-cli` (Q-A3-1). Same
+    /// construct-complete pattern as [`with_drift`](Rollup::with_drift).
+    #[must_use]
+    pub fn with_deferred(mut self, deferred: Deferred) -> Self {
+        self.deferred = deferred;
         self
     }
 }

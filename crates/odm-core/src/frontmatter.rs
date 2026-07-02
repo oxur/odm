@@ -154,9 +154,9 @@ impl Document {
 /// Fields are declared — and therefore emitted — in canonical order: `id`,
 /// `number`, `type`, `name`, `created`, `updated`, `tags`, `component`,
 /// `origin`, `reserved`, `retired`, `edges`, `status`, `decomposed`,
-/// `desired_facts`. Any keys not modeled here are captured in a hidden
-/// catch-all and re-emitted last, so they survive a round-trip until their
-/// owning slices model them.
+/// `desired_facts`, `deferred`. Any keys not modeled here are captured in a
+/// hidden catch-all and re-emitted last, so they survive a round-trip until
+/// their owning slices model them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frontmatter {
     /// Stable ULID identity.
@@ -205,6 +205,11 @@ pub struct Frontmatter {
     /// to byte-identical frontmatter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     desired_facts: Vec<DesiredFact>,
+    /// The node's deferred marker (ODD-0013 Q-A3-1): parked work with a
+    /// checkable re-entry condition. Absent ⇒ not deferred (the default). Typed
+    /// since arc05 slice06; skipped on emit when absent (YAML-additive).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    deferred: Option<Deferral>,
     /// Keys not yet modeled, preserved verbatim across a round-trip (forward
     /// compatibility for schema additions not yet typed).
     #[serde(flatten)]
@@ -239,6 +244,7 @@ impl Frontmatter {
             status: crate::status::Status::new(),
             decomposed: None,
             desired_facts: Vec::new(),
+            deferred: None,
             extra: Mapping::new(),
         }
     }
@@ -275,6 +281,13 @@ impl Frontmatter {
     #[must_use]
     pub fn with_desired_facts(mut self, desired_facts: Vec<DesiredFact>) -> Self {
         self.desired_facts = desired_facts;
+        self
+    }
+
+    /// Sets (or clears) the deferred marker (Q-A3-1).
+    #[must_use]
+    pub fn with_deferred(mut self, deferred: Option<Deferral>) -> Self {
+        self.deferred = deferred;
         self
     }
 
@@ -350,6 +363,12 @@ impl Frontmatter {
         &self.desired_facts
     }
 
+    /// The node's deferred marker, if it has parked itself (Q-A3-1).
+    #[must_use]
+    pub fn deferred(&self) -> Option<&Deferral> {
+        self.deferred.as_ref()
+    }
+
     /// The retirement marker, if the node has been retired.
     #[must_use]
     pub fn retired(&self) -> Option<&Retirement> {
@@ -412,6 +431,26 @@ impl Frontmatter {
     pub fn retire(&mut self, reason: impl Into<String>, on: NaiveDate) {
         self.retired = Some(Retirement { reason: reason.into(), on });
     }
+}
+
+/// A node's **deferred** marker (ODD-0013 Q-A3-1): parked work with a checkable
+/// re-entry condition.
+///
+/// `reenter_when` references one of the node's own [`desired_facts`] by its
+/// node-local `id` — the fact whose *holding* means "the reason to defer is
+/// gone; this can resume." Reusing a declared fact (rather than embedding a
+/// second probe) keeps one probe model (slice01); reconcile evaluates that fact
+/// to decide ready-to-re-enter vs still-deferred. A `reenter_when` that resolves
+/// to no such fact is a `check` finding (dangling), never a panic.
+///
+/// [`desired_facts`]: Frontmatter::desired_facts
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deferral {
+    /// Why the node was parked (human text).
+    pub because: String,
+    /// The node-local `id` of the `desired_fact` whose holding means the node is
+    /// ready to re-enter.
+    pub reenter_when: String,
 }
 
 /// A parent's guarded "decomposition complete" assertion (ODD-0013 §4.5):

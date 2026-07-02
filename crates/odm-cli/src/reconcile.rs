@@ -10,8 +10,8 @@
 use std::io::Write;
 
 use anyhow::Context as _;
-use odm_core::rollup::{Drift, DriftedFact, ErroredFact};
-use odm_reconcile::{NodeReport, OutcomeCounts, ProbeOutcome, Runner};
+use odm_core::rollup::{Deferred, DeferredNode, Drift, DriftedFact, ErroredFact, Reentry};
+use odm_reconcile::{CorpusReport, NodeReport, OutcomeCounts, ProbeOutcome, Runner};
 use odm_store::Store;
 use serde::Serialize;
 
@@ -56,18 +56,24 @@ fn verdict(counts: &OutcomeCounts) -> Verdict {
     }
 }
 
-/// Runs an on-demand corpus reconcile and projects it into the shared
-/// [`odm_core::rollup::Drift`] model — the single compute+project both `rollup`
-/// and `orient` call (slice04 S-6), so the two views cannot diverge.
+/// Runs **one** on-demand corpus reconcile and projects it into the shared
+/// [`Drift`] and [`Deferred`] models — the single compute both `rollup` and
+/// `orient` call (S-6 / D-3), so the two views cannot diverge *and* the probes
+/// run once per command, not once per view.
 ///
-/// Store-read (`run_corpus`); drift is derived and time-varying, never cached in
-/// the index (S-5).
+/// Store-read (`run_corpus`); drift and deferred are derived + reconcile-bound,
+/// never cached in the index (S-5 / D-5).
 ///
 /// # Errors
 ///
 /// Returns an error if the corpus cannot be loaded from the store.
-pub(crate) fn compute_drift(store: &Store) -> anyhow::Result<Drift> {
+pub(crate) fn reconcile_views(store: &Store) -> anyhow::Result<(Drift, Deferred)> {
     let report = Runner::new(store).run_corpus().context("running the corpus reconcile")?;
+    Ok((project_drift(&report), project_deferred(&report)))
+}
+
+/// Projects a corpus report into the [`Drift`] model (pure — no I/O).
+fn project_drift(report: &CorpusReport) -> Drift {
     let mut holds = 0;
     let mut drifted = Vec::new();
     let mut errored = Vec::new();
@@ -95,7 +101,41 @@ pub(crate) fn compute_drift(store: &Store) -> anyhow::Result<Drift> {
             }
         }
     }
-    Ok(Drift::new(holds, drifted, errored))
+    Drift::new(holds, drifted, errored)
+}
+
+/// Projects a corpus report into the [`Deferred`] model (pure — no I/O): each
+/// node carrying a `deferred` marker, with its re-entry status resolved from the
+/// referenced `desired_fact`'s outcome (`Holds` → ready; drift/error/missing →
+/// still waiting).
+fn project_deferred(report: &CorpusReport) -> Deferred {
+    let mut nodes = Vec::new();
+    for node in &report.nodes {
+        let Some(marker) = &node.deferred else {
+            continue;
+        };
+        let reentry = match node.results.iter().find(|fact| fact.fact_id == marker.reenter_when) {
+            Some(fact) => match &fact.outcome {
+                ProbeOutcome::Holds => Reentry::Ready,
+                ProbeOutcome::Drifted { .. } | ProbeOutcome::Error { .. } => {
+                    Reentry::Waiting { describe: fact.describe.clone() }
+                }
+            },
+            // Dangling `reenter_when` — surfaced honestly here and flagged by
+            // `check` (never a panic).
+            None => Reentry::Waiting {
+                describe: format!("(re-entry fact `{}` not declared)", marker.reenter_when),
+            },
+        };
+        nodes.push(DeferredNode {
+            node_id: node.node_id,
+            number: node.number,
+            name: node.name.clone(),
+            because: marker.because.clone(),
+            reentry,
+        });
+    }
+    Deferred::new(nodes)
 }
 
 /// Runs the corpus reconcile and renders the report to `out`, returning the

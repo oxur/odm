@@ -143,13 +143,13 @@ held until then, to avoid a premature A4-style bridge):**
 | A-3 | slice03 (`odm reconcile` on demand) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`266fc38`; 6/6; cov odm-cli reconcile.rs 97%); `odm reconcile` renders drift (clean→no-drift exit 0; drift→exit 1; probe-error→Warning, `--strict`-gated) with `check`-consistent severity via a pure `verdict(OutcomeCounts)`; `--json` `reconcile/v1` (added `Serialize` additively, `ProbeOutcome` tagged on `kind`); store-read `run_corpus`, **no** index reader (invariant un-triggered); cargo rows pending CI. Branched off `arc05-slice02-…`; rebase on merge. | → `done` when slice03 reproduces (CI green). |
 | A-4 | slice04 (drift in rollup/orient) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`bcde1ea`; 7/7; cov touched paths ≥ 94% line); `odm_core::rollup::Drift` fleshed (plain data, no reconcile dep) + `Rollup::with_drift`; reconcile report enriched with identity (slice03 double-load resolved); `rollup`/`orient` render real drift via one shared `compute_drift` projector (store-read `run_corpus`, no index change); `--json` `drift` slot populated additively (no version bump); the "not yet tracked (A5)" placeholder is gone. cargo rows pending CI. Branched off `arc05-slice03-…`; rebase on merge. | → `done` when slice04 reproduces (CI green). |
 | A-5 | slice05 (`affects` edge + stale-doc check) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`ab5420a`; 6/6; cov check.rs 99% / commands.rs 92% line); `odm check` flags a potentially-stale doc when `A affects B` and `A.updated > B.updated` — a `Violation::StaleDoc` (subject B, carrying A + both dates), Warning-tier (`--strict`-gated), structural/temporal not semantic (day-granularity `>` not `>=`); `--json` additive (`check/v1` unchanged); reads `affects`/`updated` off the index — **no** index change (invariant un-triggered). cargo rows pending CI. Branched off `arc05-slice04-…`; rebase on merge. | → `done` when slice05 reproduces (CI green). |
-| A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-6 | slice06 (deferred surfacing + re-entry predicate) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`DEFER06`; 7/7; cov touched paths ≥ 91.7% line); `deferred: { because, reenter_when }` marker (reuses a `desired_fact`); re-entry predicate reconcile-evaluated (Holds → ready, else waiting); `odm_core::rollup::Deferred` slot filled + surfaced in `rollup`/`orient` via one shared `reconcile_views` projector (drift + deferred from a single `run_corpus`); `--json` additive (`rollup/v1` slot populated, `orient/v1` gains a `deferred` key — no bump); dangling `reenter_when` → a `check` Warning; store-overlay read, **no** index change. Known limit: `next` does not withhold deferred (documented). cargo rows pending CI. Branched off `arc05-slice05-…`; rebase on merge. | → `done` when slice06 reproduces (CI green). |
 | A-7 | slice07 (scheduled reconcile) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-8 | **Compose:** a declared `desired_fact` whose reality diverges is detected and reported as drift by `odm reconcile` | arc-scale demo: declare a fact, diverge reality, observe drift | serious | arc-plan / 0001-C2 | open | | reproduce at arc scale |
 | A-9 | **Compose:** both probe kinds work end-to-end — a **shell** probe and a **file** probe | arc-scale demo: one of each, exercised | serious | arc-plan | open | | reproduce at arc scale |
 | A-10 | **Compose:** drift surfaces in `rollup`/`orient` — the A3 "not yet tracked (A5)" placeholder is gone, replaced by real drift (and "no drift" when clean) | arc-scale demo: rollup/orient before vs. after a divergence | serious | arc-plan / Q-A3-2 | open | mechanism-complete (slice04, `bcde1ea`): placeholder gone in both views; real drift + honest "no drift"; additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-11 | **Compose:** the `affects` edge powers a stale-doc-vs-committed-decision finding in `check` | arc-scale demo: a doc contradicting a committed decision → flagged | serious | arc-plan / 0001-C5 | open | mechanism-complete (slice05, `ab5420a`): `A affects B` + `A.updated > B.updated` → `stale-doc` Warning in `check`; structural/temporal, `--strict`-gated, additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
-| A-12 | **Compose:** deferred nodes are surfaced with a checkable re-entry predicate (the Q-A3-1 deferral cashed) | arc-scale demo: a deferred node + its predicate surfaced in rollup/orient | serious | arc-plan / Q-A3-1 | open | | reproduce at arc scale |
+| A-12 | **Compose:** deferred nodes are surfaced with a checkable re-entry predicate (the Q-A3-1 deferral cashed) | arc-scale demo: a deferred node + its predicate surfaced in rollup/orient | serious | arc-plan / Q-A3-1 | open | mechanism-complete (slice06, `DEFER06`): marker + reconcile-evaluated re-entry predicate + rollup/orient surfacing + additive JSON. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-13 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
 
 Closes in `arc05-reconciliation/closing-report.md`: per-row walk + composition verdict,
@@ -210,6 +210,30 @@ five-iteration cap. Slice closes bubble up to this arc-plan; the arc closes with
 `closing-report.md` + composition check.
 
 ## Version History
+
+### v2.0 — 2026-07-02
+**slice06 closed (A-6 attested; A-12 mechanism-complete) + bubble-up propagated.**
+Cashed **Q-A3-1**: a node declares `deferred: { because, reenter_when }` (a marker
+whose `reenter_when` reuses one of the node's own `desired_facts` — one probe
+model, no inline spec), and `rollup`/`orient` **surface** it with *why* it's
+parked and *whether it's ready to resume*. The re-entry predicate is
+**reconcile-evaluated** (the referenced fact `Holds` → ready; drift/error/missing
+→ waiting on `<describe>`), filling the defined-but-empty A3 `Deferred` slot via
+one shared `reconcile_views` projector — refactored so **drift + deferred come
+from a single `run_corpus`** (probes run once per command, not per view). `--json`
+additive (`rollup/v1` slot populated; `orient/v1` gains a `deferred` key; no bump).
+A dangling `reenter_when` is a `check` Warning (reuses slice05's `check_*` +
+`violation_severity`). **Store-overlay read, no index change** — the marker is
+carried on the enriched `NodeReport`, never `index_frontmatters`; the A4 invariant
+stays un-triggered. 7/7 attested; clippy clean; no `unsafe`; touched-path coverage
+≥ 91.7% line. **Documented limitation (out of scope):** `next` does **not** yet
+withhold deferred nodes (that needs the index-backed graph reader to see the
+marker → indexing it → the invariant + a `FORMAT_VERSION` bump). **Sharpens
+07/08:** the re-entry predicate is an ODD-0019 probe — fold it into the incremental
+drift snapshot alongside drift (`reconcile_views` is the single seam to make
+incremental), and settle "should `next` withhold deferred?" there (where the
+marker's snapshot home is decided anyway) rather than a one-off index change now.
+*Plan-keeping:* CC propagated this bubble-up here itself. Surfaced by: slice06 close.
 
 ### v1.9 — 2026-07-02
 **slice05 closed (A-5 attested; A-11 mechanism-complete) + bubble-up propagated.**

@@ -18,6 +18,9 @@
 //!    a committed decision (`A affects B`) whose decision was `updated` after it
 //!    (`A.updated > B.updated`) is flagged as potentially stale. Structural +
 //!    temporal only, never semantic (see [`Violation::StaleDoc`]).
+//! 5. **Dangling `reenter_when`** (arc05 slice06, Q-A3-1) — a `deferred` node
+//!    whose `reenter_when` references a `desired_fact` it does not declare (see
+//!    [`Violation::DanglingReenterWhen`]).
 //!
 //! Graph-level checks (cycles-without-tears, out-of-order/staleness,
 //! recomposition, below-threshold satisfaction) are deliberately **not** here;
@@ -101,6 +104,14 @@ pub enum Violation {
         /// When `B` (this doc) was last updated.
         doc_updated: NaiveDate,
     },
+    /// A node's `deferred.reenter_when` references a `desired_fact` id that the
+    /// node does not declare (arc05 slice06, Q-A3-1). The node can never be shown
+    /// ready to re-enter, so the reference should be fixed — but the node is still
+    /// validly parked, so this is advisory (a Warning), not a structural error.
+    DanglingReenterWhen {
+        /// The unresolved `reenter_when` fact id.
+        reenter_when: String,
+    },
 }
 
 /// Validates the structure of a node corpus, returning all findings.
@@ -122,6 +133,7 @@ pub fn check(nodes: &[Frontmatter]) -> Vec<Finding> {
     }
     check_supersession(&ordered, &mut findings);
     check_stale_docs(&ordered, &mut findings);
+    check_reenter_when(&ordered, &mut findings);
 
     findings
 }
@@ -283,6 +295,24 @@ fn check_stale_docs(ordered: &[&Frontmatter], findings: &mut Vec<Finding>) {
                     },
                 ));
             }
+        }
+    }
+}
+
+/// Dangling-`reenter_when` (arc05 slice06, Q-A3-1): a node's `deferred` marker
+/// references a `reenter_when` fact id the node does not declare. Advisory — the
+/// node is still validly parked, but its re-entry predicate can never resolve.
+fn check_reenter_when(ordered: &[&Frontmatter], findings: &mut Vec<Finding>) {
+    for fm in ordered {
+        let Some(deferral) = fm.deferred() else {
+            continue;
+        };
+        let declared = fm.desired_facts().iter().any(|fact| fact.id == deferral.reenter_when);
+        if !declared {
+            findings.push(finding(
+                fm,
+                Violation::DanglingReenterWhen { reenter_when: deferral.reenter_when.clone() },
+            ));
         }
     }
 }

@@ -17,7 +17,7 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use odm_core::frontmatter::{Document, Frontmatter};
-use odm_core::rollup::{NodeRef, Rollup, TreeNode};
+use odm_core::rollup::{NodeRef, Reentry, Rollup, TreeNode};
 use odm_core::{Id, NodeType};
 use odm_store::Store;
 
@@ -84,11 +84,13 @@ pub fn orient(
         .with_context(|| format!("loading project {project_id} for orient"))?;
 
     // Reuse the slice02 model + the check aggregation, both over the index-backed
-    // frontmatters (no re-derivation). Drift is injected from a separate on-demand
-    // store-read reconcile (the shared projector `rollup` also uses — S-5/S-6),
-    // since the index carries no `desired_facts`.
+    // frontmatters (no re-derivation). Drift + deferred are injected from a single
+    // on-demand store-read reconcile (the shared projector `rollup` also uses —
+    // S-5/S-6/D-3), since the index carries no `desired_facts`.
+    let (drift, deferred) = crate::reconcile::reconcile_views(store)?;
     let model = Rollup::assemble(&frontmatters, &gates, threshold)
-        .with_drift(crate::reconcile::compute_drift(store)?);
+        .with_drift(drift)
+        .with_deferred(deferred);
     let findings = commands::integrity_findings(store, root, &frontmatters)?;
 
     if json {
@@ -291,6 +293,19 @@ fn render_orient(
                 "  ? #{} {} / {} (couldn't check): {}",
                 e.number, e.name, e.fact_id, e.reason
             );
+        }
+    }
+
+    // 6. Deferred (A5 slice06 — Q-A3-1): parked work + re-entry status. Emitted
+    // only when a node is deferred (none → no section, no fabricated data).
+    if !model.deferred.is_empty() {
+        let _ = writeln!(s, "\nDEFERRED");
+        for node in &model.deferred.nodes {
+            let status = match &node.reentry {
+                Reentry::Ready => "ready to re-enter".to_string(),
+                Reentry::Waiting { describe } => format!("waiting on {describe}"),
+            };
+            let _ = writeln!(s, "  #{} {} — {} ({status})", node.number, node.name, node.because);
         }
     }
 

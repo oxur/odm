@@ -15,8 +15,8 @@
 //! pre-history.
 
 use odm_core::rollup::{
-    ActiveTear, BlockReason, BlockedNode, Drift, GateStatus, NodeRef, Provenance, ReadyNode,
-    Rollup, TreeNode,
+    ActiveTear, BlockReason, BlockedNode, Deferred, DeferredNode, Drift, GateStatus, NodeRef,
+    Provenance, ReadyNode, Reentry, Rollup, TreeNode,
 };
 use serde::Serialize;
 
@@ -275,6 +275,50 @@ impl From<&Drift> for DriftJson {
     }
 }
 
+/// One deferred node in the `--json` `deferred` slot (populated as of A5 slice06,
+/// Q-A3-1). **Additive**: the A3 slot was an always-empty array, so defining its
+/// element shape now is backward-compatible (no version bump).
+#[derive(Serialize)]
+pub(crate) struct DeferredNodeJson {
+    node_id: String,
+    number: u32,
+    name: String,
+    because: String,
+    reentry: ReentryJson,
+}
+
+/// A deferred node's re-entry status: `{status:"ready"}` or
+/// `{status:"waiting", waiting_on:"<describe>"}`.
+#[derive(Serialize)]
+pub(crate) struct ReentryJson {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    waiting_on: Option<String>,
+}
+
+impl From<&DeferredNode> for DeferredNodeJson {
+    fn from(node: &DeferredNode) -> Self {
+        let reentry = match &node.reentry {
+            Reentry::Ready => ReentryJson { status: "ready", waiting_on: None },
+            Reentry::Waiting { describe } => {
+                ReentryJson { status: "waiting", waiting_on: Some(describe.clone()) }
+            }
+        };
+        Self {
+            node_id: node.node_id.to_string(),
+            number: node.number,
+            name: node.name.clone(),
+            because: node.because.clone(),
+            reentry,
+        }
+    }
+}
+
+/// Projects the [`Deferred`] slot into its JSON array.
+fn deferred_json(deferred: &Deferred) -> Vec<DeferredNodeJson> {
+    deferred.nodes.iter().map(Into::into).collect()
+}
+
 /// The full `rollup --json` envelope (mirrors the model, section for section).
 #[derive(Serialize)]
 pub(crate) struct RollupJson {
@@ -285,8 +329,8 @@ pub(crate) struct RollupJson {
     tears: Vec<ActiveTearJson>,
     provenance: ProvenanceJson,
     drift: DriftJson,
-    /// The deferred slot — always empty in A3 (Q-A3-1).
-    deferred: Vec<NodeRefJson>,
+    /// The deferred slot — populated as of A5 slice06 (Q-A3-1); additive.
+    deferred: Vec<DeferredNodeJson>,
 }
 
 impl From<&Rollup> for RollupJson {
@@ -299,7 +343,7 @@ impl From<&Rollup> for RollupJson {
             tears: m.tears.iter().map(Into::into).collect(),
             provenance: (&m.provenance).into(),
             drift: (&m.drift).into(),
-            deferred: m.deferred.nodes.iter().map(Into::into).collect(),
+            deferred: deferred_json(&m.deferred),
         }
     }
 }
@@ -334,6 +378,9 @@ pub(crate) struct OrientJson {
     blocked: Vec<BlockedJson>,
     integrity: Vec<IntegrityJson>,
     drift: DriftJson,
+    /// The deferred slot (A5 slice06, Q-A3-1) — additive: a new key, absent in
+    /// the A3 `orient/v1` shape; existing consumers are unaffected (no bump).
+    deferred: Vec<DeferredNodeJson>,
     hint: Option<String>,
 }
 
@@ -364,6 +411,7 @@ impl OrientJson {
                 })
                 .collect(),
             drift: (&model.drift).into(),
+            deferred: deferred_json(&model.deferred),
             hint: None,
         }
     }
@@ -378,8 +426,9 @@ impl OrientJson {
             ready: Vec::new(),
             blocked: Vec::new(),
             integrity: Vec::new(),
-            // No project selected → no reconcile run; an empty (clean) drift slot.
+            // No project selected → no reconcile run; empty (clean) drift/deferred.
             drift: (&Drift::default()).into(),
+            deferred: Vec::new(),
             hint: Some(hint),
         }
     }

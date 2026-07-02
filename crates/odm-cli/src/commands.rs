@@ -937,6 +937,7 @@ fn violation_label(v: &Violation) -> &'static str {
         Violation::SelfSupersede => "self-supersede",
         Violation::SupersessionCycle { .. } => "supersession-cycle",
         Violation::StaleDoc { .. } => "stale-doc",
+        Violation::DanglingReenterWhen { .. } => "dangling-reenter_when",
         // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
         // generically rather than failing the build when they appear.
         _ => "violation",
@@ -963,6 +964,10 @@ fn violation_detail(v: &Violation) -> String {
         } => format!(
             "may be stale: governing decision #{decision_number} {decision_name:?} was updated \
              {decision_updated}, after this doc (updated {doc_updated})"
+        ),
+        Violation::DanglingReenterWhen { reenter_when } => format!(
+            "`deferred.reenter_when` references {reenter_when:?}, which is not one of this node's \
+             `desired_facts` — its re-entry predicate can never resolve"
         ),
         Violation::SupersessionCycle { cycle } => {
             let ids: Vec<String> = cycle.iter().map(ToString::to_string).collect();
@@ -1004,6 +1009,10 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
             "review {file} against #{decision_number} {decision_name:?}; bump its `updated` \
              once reconciled (or `odm rename`-touch it)"
         ),
+        Violation::DanglingReenterWhen { reenter_when } => format!(
+            "edit {file}: point `deferred.reenter_when` at one of this node's `desired_facts` \
+             ids (declared: {reenter_when:?} is not among them)"
+        ),
         _ => format!("inspect {file}"),
     }
 }
@@ -1014,7 +1023,7 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
 /// under `--strict` (like the recomposition/staleness warnings).
 fn violation_severity(v: &Violation) -> Severity {
     match v {
-        Violation::StaleDoc { .. } => Severity::Warning,
+        Violation::StaleDoc { .. } | Violation::DanglingReenterWhen { .. } => Severity::Warning,
         _ => Severity::Error,
     }
 }

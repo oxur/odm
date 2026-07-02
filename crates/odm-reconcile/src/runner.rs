@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use odm_core::frontmatter::Document;
+use odm_core::frontmatter::{Deferral, Document};
 use odm_core::{Id, ProbeSpec};
 use odm_store::{Store, StoreError};
 use serde::Serialize;
@@ -39,6 +39,9 @@ pub struct NodeReport {
     pub number: u32,
     /// The node's name — carried for rendering (slice04 render-identity).
     pub name: String,
+    /// The node's `deferred` marker, if it parked itself (slice06). Carried so
+    /// the deferred projector need not re-load the node.
+    pub deferred: Option<Deferral>,
     /// One result per declared fact, in declaration order.
     pub results: Vec<FactResult>,
 }
@@ -155,6 +158,7 @@ impl<'a> Runner<'a> {
             node_id: frontmatter.id(),
             number: frontmatter.number(),
             name: frontmatter.name().to_string(),
+            deferred: frontmatter.deferred().cloned(),
             results,
         }
     }
@@ -171,7 +175,10 @@ impl<'a> Runner<'a> {
         let nodes = documents
             .iter()
             .map(|document| self.run_node(document))
-            .filter(|report| !report.is_empty())
+            // Keep a node if it has fact results *or* a deferred marker — a
+            // deferred node must surface even if (invalidly) it declares no facts
+            // (slice06); a fact-free, non-deferred node contributes nothing.
+            .filter(|report| !report.results.is_empty() || report.deferred.is_some())
             .collect();
         Ok(CorpusReport { nodes })
     }

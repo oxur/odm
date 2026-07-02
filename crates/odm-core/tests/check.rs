@@ -224,3 +224,48 @@ fn check_stale_doc_same_day_not_flagged() {
     c.edges_mut().affects = vec![id(MISSING)];
     assert!(stale_findings(&[c]).is_empty());
 }
+
+// ----- D-6 (arc05 slice06): dangling reenter_when -> a check finding ---------
+
+#[test]
+fn check_flags_dangling_reenter_when() {
+    use odm_core::desired::{DesiredFact, ProbeSpec, ShellExpect};
+    use odm_core::frontmatter::Deferral;
+
+    let fact = DesiredFact {
+        id: "present".to_string(),
+        describe: "a declared fact".to_string(),
+        probe: ProbeSpec::Shell {
+            run: "true".to_string(),
+            expect: ShellExpect { exit: 0, stdout_contains: None },
+        },
+    };
+    // A deferred node whose reenter_when references a fact it does NOT declare.
+    let dangling = doc_updated(A, 1, "Parked", dm(2026, 6, 20))
+        .with_desired_facts(vec![fact.clone()])
+        .with_deferred(Some(Deferral {
+            because: "waiting".to_string(),
+            reenter_when: "no-such-fact".to_string(),
+        }));
+    let findings: Vec<_> = check(&[dangling])
+        .into_iter()
+        .filter(|f| matches!(f.violation, Violation::DanglingReenterWhen { .. }))
+        .collect();
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].node, id(A));
+    match &findings[0].violation {
+        Violation::DanglingReenterWhen { reenter_when } => assert_eq!(reenter_when, "no-such-fact"),
+        other => panic!("expected DanglingReenterWhen, got {other:?}"),
+    }
+
+    // A deferred node whose reenter_when DOES resolve → no finding.
+    let ok =
+        doc_updated(B, 2, "Parked2", dm(2026, 6, 20)).with_desired_facts(vec![fact]).with_deferred(
+            Some(Deferral { because: "waiting".to_string(), reenter_when: "present".to_string() }),
+        );
+    assert!(
+        check(&[ok])
+            .into_iter()
+            .all(|f| !matches!(f.violation, Violation::DanglingReenterWhen { .. }))
+    );
+}

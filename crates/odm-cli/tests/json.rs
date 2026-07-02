@@ -320,9 +320,21 @@ fn orient_json_shape_locked() {
     setup_rich(dir.path());
     let v = run_json(dir.path(), &["orient", "--json"]);
 
+    // A5 slice06: `deferred` is a new additive key in the orient/v1 envelope.
     assert_eq!(
         keys(&v),
-        ["blocked", "drift", "focus", "hint", "integrity", "project", "ready", "schema", "vision"]
+        [
+            "blocked",
+            "deferred",
+            "drift",
+            "focus",
+            "hint",
+            "integrity",
+            "project",
+            "ready",
+            "schema",
+            "vision"
+        ]
     );
     assert_eq!(keys(&v["focus"]), ["arc", "status"]);
     assert_eq!(keys(&v["integrity"][0]), ["code", "detail", "severity", "who"]);

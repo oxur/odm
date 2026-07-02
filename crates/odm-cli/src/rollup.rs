@@ -99,10 +99,13 @@ pub fn rollup(
     let fingerprint = to_hex(&snapshot.meta_fingerprint());
     let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
     // The model is index-backed, but the index carries no `desired_facts` (slice02):
-    // drift comes from a separate on-demand, store-read reconcile (S-5), never the
-    // index. `orient` uses the same shared projector so the two views can't diverge.
+    // drift + deferred come from a single on-demand, store-read reconcile (S-5 /
+    // D-5), never the index. `orient` uses the same shared projector so the two
+    // views can't diverge (and the probes run once per command, not per view).
+    let (drift, deferred) = crate::reconcile::reconcile_views(store)?;
     let model = Rollup::assemble(&frontmatters, &gates, threshold)
-        .with_drift(crate::reconcile::compute_drift(store)?);
+        .with_drift(drift)
+        .with_deferred(deferred);
 
     // `--json` is a non-writing output mode: serialize the same model to stdout.
     if json {
@@ -145,9 +148,10 @@ pub fn rollup(
 
 /// Renders the [`Rollup`] model to Markdown in the canonical section order
 /// (ODD-0013 §6): way-finding tree (status inline) → ready → blocked → active
-/// tears → provenance → drift. The deferred slot is empty in A3 (Q-A3-1), so no
-/// deferred section is emitted. The header stamps `fingerprint` (slice07) so a
-/// later run can detect a semantically-unchanged corpus.
+/// tears → provenance → drift → deferred. The deferred section is emitted only
+/// when a node is deferred (slice06); none deferred → no section, no fabricated
+/// data. The header stamps `fingerprint` (slice07) so a later run can detect a
+/// semantically-unchanged corpus.
 #[must_use]
 pub fn render(model: &Rollup, fingerprint: &str) -> String {
     let mut s = String::new();
@@ -160,6 +164,7 @@ pub fn render(model: &Rollup, fingerprint: &str) -> String {
     render_tears(&mut s, &model.tears);
     render_provenance(&mut s, &model.provenance);
     render_drift(&mut s, model);
+    render_deferred(&mut s, model);
 
     s
 }
@@ -337,6 +342,26 @@ fn render_drift(s: &mut String, model: &Rollup) {
             e.number, e.name, e.fact_id, e.describe
         );
         let _ = writeln!(s, "  - reason: {}", e.reason);
+    }
+    let _ = writeln!(s);
+}
+
+/// Renders the deferred section from the injected
+/// [`Deferred`](odm_core::rollup::Deferred) projection (A5 slice06 — Q-A3-1):
+/// each parked node with *why* and its re-entry status. **Emitted only when a
+/// node is deferred** — none deferred → no section, no fabricated data.
+fn render_deferred(s: &mut String, model: &Rollup) {
+    use odm_core::rollup::Reentry;
+    if model.deferred.is_empty() {
+        return;
+    }
+    let _ = writeln!(s, "## Deferred\n");
+    for node in &model.deferred.nodes {
+        let status = match &node.reentry {
+            Reentry::Ready => "ready to re-enter".to_string(),
+            Reentry::Waiting { describe } => format!("waiting on {describe}"),
+        };
+        let _ = writeln!(s, "- #{} {} — {} ({status})", node.number, node.name, node.because);
     }
     let _ = writeln!(s);
 }

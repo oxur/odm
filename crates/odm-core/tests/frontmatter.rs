@@ -522,7 +522,7 @@ proptest! {
         // to deserialize into their typed shapes rather than land in `extra`).
         let modeled = ["id", "number", "type", "name", "created", "updated",
                        "tags", "component", "origin", "reserved", "retired",
-                       "edges", "status", "decomposed", "desired_facts"];
+                       "edges", "status", "decomposed", "desired_facts", "deferred"];
         let mut yaml = String::from(
             "---\nid: 01ARZ3NDEKTSV4RRFFQ69G5FAV\nnumber: 1\ntype: note\nname: n\n\
              created: 2026-06-20\nupdated: 2026-06-20\norigin: planned\nreserved: false\n",
@@ -801,4 +801,58 @@ fn file_expect_defaults_exists_and_accepts_null_sha256() {
         }
         ProbeSpec::Shell { .. } => panic!("expected a file probe"),
     }
+}
+
+// ----- D-1 (arc05 slice06): the deferred marker round-trips ------------------
+
+#[test]
+fn deferred_marker_round_trip() {
+    use odm_core::frontmatter::Deferral;
+
+    // A node with a deferred marker referencing one of its own facts.
+    let fact = DesiredFact {
+        id: "db-back".to_string(),
+        describe: "the prod DB is reachable again".to_string(),
+        probe: ProbeSpec::Shell {
+            run: "true".to_string(),
+            expect: ShellExpect { exit: 0, stdout_contains: None },
+        },
+    };
+    let fm = Frontmatter::new(
+        Id::from_str(SAMPLE_ULID).unwrap(),
+        1,
+        NodeType::Slice,
+        "Parked",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    )
+    .with_desired_facts(vec![fact])
+    .with_deferred(Some(Deferral {
+        because: "blocked on the prod outage".to_string(),
+        reenter_when: "db-back".to_string(),
+    }));
+    let doc = Document::new(fm, "body\n");
+
+    let reparsed = Document::parse(&doc.emit().expect("emit")).expect("parse");
+    assert_eq!(reparsed, doc);
+    let deferral = reparsed.frontmatter().deferred().expect("deferred present");
+    assert_eq!(deferral.because, "blocked on the prod outage");
+    assert_eq!(deferral.reenter_when, "db-back");
+    assert!(doc.emit().unwrap().contains("deferred:"));
+
+    // Absent ⇒ not deferred (default), and no `deferred:` key on emit.
+    let plain = Frontmatter::new(
+        Id::from_str(SAMPLE_ULID).unwrap(),
+        2,
+        NodeType::Slice,
+        "Active",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    );
+    let plain_doc = Document::new(plain, "body\n");
+    assert!(plain_doc.frontmatter().deferred().is_none());
+    assert!(!plain_doc.emit().unwrap().contains("deferred:"));
+    assert_eq!(Document::parse(&plain_doc.emit().unwrap()).unwrap(), plain_doc);
 }
