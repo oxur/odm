@@ -168,6 +168,7 @@ fn fact_node(number: u32, name: &str, fact_id: &str, describe: &str, run: &str) 
                 describe: describe.to_string(),
                 probe: ProbeSpec::Shell {
                     run: run.to_string(),
+                    inputs: Vec::new(),
                     expect: ShellExpect { exit: 0, stdout_contains: None },
                 },
             }]);

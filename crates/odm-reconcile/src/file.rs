@@ -107,8 +107,9 @@ impl Probe for FileProbe {
     }
 }
 
-/// Lowercase-hex SHA-256 of `bytes`, using the workspace `sha2`.
-fn hex_sha256(bytes: &[u8]) -> String {
+/// Lowercase-hex SHA-256 of `bytes`, using the workspace `sha2`. Shared with the
+/// incremental drift snapshot's input fingerprint (slice07).
+pub(crate) fn hex_sha256(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(64);
     for byte in digest {

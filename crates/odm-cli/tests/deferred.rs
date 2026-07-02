@@ -68,6 +68,7 @@ fn deferred_slice(number: u32, name: &str, because: &str, run: &str) -> Frontmat
         describe: "the blocker is cleared".to_string(),
         probe: ProbeSpec::Shell {
             run: run.to_string(),
+            inputs: Vec::new(),
             expect: ShellExpect { exit: 0, stdout_contains: None },
         },
     };

@@ -37,11 +37,17 @@
 #![deny(missing_docs)]
 
 mod file;
+mod incremental;
 mod probe;
 mod runner;
 mod shell;
+mod snapshot;
 
 pub use file::FileProbe;
+pub use incremental::{IncrementalError, Mode, reconcile, reconcile_full, reconcile_incremental};
 pub use probe::{Probe, ProbeOutcome};
 pub use runner::{CorpusReport, FactResult, NodeReport, OutcomeCounts, Runner};
 pub use shell::ShellProbe;
+pub use snapshot::{
+    DriftError, DriftSnapshot, FactEntry, FactState, InputFingerprint, Load, RebuildReason,
+};

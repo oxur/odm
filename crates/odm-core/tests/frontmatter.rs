@@ -552,6 +552,7 @@ fn shell_fact(id: &str, describe: &str, run: &str, exit: i32, stdout: Option<&st
         describe: describe.to_string(),
         probe: ProbeSpec::Shell {
             run: run.to_string(),
+            inputs: Vec::new(),
             expect: ShellExpect { exit, stdout_contains: stdout.map(str::to_string) },
         },
     }
@@ -631,7 +632,7 @@ fn desired_facts_round_trip() {
     );
     let parsed = Document::parse(&text).expect("proposed shape parses");
     match &parsed.frontmatter().desired_facts()[0].probe {
-        ProbeSpec::Shell { run, expect } => {
+        ProbeSpec::Shell { run, expect, .. } => {
             assert_eq!(run, "pg_isready -h prod -t 2");
             assert_eq!(expect.exit, 0);
             assert_eq!(expect.stdout_contains, None);
@@ -815,6 +816,7 @@ fn deferred_marker_round_trip() {
         describe: "the prod DB is reachable again".to_string(),
         probe: ProbeSpec::Shell {
             run: "true".to_string(),
+            inputs: Vec::new(),
             expect: ShellExpect { exit: 0, stdout_contains: None },
         },
     };
@@ -855,4 +857,70 @@ fn deferred_marker_round_trip() {
     assert!(plain_doc.frontmatter().deferred().is_none());
     assert!(!plain_doc.emit().unwrap().contains("deferred:"));
     assert_eq!(Document::parse(&plain_doc.emit().unwrap()).unwrap(), plain_doc);
+}
+
+// ----- K-1 (arc05 slice07): probe `inputs` + freshness class -----------------
+
+#[test]
+fn probe_inputs_round_trip() {
+    use odm_core::ProbeSpec;
+
+    // A shell probe declaring inputs round-trips; absent `inputs` ⇒ empty (default).
+    let text = format!(
+        "---\nid: {SAMPLE_ULID}\nnumber: 1\ntype: slice\nname: n\n\
+         created: 2026-07-01\nupdated: 2026-07-01\norigin: planned\nreserved: false\n\
+         desired_facts:\n  - id: schema\n    describe: d\n    probe:\n      kind: shell\n\
+         \x20     run: \"sha256sum build/schema.sql\"\n      inputs: [build/schema.sql]\n\
+         \x20     expect:\n        exit: 0\n---\nbody\n"
+    );
+    let doc = Document::parse(&text).expect("parses");
+    match &doc.frontmatter().desired_facts()[0].probe {
+        ProbeSpec::Shell { inputs, .. } => assert_eq!(inputs, &["build/schema.sql"]),
+        ProbeSpec::File { .. } => panic!("expected a shell probe"),
+    }
+    // Round-trips (emit → parse == identity).
+    assert_eq!(Document::parse(&doc.emit().unwrap()).unwrap(), doc);
+    assert!(doc.emit().unwrap().contains("inputs:"));
+
+    // A shell probe with no `inputs` emits no `inputs:` key (skip-if-empty).
+    let plain = DesiredFact {
+        id: "db".to_string(),
+        describe: "d".to_string(),
+        probe: ProbeSpec::Shell {
+            run: "true".to_string(),
+            inputs: Vec::new(),
+            expect: ShellExpect { exit: 0, stdout_contains: None },
+        },
+    };
+    let pdoc = doc_with_facts(NodeType::Slice, vec![plain]);
+    assert!(!pdoc.emit().unwrap().contains("inputs:"));
+    assert_eq!(Document::parse(&pdoc.emit().unwrap()).unwrap(), pdoc);
+}
+
+#[test]
+fn probe_class_from_inputs() {
+    use odm_core::{ProbeClass, ProbeSpec};
+
+    // `file` → input-derived (its path is the input).
+    let file = ProbeSpec::File { path: "ROLLUP.md".to_string(), expect: FileExpect::default() };
+    assert_eq!(file.class(), ProbeClass::InputDerived);
+    assert_eq!(file.inputs(), vec!["ROLLUP.md"]);
+
+    // `shell` + inputs → input-derived.
+    let shell_in = ProbeSpec::Shell {
+        run: "sha256sum x".to_string(),
+        inputs: vec!["x".to_string()],
+        expect: ShellExpect { exit: 0, stdout_contains: None },
+    };
+    assert_eq!(shell_in.class(), ProbeClass::InputDerived);
+    assert_eq!(shell_in.inputs(), vec!["x"]);
+
+    // `shell` w/o inputs → volatile (honest staleness, ODD-0019 default).
+    let shell_vol = ProbeSpec::Shell {
+        run: "pg_isready".to_string(),
+        inputs: Vec::new(),
+        expect: ShellExpect { exit: 0, stdout_contains: None },
+    };
+    assert_eq!(shell_vol.class(), ProbeClass::Volatile);
+    assert!(shell_vol.inputs().is_empty());
 }

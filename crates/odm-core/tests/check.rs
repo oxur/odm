@@ -237,6 +237,7 @@ fn check_flags_dangling_reenter_when() {
         describe: "a declared fact".to_string(),
         probe: ProbeSpec::Shell {
             run: "true".to_string(),
+            inputs: Vec::new(),
             expect: ShellExpect { exit: 0, stdout_contains: None },
         },
     };

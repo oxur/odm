@@ -43,6 +43,7 @@ fn shell_fact(id: &str, describe: &str, run: &str) -> DesiredFact {
         describe: describe.to_string(),
         probe: ProbeSpec::Shell {
             run: run.to_string(),
+            inputs: Vec::new(),
             expect: ShellExpect { exit: 0, stdout_contains: None },
         },
     }

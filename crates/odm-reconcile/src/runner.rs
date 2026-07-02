@@ -187,9 +187,11 @@ impl<'a> Runner<'a> {
 /// Dispatches a [`ProbeSpec`] to its probe and evaluates it. The exhaustive
 /// match is the deliberate safety net: a new `ProbeSpec` kind is a compile error
 /// here until it is handled.
-fn evaluate_spec(spec: &ProbeSpec, root: &Path) -> ProbeOutcome {
+pub(crate) fn evaluate_spec(spec: &ProbeSpec, root: &Path) -> ProbeOutcome {
     match spec {
-        ProbeSpec::Shell { run, expect } => ShellProbe::new(run.clone(), expect.clone()).evaluate(),
+        ProbeSpec::Shell { run, expect, .. } => {
+            ShellProbe::new(run.clone(), expect.clone()).evaluate()
+        }
         ProbeSpec::File { path, expect } => {
             FileProbe::new(root, path.clone(), expect.clone()).evaluate()
         }

@@ -59,6 +59,13 @@ pub enum ProbeSpec {
         /// See the shell probe's docs in the `reconcile` crate for the trust model
         /// and the no-shell-metacharacters boundary.
         run: String,
+        /// Declared input files (relative to the repo root) this command is a pure
+        /// function of. Non-empty ⇒ the probe is **input-derived** (its cached
+        /// outcome stays valid until an input changes — ODD-0019 §3.1); empty ⇒
+        /// **volatile** (no filesystem signal → honest staleness, refreshed only on
+        /// an explicit reconcile). Additive since arc05 slice07.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        inputs: Vec<String>,
         /// The result the command must produce for the fact to *hold*.
         expect: ShellExpect,
     },
@@ -72,6 +79,41 @@ pub enum ProbeSpec {
         #[serde(default)]
         expect: FileExpect,
     },
+}
+
+/// A probe's freshness class (ODD-0019 §3.1) — how the reconciler keeps its
+/// outcome fresh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeClass {
+    /// A pure function of declared input files: its cached outcome stays valid
+    /// until an input changes (a `file` probe, or a `shell` probe with `inputs`).
+    /// The reconciler re-probes only when an input changes.
+    InputDerived,
+    /// No filesystem signal (a `shell` probe without `inputs`): cannot be made
+    /// fresh by stat, so it carries **honest staleness** and refreshes only on an
+    /// explicit reconcile — never auto-run by a bare command.
+    Volatile,
+}
+
+impl ProbeSpec {
+    /// The declared input paths (relative to the repo root) this probe is a
+    /// function of. A `file` probe's input is its `path`; a `shell` probe's are
+    /// its declared `inputs` (empty ⇒ volatile).
+    #[must_use]
+    pub fn inputs(&self) -> Vec<&str> {
+        match self {
+            ProbeSpec::File { path, .. } => vec![path.as_str()],
+            ProbeSpec::Shell { inputs, .. } => inputs.iter().map(String::as_str).collect(),
+        }
+    }
+
+    /// This probe's freshness [`ProbeClass`]: input-derived when it declares ≥1
+    /// input, else volatile (ODD-0019 §3.1). A `file` probe is always
+    /// input-derived (its `path` is the input).
+    #[must_use]
+    pub fn class(&self) -> ProbeClass {
+        if self.inputs().is_empty() { ProbeClass::Volatile } else { ProbeClass::InputDerived }
+    }
 }
 
 /// The expectation a `shell` probe's command must meet to hold.

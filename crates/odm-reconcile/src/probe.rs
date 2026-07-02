@@ -1,6 +1,6 @@
 //! The probe contract: the [`Probe`] trait and its three-way [`ProbeOutcome`].
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The result of evaluating one [`DesiredFact`](odm_core::DesiredFact) against
 /// reality.
@@ -21,7 +21,7 @@ use serde::Serialize;
 /// only** (a new variant or field, never a rename/removal). The `kind` tag is an
 /// explicit, always-serialized discriminant, the same additive-evolution
 /// discipline as `ProbeSpec`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ProbeOutcome {
     /// Observed reality matches the declared expectation.
