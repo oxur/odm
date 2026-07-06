@@ -24,6 +24,9 @@ Thumbs.db
 /bin/
 .crates*
 
+# Derived, never truth: the index + drift snapshot live here (ODD-0013 / ODD-0019).
+.odm/
+
 # AI
 .claude
 

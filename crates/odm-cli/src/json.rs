@@ -15,8 +15,8 @@
 //! pre-history.
 
 use odm_core::rollup::{
-    ActiveTear, BlockReason, BlockedNode, Deferred, DeferredNode, Drift, GateStatus, NodeRef,
-    Provenance, ReadyNode, Reentry, Rollup, TreeNode,
+    ActiveTear, BlockReason, BlockedNode, Deferred, DeferredNode, Drift, Freshness, GateStatus,
+    NodeRef, Provenance, ReadyNode, Reentry, Rollup, TreeNode,
 };
 use serde::Serialize;
 
@@ -204,6 +204,8 @@ pub(crate) struct DriftJson {
     drifted: Vec<DriftedFactJson>,
     /// Facts whose probe could not be evaluated.
     errored: Vec<ErroredFactJson>,
+    /// Volatile facts never checked (slice08, additive) — honest "not yet checked".
+    unchecked: Vec<UncheckedFactJson>,
 }
 
 /// JSON tally of drift outcomes.
@@ -214,7 +216,26 @@ pub(crate) struct DriftCountsJson {
     errored: usize,
 }
 
-/// JSON shape of one drifted fact (identity + expected/observed).
+/// JSON freshness of a checked fact (slice08, additive): `{kind:"fresh"}` for
+/// input-derived, `{kind:"last-checked", at:<unix secs>}` for volatile — an
+/// **absolute** stamp (never the relative "Xm ago", so the JSON is stable).
+#[derive(Serialize)]
+pub(crate) struct FreshnessJson {
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    at: Option<i64>,
+}
+
+impl From<Freshness> for FreshnessJson {
+    fn from(freshness: Freshness) -> Self {
+        match freshness {
+            Freshness::Fresh => Self { kind: "fresh", at: None },
+            Freshness::LastChecked { at } => Self { kind: "last-checked", at: Some(at) },
+        }
+    }
+}
+
+/// JSON shape of one drifted fact (identity + expected/observed + freshness).
 #[derive(Serialize)]
 pub(crate) struct DriftedFactJson {
     node_id: String,
@@ -224,9 +245,10 @@ pub(crate) struct DriftedFactJson {
     describe: String,
     expected: String,
     observed: String,
+    freshness: FreshnessJson,
 }
 
-/// JSON shape of one couldn't-check fact (identity + reason).
+/// JSON shape of one couldn't-check fact (identity + reason + freshness).
 #[derive(Serialize)]
 pub(crate) struct ErroredFactJson {
     node_id: String,
@@ -235,6 +257,17 @@ pub(crate) struct ErroredFactJson {
     fact_id: String,
     describe: String,
     reason: String,
+    freshness: FreshnessJson,
+}
+
+/// JSON shape of one never-checked volatile fact (identity only).
+#[derive(Serialize)]
+pub(crate) struct UncheckedFactJson {
+    node_id: String,
+    number: u32,
+    name: String,
+    fact_id: String,
+    describe: String,
 }
 
 impl From<&Drift> for DriftJson {
@@ -257,6 +290,7 @@ impl From<&Drift> for DriftJson {
                     describe: d.describe.clone(),
                     expected: d.expected.clone(),
                     observed: d.observed.clone(),
+                    freshness: d.freshness.into(),
                 })
                 .collect(),
             errored: drift
@@ -269,6 +303,18 @@ impl From<&Drift> for DriftJson {
                     fact_id: e.fact_id.clone(),
                     describe: e.describe.clone(),
                     reason: e.reason.clone(),
+                    freshness: e.freshness.into(),
+                })
+                .collect(),
+            unchecked: drift
+                .unchecked
+                .iter()
+                .map(|u| UncheckedFactJson {
+                    node_id: u.node_id.to_string(),
+                    number: u.number,
+                    name: u.name.clone(),
+                    fact_id: u.fact_id.clone(),
+                    describe: u.describe.clone(),
                 })
                 .collect(),
         }

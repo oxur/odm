@@ -164,27 +164,53 @@ pub struct Drift {
     pub drifted: Vec<DriftedFact>,
     /// Facts whose probe could not be evaluated ("couldn't check").
     pub errored: Vec<ErroredFact>,
+    /// **Volatile** facts that have never been checked (no filesystem signal, no
+    /// explicit `reconcile` yet). Surfaced honestly — never a fabricated "fresh"
+    /// (ODD-0019 §3.4). Empty for input-derived facts (always checked).
+    pub unchecked: Vec<UncheckedFact>,
 }
 
 impl Drift {
     /// Builds a drift projection from a reconcile run's tallies.
     #[must_use]
-    pub fn new(holds: usize, drifted: Vec<DriftedFact>, errored: Vec<ErroredFact>) -> Self {
-        Self { holds, drifted, errored }
+    pub fn new(
+        holds: usize,
+        drifted: Vec<DriftedFact>,
+        errored: Vec<ErroredFact>,
+        unchecked: Vec<UncheckedFact>,
+    ) -> Self {
+        Self { holds, drifted, errored, unchecked }
     }
 
-    /// `true` when nothing diverged and no probe errored (the corpus is clean).
-    /// `holds` may still be non-zero — a clean run over declared facts.
+    /// `true` when nothing diverged and no probe errored (no confirmed finding).
+    /// `holds`/`unchecked` may still be non-zero — a clean run over declared
+    /// facts, or facts not yet checked (which the renderer surfaces separately).
     #[must_use]
     pub fn is_clean(&self) -> bool {
         self.drifted.is_empty() && self.errored.is_empty()
     }
 
-    /// `true` when no facts were checked at all (none declared, nothing ran).
+    /// `true` when no facts were checked, drifted, errored, or await a check —
+    /// i.e. there is nothing at all to render.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.holds == 0 && self.is_clean()
+        self.holds == 0 && self.is_clean() && self.unchecked.is_empty()
     }
+}
+
+/// How current a checked fact's outcome is (ODD-0019 §3.4 honest staleness).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Freshness {
+    /// Input-derived: re-probed whenever an input changed, so current as of this
+    /// command.
+    Fresh,
+    /// Volatile: refreshed only on an explicit `reconcile`; carries when it was
+    /// last actually checked (Unix seconds) so a renderer can say "last checked
+    /// Xm ago" rather than imply fresh.
+    LastChecked {
+        /// Unix seconds the fact was last actually probed.
+        at: i64,
+    },
 }
 
 /// One declared fact whose observed reality diverged from its declaration.
@@ -204,6 +230,8 @@ pub struct DriftedFact {
     pub expected: String,
     /// What was actually observed.
     pub observed: String,
+    /// How current this outcome is (fresh vs last-checked).
+    pub freshness: Freshness,
 }
 
 /// One declared fact whose probe could not be evaluated.
@@ -221,6 +249,24 @@ pub struct ErroredFact {
     pub describe: String,
     /// Why the probe could not be evaluated.
     pub reason: String,
+    /// How current this outcome is (fresh vs last-checked).
+    pub freshness: Freshness,
+}
+
+/// One **volatile** fact that has never been checked — no outcome yet, surfaced
+/// so the tool never implies a fabricated "fresh / all clear" (ODD-0019 §3.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UncheckedFact {
+    /// The declaring node's stable id.
+    pub node_id: Id,
+    /// The declaring node's human number.
+    pub number: u32,
+    /// The declaring node's name.
+    pub name: String,
+    /// The fact's node-local id.
+    pub fact_id: String,
+    /// The human description of what should be true.
+    pub describe: String,
 }
 
 /// The deferred projection (A5 slice06 — Q-A3-1): nodes that parked themselves

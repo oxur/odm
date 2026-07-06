@@ -199,13 +199,13 @@ fn rollup_status_gate_order_empty_for_documents() {
 
 #[test]
 fn drift_projection_shape() {
-    use odm_core::rollup::{Drift, DriftedFact, ErroredFact};
+    use odm_core::rollup::{Drift, DriftedFact, ErroredFact, Freshness, UncheckedFact};
 
     // Empty / clean defaults.
     let empty = Drift::default();
     assert!(empty.is_clean());
     assert!(empty.is_empty());
-    assert_eq!(empty, Drift::new(0, Vec::new(), Vec::new()));
+    assert_eq!(empty, Drift::new(0, Vec::new(), Vec::new(), Vec::new()));
 
     let id = Id::from_str("01ARZ3NDEKTSV4RRFFQ69G5FAV").unwrap();
     let drift = Drift::new(
@@ -218,6 +218,7 @@ fn drift_projection_shape() {
             describe: "the prod DB answers".to_string(),
             expected: "exit 0".to_string(),
             observed: "exit 1".to_string(),
+            freshness: Freshness::Fresh,
         }],
         vec![ErroredFact {
             node_id: id,
@@ -226,28 +227,42 @@ fn drift_projection_shape() {
             fact_id: "host".to_string(),
             describe: "host reachable".to_string(),
             reason: "could not run `ping`".to_string(),
+            freshness: Freshness::LastChecked { at: 1_000 },
+        }],
+        vec![UncheckedFact {
+            node_id: id,
+            number: 9,
+            name: "Prod DB".to_string(),
+            fact_id: "db-live".to_string(),
+            describe: "the prod DB answers".to_string(),
         }],
     );
 
-    // Holds counted; drift and error kept distinct (no flattening).
+    // Holds counted; drift/error/unchecked kept distinct (no flattening).
     assert_eq!(drift.holds, 2);
     assert_eq!(drift.drifted.len(), 1);
     assert_eq!(drift.errored.len(), 1);
+    assert_eq!(drift.unchecked.len(), 1);
     assert!(!drift.is_clean());
     assert!(!drift.is_empty());
 
-    // Drifted entries carry identity + expected/observed.
+    // Drifted entries carry identity + expected/observed + freshness.
     let d = &drift.drifted[0];
     assert_eq!((d.number, d.name.as_str(), d.fact_id.as_str()), (7, "DB layer", "db-up"));
     assert_eq!((d.expected.as_str(), d.observed.as_str()), ("exit 0", "exit 1"));
+    assert_eq!(d.freshness, Freshness::Fresh);
 
-    // Errored entries carry identity + reason.
+    // Errored entries carry identity + reason + freshness (volatile → last-checked).
     let e = &drift.errored[0];
     assert_eq!((e.number, e.fact_id.as_str()), (3, "host"));
     assert!(e.reason.contains("ping"));
+    assert_eq!(e.freshness, Freshness::LastChecked { at: 1_000 });
 
-    // holds-only is clean but not empty.
-    let holds_only = Drift::new(3, Vec::new(), Vec::new());
+    // Unchecked entries carry identity (a never-checked volatile fact).
+    assert_eq!(drift.unchecked[0].fact_id, "db-live");
+
+    // holds-only is clean but not empty; unchecked-only is clean but not empty.
+    let holds_only = Drift::new(3, Vec::new(), Vec::new(), Vec::new());
     assert!(holds_only.is_clean());
     assert!(!holds_only.is_empty());
 }

@@ -204,6 +204,8 @@ fn rollup_drift_reported() {
         fact_node(9, "Reachability", "host", "host reachable", "odm-no-such-binary-xyzzy")
     });
 
+    // Volatile facts: an explicit reconcile probes them (bare rollup does not — slice08).
+    assert!(run(root, &["reconcile"]).ok);
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
     let drift = md.split("## Drift").nth(1).unwrap();
@@ -224,6 +226,7 @@ fn rollup_json_includes_drift() {
     write_config(root);
     seed(root, || fact_node(7, "DB layer", "db-up", "the prod DB answers", "false"));
 
+    assert!(run(root, &["reconcile"]).ok);
     let r = run(root, &["rollup", "--json"]);
     assert!(r.ok);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");

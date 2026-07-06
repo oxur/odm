@@ -21,6 +21,7 @@ use odm_core::rollup::{
     TreeNode,
 };
 use odm_store::Store;
+use sha2::{Digest as _, Sha256};
 
 use crate::commands;
 use crate::json::RollupJson;
@@ -53,13 +54,27 @@ fn stamped_fingerprint(markdown: &str) -> Option<String> {
     (end > 0).then(|| rest[..end].to_string())
 }
 
-/// Lowercase hex of a 32-byte digest (the meta-fingerprint, for the header).
+/// Lowercase hex of a 32-byte digest (for the header fingerprint).
 fn to_hex(bytes: &[u8; 32]) -> String {
     let mut s = String::with_capacity(64);
     for b in bytes {
         let _ = write!(s, "{b:02x}");
     }
     s
+}
+
+/// The drift-aware early-cutoff fingerprint (slice08 L-5): SHA-256 over the whole
+/// rendered model (the `rollup/v1` JSON projection — corpus tree + drift +
+/// deferred). Because it hashes the *semantic* projection (drift outcomes +
+/// absolute `last_checked`, never the relative "Xm ago"), it is stable across
+/// wall-clock ticks and changes only when the corpus **or** the drift/deferred
+/// state actually changes. Replaces the corpus-only meta-fingerprint so a drift
+/// change with no corpus change no longer hides behind the cutoff.
+fn content_fingerprint(model: &Rollup) -> String {
+    let json = serde_json::to_vec(&RollupJson::from(model)).unwrap_or_default();
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(&Sha256::digest(&json));
+    to_hex(&digest)
 }
 
 /// `rollup` — regenerate `ROLLUP.md` at the repo root (with slice07 early cutoff).
@@ -96,16 +111,23 @@ pub fn rollup(
     let snapshot = odm_index::reconcile(store, &odm_index::default_index_path(store.root()))
         .context("reconciling the index for rollup")?
         .snapshot;
-    let fingerprint = to_hex(&snapshot.meta_fingerprint());
     let frontmatters = odm_index::frontmatters_from_records(&snapshot.records, &gates);
     // The model is index-backed, but the index carries no `desired_facts` (slice02):
-    // drift + deferred come from a single on-demand, store-read reconcile (S-5 /
-    // D-5), never the index. `orient` uses the same shared projector so the two
-    // views can't diverge (and the probes run once per command, not per view).
+    // drift + deferred come from a single on-demand, store-read incremental
+    // reconcile (S-5 / D-5), never the index. `orient` uses the same shared
+    // projector so the two views can't diverge (and no volatile probes run).
     let (drift, deferred) = crate::reconcile::reconcile_views(store)?;
     let model = Rollup::assemble(&frontmatters, &gates, threshold)
         .with_drift(drift)
         .with_deferred(deferred);
+
+    // The early-cutoff fingerprint is a hash of the whole rendered model (slice08
+    // L-5), not just the corpus meta-fingerprint — so it is **drift-aware**: a
+    // drift/deferred change with no corpus change regenerates `ROLLUP.md`, while
+    // an unchanged model still skips. Staleness (`last checked Xm ago`) is
+    // rendered from *absolute* timestamps carried in the JSON, so the fingerprint
+    // is stable across wall-clock ticks (only a re-check or outcome change moves it).
+    let fingerprint = content_fingerprint(&model);
 
     // `--json` is a non-writing output mode: serialize the same model to stdout.
     if json {
@@ -317,31 +339,53 @@ fn render_origin_group(s: &mut String, title: &str, nodes: &[NodeRef]) {
 /// and expected/observed. A clean corpus renders an honest "no drift" — never
 /// fabricated rows.
 fn render_drift(s: &mut String, model: &Rollup) {
+    use crate::reconcile::staleness_suffix;
     let _ = writeln!(s, "## Drift\n");
     let drift = &model.drift;
-    if drift.is_clean() {
+    if drift.is_clean() && drift.unchecked.is_empty() {
         let _ = writeln!(s, "_No drift._\n");
         return;
     }
-    let _ = writeln!(
-        s,
-        "{} drifted, {} couldn't-check ({} holding).\n",
-        drift.drifted.len(),
-        drift.errored.len(),
-        drift.holds
-    );
-    for d in &drift.drifted {
-        let _ = writeln!(s, "- #{} {} / {} — {}", d.number, d.name, d.fact_id, d.describe);
-        let _ = writeln!(s, "  - expected: {}", d.expected);
-        let _ = writeln!(s, "  - observed: {}", d.observed);
-    }
-    for e in &drift.errored {
+    if !drift.is_clean() {
         let _ = writeln!(
             s,
-            "- #{} {} / {} (couldn't check) — {}",
-            e.number, e.name, e.fact_id, e.describe
+            "{} drifted, {} couldn't-check ({} holding).\n",
+            drift.drifted.len(),
+            drift.errored.len(),
+            drift.holds
         );
-        let _ = writeln!(s, "  - reason: {}", e.reason);
+        for d in &drift.drifted {
+            let _ = writeln!(
+                s,
+                "- #{} {} / {} — {}{}",
+                d.number,
+                d.name,
+                d.fact_id,
+                d.describe,
+                staleness_suffix(d.freshness)
+            );
+            let _ = writeln!(s, "  - expected: {}", d.expected);
+            let _ = writeln!(s, "  - observed: {}", d.observed);
+        }
+        for e in &drift.errored {
+            let _ = writeln!(
+                s,
+                "- #{} {} / {} (couldn't check) — {}{}",
+                e.number,
+                e.name,
+                e.fact_id,
+                e.describe,
+                staleness_suffix(e.freshness)
+            );
+            let _ = writeln!(s, "  - reason: {}", e.reason);
+        }
+    }
+    // Never-checked volatile facts — surfaced honestly, never a fabricated "fresh".
+    if !drift.unchecked.is_empty() {
+        let _ = writeln!(s, "Not yet checked ({}) — run `odm reconcile`:", drift.unchecked.len());
+        for u in &drift.unchecked {
+            let _ = writeln!(s, "- #{} {} / {} — {}", u.number, u.name, u.fact_id, u.describe);
+        }
     }
     let _ = writeln!(s);
 }

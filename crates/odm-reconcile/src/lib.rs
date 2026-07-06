@@ -44,7 +44,9 @@ mod shell;
 mod snapshot;
 
 pub use file::FileProbe;
-pub use incremental::{IncrementalError, Mode, reconcile, reconcile_full, reconcile_incremental};
+pub use incremental::{
+    IncrementalError, Mode, default_drift_path, reconcile, reconcile_full, reconcile_incremental,
+};
 pub use probe::{Probe, ProbeOutcome};
 pub use runner::{CorpusReport, FactResult, NodeReport, OutcomeCounts, Runner};
 pub use shell::ShellProbe;

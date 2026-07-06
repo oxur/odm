@@ -327,6 +327,8 @@ fn orient_drift_reported() {
         ),
     );
 
+    // Volatile fact: an explicit reconcile probes it (bare orient does not — slice08).
+    assert!(run(root, &["reconcile"]).ok);
     let r = run(root, &["orient"]);
     assert!(r.ok);
     let drift = r.out.split("DRIFT").nth(1).unwrap();
@@ -353,6 +355,7 @@ fn orient_json_includes_drift() {
         ),
     );
 
+    assert!(run(root, &["reconcile"]).ok);
     let r = run(root, &["orient", "--json"]);
     assert!(r.ok);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");

@@ -267,31 +267,51 @@ fn render_orient(
         }
     }
 
-    // 5. Drift (A5 slice04 — Q-A3-2): real drift from an on-demand reconcile.
+    // 5. Drift (A5 — Q-A3-2): fresh drift from the incremental reconcile (slice08).
+    // Input-derived facts are fresh; volatile facts show honest "last checked Xm
+    // ago"; never-checked volatile facts say so (never a fabricated "fresh").
     let _ = writeln!(s, "\nDRIFT");
     let drift = &model.drift;
-    if drift.is_clean() {
+    if drift.is_clean() && drift.unchecked.is_empty() {
         let _ = writeln!(s, "  no drift");
     } else {
-        let _ = writeln!(
-            s,
-            "  {} drifted, {} couldn't-check ({} holding)",
-            drift.drifted.len(),
-            drift.errored.len(),
-            drift.holds
-        );
-        for d in &drift.drifted {
+        if !drift.is_clean() {
             let _ = writeln!(
                 s,
-                "  ✗ #{} {} / {}: expected {}, observed {}",
-                d.number, d.name, d.fact_id, d.expected, d.observed
+                "  {} drifted, {} couldn't-check ({} holding)",
+                drift.drifted.len(),
+                drift.errored.len(),
+                drift.holds
             );
+            for d in &drift.drifted {
+                let _ = writeln!(
+                    s,
+                    "  ✗ #{} {} / {}: expected {}, observed {}{}",
+                    d.number,
+                    d.name,
+                    d.fact_id,
+                    d.expected,
+                    d.observed,
+                    crate::reconcile::staleness_suffix(d.freshness)
+                );
+            }
+            for e in &drift.errored {
+                let _ = writeln!(
+                    s,
+                    "  ? #{} {} / {} (couldn't check): {}{}",
+                    e.number,
+                    e.name,
+                    e.fact_id,
+                    e.reason,
+                    crate::reconcile::staleness_suffix(e.freshness)
+                );
+            }
         }
-        for e in &drift.errored {
+        for u in &drift.unchecked {
             let _ = writeln!(
                 s,
-                "  ? #{} {} / {} (couldn't check): {}",
-                e.number, e.name, e.fact_id, e.reason
+                "  · #{} {} / {}: {} — not yet checked, run `odm reconcile`",
+                u.number, u.name, u.fact_id, u.describe
             );
         }
     }

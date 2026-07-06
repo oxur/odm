@@ -9,7 +9,7 @@
 //! fingerprint mirrors the ODD-0014 racy-correct *pattern* over the file probe's
 //! own [`hex_sha256`](crate::file::hex_sha256), not the index's record machinery.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use odm_core::{ProbeClass, ProbeSpec};
@@ -18,6 +18,15 @@ use odm_store::{Store, StoreError};
 use crate::file::hex_sha256;
 use crate::runner::evaluate_spec;
 use crate::snapshot::{DriftSnapshot, FactEntry, FactState, InputFingerprint, Load};
+
+/// The drift snapshot's default path under a store root: `<root>/.odm/drift`.
+///
+/// A sibling of the index (`<root>/.odm/index`); `.odm/` is gitignored derived
+/// CLI state — the drift snapshot is never the source of truth (ODD-0019 §3.3).
+#[must_use]
+pub fn default_drift_path(root: &Path) -> PathBuf {
+    root.join(".odm").join("drift")
+}
 
 /// How a reconcile treats each fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

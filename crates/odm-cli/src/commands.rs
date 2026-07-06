@@ -1476,6 +1476,16 @@ struct ReadyJson {
 }
 
 /// `next` — the ready frontier, soft-satisfied deps flagged. Data → `out`.
+///
+/// **Graph-pure by design (arc05 slice08, L-6).** `next` answers one question —
+/// which nodes are graph-ready (deps satisfied, gates met) — and is deliberately
+/// *unaffected* by a node's `deferred` marker. Deferral is a reconcile-time
+/// concern (its re-entry predicate is a probe), so it is surfaced only in the
+/// reconcile-aware views (`rollup`/`orient`), never here. Making `next` withhold
+/// deferred nodes would force it either to index the marker (a rejected schema
+/// invariant) or to run a reconcile (which would re-introduce the slice04
+/// volatile-probe regression on a hot path). Graph-ready ≠ parked; both surfaces
+/// are correct at their own layer.
 pub fn next(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let derived = Derived::load(store, root)?;
     let ready = derived.graph.next(&derived.satisfaction);

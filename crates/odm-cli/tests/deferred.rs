@@ -6,8 +6,12 @@
 //! `orient_no_deferred_when_none`, `rollup_json_includes_deferred`,
 //! `orient_json_includes_deferred`).
 //!
-//! The re-entry predicate is a **shell** fact (`true` → Holds → ready; `false` →
-//! Drifted → waiting), so the ready/waiting split is deterministic.
+//! The re-entry predicate is a **shell** (volatile) fact. Under slice08 the bare
+//! views (`rollup`/`orient`) run the *incremental* reconcile and never probe
+//! volatile facts, so re-entry stays "waiting (not yet checked)" until an explicit
+//! `odm reconcile` populates the drift snapshot. These tests therefore run
+//! `odm reconcile` first; then the split is deterministic (`true` → Holds → ready;
+//! `false` → Drifted → waiting).
 
 use std::path::Path;
 
@@ -86,6 +90,9 @@ fn deferred_ready_when_reenter_fact_holds() {
     // `true` holds → the re-entry condition is met → ready to re-enter.
     persist(dir.path(), deferred_slice(1, "Parked", "waiting on prod", "true"));
 
+    // Volatile fact: an explicit reconcile must populate the snapshot first
+    // (bare rollup runs zero volatile probes — slice08).
+    assert!(run(dir.path(), &["reconcile"]).ok);
     assert!(run(dir.path(), &["rollup"]).ok);
     let md = read_rollup(dir.path());
     let section = md.split("## Deferred").nth(1).expect("a Deferred section");
@@ -101,6 +108,7 @@ fn deferred_waiting_when_reenter_fact_drifts() {
     // `false` drifts → the re-entry condition is not met → still waiting.
     persist(dir.path(), deferred_slice(1, "Parked", "waiting on prod", "false"));
 
+    assert!(run(dir.path(), &["reconcile"]).ok);
     assert!(run(dir.path(), &["rollup"]).ok);
     let md = read_rollup(dir.path());
     let section = md.split("## Deferred").nth(1).expect("a Deferred section");
@@ -112,6 +120,7 @@ fn rollup_surfaces_deferred() {
     let dir = TempDir::new().unwrap();
     write_config(dir.path());
     persist(dir.path(), deferred_slice(3, "Blocked work", "external dep", "false"));
+    assert!(run(dir.path(), &["reconcile"]).ok);
     assert!(run(dir.path(), &["rollup"]).ok);
     let md = read_rollup(dir.path());
     assert!(md.contains("## Deferred"), "Deferred section present:\n{md}");
@@ -138,6 +147,7 @@ fn orient_surfaces_deferred() {
     persist(dir.path(), node(1, NodeType::Project, "Proj")); // single project auto-resolves
     persist(dir.path(), deferred_slice(2, "Parked", "waiting on prod", "false"));
 
+    assert!(run(dir.path(), &["reconcile"]).ok);
     let r = run(dir.path(), &["orient"]);
     assert!(r.ok);
     let section = r.out.split("DEFERRED").nth(1).expect("a DEFERRED section");
@@ -163,6 +173,7 @@ fn rollup_json_includes_deferred() {
     write_config(dir.path());
     persist(dir.path(), deferred_slice(3, "Blocked work", "external dep", "true"));
 
+    assert!(run(dir.path(), &["reconcile"]).ok);
     let r = run(dir.path(), &["rollup", "--json"]);
     assert!(r.ok);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
@@ -180,6 +191,7 @@ fn orient_json_includes_deferred() {
     persist(dir.path(), node(1, NodeType::Project, "Proj"));
     persist(dir.path(), deferred_slice(2, "Parked", "external dep", "false"));
 
+    assert!(run(dir.path(), &["reconcile"]).ok);
     let r = run(dir.path(), &["orient", "--json"]);
     assert!(r.ok);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
