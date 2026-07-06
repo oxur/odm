@@ -111,8 +111,8 @@ const DATA = {
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","wip"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
-        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slice01 CDC-verified (odm-migrate crate + `odm migrate`; faithful legacy→new mapping; idempotent, --dry-run, NEVER-delete proven by byte-snapshot). slice02 open set drawn (migrate odm's OWN docs — the importer meets reality) — with CC: run migrate on docs/design (~13 ODDs) → odd nodes under nodes/, `odm check` GREEN on the imported graph; settle the 3 slice01 flags against the real corpus (odd numbering space; real supersedes value shape; multi-supersession → amend if needed) + the deferred mapping (A5 marker vs retire). oxur docs out of scope; the plan-set self-host is slice03. On A-8 reproduced → odm self-hosts. Git: off release/1.0.x." },
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
+        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slices 01–02 CDC-verified: odm-migrate crate + `odm migrate`; faithful legacy→new mapping; NEVER-delete (byte-proven). The importer MET REALITY: 12 ODDs → 12 odd nodes under nodes/2026/07/ (legacy intact), `odm check` GREEN, all 3 slice01 flags settled against the real corpus with NO model amendment (numbering space distinct; supersedes parser hardened for null/number/ODD-NN; no multi-supersede; no deferred). Calibration: that green is over ISOLATED doc nodes — the connected-graph self-host demo (A-8) is slice03. NEXT: slice03 — self-host cutover (plan-set → nodes; orient/rollup on the self-hosted corpus; the loop closes). Crux: reflexive-import ordering (migrate the plan governing the migration LAST). Git: off release/1.0.x." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -200,7 +200,7 @@ const summary = document.getElementById('summary');
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
  ['Latest', 'A5 ✓ closed','var(--done)'],
- ['Active', 'A6 · 1/5 (final)','var(--active)']
+ ['Active', 'A6 · 2/5 (final)','var(--active)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
