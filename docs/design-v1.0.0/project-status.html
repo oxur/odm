@@ -109,10 +109,10 @@ const DATA = {
                 ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","done"]],
         note:"✅ CLOSED (composed; CI-green on release/1.0.x 2026-07-06). All 8 slices CDC-verified; arc-close composition check passed + independent arc-gate review (PASS-WITH-NOTES) — arc05-reconciliation/closing-report.md. The marquee state-drift killer (ODD-0001 C2) lands, and ODD-0019 makes it incremental on every command: bare `odm` runs ZERO volatile probes, honest 'last checked Xm ago', drift-aware ROLLUP cutoff, `next` stays graph-pure. Zero index change across ALL 8 slices (the slice02 store-vs-index boundary held the whole arc). Ledger reconciled at close: slice08 appended as stable A-14 (not a renumber). Carried to A6: two-reads optimization + CLAUDE.md oxur-cli doc-drift fix." },
 
-      { id:"A6", name:"Migrate, self-host & PM-skill", status:"planned", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
+      { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","plan"],["02","migrate odm's own docs","plan"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
-        note:"◀ NEXT — the only remaining arc for the v1.0.0 DoD. The self-hosting trigger: after cutover these design docs become odm nodes, queryable via `odm orient` (odm dogfoods itself). Folds in the A5 carry-overs (CLAUDE.md oxur-cli doc-drift; two-reads optimization). Arc-plan drafted; per plan-late-plan-deep it gets deepened + per-slice docs when it becomes active." },
+        slices:[["01","migrate importer core","wip"],["02","migrate odm's own docs","plan"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
+        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). Arc-plan deepened (v1.2): idempotence keys on the preserved legacy number (fresh ULID identity, skip-if-exists); state-scalar→odd gate position; A5 carry-ins folded (CLAUDE.md oxur-cli doc-drift → slice05; two-reads optimization parked as non-A6). slice01 open set drawn (migrate importer core) — with CC: odm-migrate crate + `odm migrate` command; legacy(number/state-dir/supersedes-pair/dustbin)→new(ULID+number/gate/edge/supersede) mapping; idempotent, --dry-run, NEVER-delete; tested on fixtures (slice02 runs it on odm's real docs). On A-8 reproduced → odm self-hosts. Git: branches off release/1.0.x." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -200,7 +200,7 @@ const summary = document.getElementById('summary');
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
  ['Latest', 'A5 ✓ closed','var(--done)'],
- ['Next', 'A6 (self-host)','var(--muted)']
+ ['Active', 'A6 · 0/5 (final)','var(--active)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });

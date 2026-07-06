@@ -104,6 +104,30 @@ slice). Independent of A4 (self-host does not require the index).
 - **Self-host cutover safety.** Migrating the plan that governs the migration is
   reflexive; slice03 needs a clean before/after (`--dry-run`, git checkpoint) so a bad
   import is recoverable.
+- **Idempotence key (resolved, slice01).** ULID identity is fresh/random, so a re-run
+  cannot re-mint the same id — idempotence is a **describe-or-create keyed on the preserved
+  legacy `number`**: `migrate` sets the new node's `number` = legacy number (identity = fresh
+  ULID), and **skips** any legacy doc whose `number` already exists as an `odd` node. (Open
+  sub-question for slice01/02: whether `odd` numbers share the work-node numbering space or a
+  separate one — settle against the real corpus.)
+- **DocState → gate mapping (slice01).** The legacy `state` scalar (`Draft`/`Under-review`/
+  `Revised`/`Accepted`/`Active`/`Final`/`Deferred`/`Rejected`/`Withdrawn`/`Superseded`, from
+  the `01-draft`…`10-superseded` dirs) maps to the **`odd` gate-set position** (defined in the
+  gate config). slice01 pins the exact per-state gate mapping against the `odd` gate-set;
+  the state-*directory* itself is dropped (was redundant truth).
+
+## Carry-ins from A5 (project-plan v1.6) + git
+
+- **`CLAUDE.md` oxur-cli doc-drift → folds into slice05** (retire/reconcile prose): the
+  project `CLAUDE.md` claims "CLI output uses `oxur_cli::common::output`/`oxur_cli::table`,"
+  but `odm-cli` has **no** `oxur-cli` dependency (it uses `tabled` + `writeln!`). A doc-keeping
+  fix — reconcile it while retiring redundant prose in slice05 (or a quick standalone fix
+  sooner). Recorded so it isn't lost.
+- **Two-reads-per-bare-command optimization → NOT an A6 concern** (it's an `odm-reconcile`
+  perf follow, orthogonal to migrate/self-host/PM-skill). **Parked as a post-MVP backlog
+  item**, not forced into this arc. Flagged here so the disposition is explicit.
+- **Git:** A6 branches cut from **`release/1.0.x`** (not `main` — `main` is reset onto the
+  pre-rebuild `release/0.3.x` import). cc-prompts say "branch off `release/1.0.x`."
 
 ## Method
 
@@ -114,6 +138,19 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.2 — 2026-07-06
+**A6 activated (the final v1.0.0 arc); slice01-relevant questions resolved (plan-deepening).**
+A6 is the active arc after A5's CI-green close. Per *plan late, plan deep*, deepened as
+slice01 is drawn: resolved the **idempotence key** (describe-or-create on the preserved
+legacy `number`; fresh ULID identity; skip-if-exists) and the **DocState → `odd` gate
+mapping** (state scalar → gate position; state-dir dropped). Grounded the legacy model in
+odm's own `docs/design` (12 ODDs, state-dirs `01`…`10`, frontmatter `{number, state,
+supersedes, superseded-by, …}`) → `NodeType::Odd` nodes; `odm-migrate` doesn't exist yet
+(slice01 creates it). Added a **Carry-ins from A5** section: the `CLAUDE.md` oxur-cli
+doc-drift folds into slice05; the two-reads optimization is parked (non-A6); A6 branches off
+`release/1.0.x`. No structural re-break; the 5-slice breakdown holds. Surfaced by: drawing up
+slice01 / the A5 close bubble-up.
 
 ### v1.1 — 2026-06-26
 Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B (the arc ledger opens
