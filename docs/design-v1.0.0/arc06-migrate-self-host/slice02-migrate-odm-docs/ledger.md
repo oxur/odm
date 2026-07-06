@@ -62,7 +62,7 @@
 
 ## Closure
 
-Closed at commit `<SHA>` on 2026-07-06. Verified by: CC (proposed-done, attested);
+Closed at commit `028d21d` on 2026-07-06. Verified by: CC (proposed-done, attested);
 CDC to reproduce. Rows: 6. Done: 6. Deferred: 0. No-op: 0.
 On close → bubble up to `arc-plan.md` (A-2) per LEDGER-DISCIPLINE v2.0 §A;
 slice03 brings the plan-set in and the self-host loop closes.
