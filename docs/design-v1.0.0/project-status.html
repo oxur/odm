@@ -106,8 +106,8 @@ const DATA = {
       { id:"A5", name:"Reconciliation", status:"active", deps:"A2, A3", crate:"odm-reconcile",
         cap:"desired_facts + Probe trait (shell/file); reconcile on demand + scheduled; drift folded into rollup/orient; affects edge + stale-doc-vs-decision check; deferred surfacing.",
         slices:[["01","desired_facts + Probe trait + shell probe","done"],["02","file probe + probe-runner","done"],["03","odm reconcile (on demand)","done"],["04","drift in rollup/orient","done"],
-                ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","wip"]],
-        note:"▶ ACTIVE (7/8 verified). slices 01–07 CDC-verified — ODD-0019 freshness core landed (probe inputs/volatile; racy-correct input fingerprint; persisted .odm/ drift snapshot; incremental re-probe-only-changed; volatile skipped+stamped; zero index coupling across all of A5). slice08 open set drawn (THE ARC CAPSTONE) — with CC: wire reconcile_views→incremental so bare `odm`/orient runs ZERO volatile probes (dissolves the slice04 regression); `odm reconcile`→full refresh; render 'last checked Xm ago' honest staleness; .odm/drift gitignored. Settles the 2 loose ends: deferred-next = graph-pure (next answers graph-readiness; deferred is a reconcile-layer overlay), ROLLUP.md cutoff = drift-aware (a drift change regenerates). On close → the A5 ARC-CLOSE. Doc-drift for arc-close: CLAUDE.md oxur-cli claim stale." },
+                ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","done"]],
+        note:"▶ ACTIVE — ALL 8 SLICES DELIVERED (8/8 CDC-verified); the A5 arc-close runs next. ODD-0019 realized end-to-end: bare `odm` runs the incremental pass (ZERO volatile probes — the slice04 regression dissolved), volatile facts show honest 'last checked Xm ago', `odm reconcile` = explicit refresh, ROLLUP.md cutoff drift-aware, `next` stays graph-pure. Zero index change across ALL 8 slices — the slice02 store-vs-index boundary held the whole way. Carried to arc-close: (a) two-reads-per-bare-command optimization (flagged follow); (b) CLAUDE.md oxur-cli doc-drift fix. NEXT: A5 arc-close — composition check A-1…A-13, class-(b) rows reproduced at arc scale, independent gate (fresh-context subagent, as in A4), bubble-up to project-plan." },
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"planned", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
@@ -200,7 +200,7 @@ const summary = document.getElementById('summary');
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
  ['Latest', 'A4 ✓ CI-green','var(--done)'],
- ['Active', 'A5 · 7/8','var(--active)']
+ ['Active', 'A5 · 8/8 → close','var(--active)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
