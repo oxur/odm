@@ -76,6 +76,6 @@
 
 ## Closure
 
-Closed at commit `<SHA>` on 2026-07-06. Verified by: CC (proposed-done, attested);
+Closed at commit `4479076` on 2026-07-06. Verified by: CC (proposed-done, attested);
 CDC to reproduce. Rows: 7. Done: 7. Deferred: 0. No-op: 0.
 On close → bubble up to `arc-plan.md` (A-1) per LEDGER-DISCIPLINE v2.0 §A.
