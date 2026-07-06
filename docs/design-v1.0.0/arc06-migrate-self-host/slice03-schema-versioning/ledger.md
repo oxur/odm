@@ -65,7 +65,7 @@
 
 ## Closure
 
-Closed at commit `<SHA>` on 2026-07-06. Verified by: CC (proposed-done, attested);
+Closed at commit `5b5dd43` on 2026-07-06. Verified by: CC (proposed-done, attested);
 CDC to reproduce. Rows: 6. Done: 6. Deferred: 0. No-op: 0.
 On close → bubble up to `arc-plan.md` (A-3) per LEDGER-DISCIPLINE v2.0 §A;
 slice04 self-hosts the plan-set — which now enters `nodes/` already stamped `v1.0`.
