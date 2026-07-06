@@ -69,12 +69,12 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (`migrate` importer core) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`4479076`; 7/7; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 91.03% line, `odm-cli` migrate.rs 96.61%); new `odm-migrate` crate + `odm migrate <path> [--dry-run]`; faithful mapping (number→number+ULID, state→cumulative `odd` gate / dustbin→retire, supersedes-pair→edge, type=odd, metadata carried, author→`extra`); idempotent on preserved `number`; `--dry-run` writes nothing; never-delete proven by byte-snapshot; malformed/edge → reported skip/warn, no panic; **no** `odm-index` change. Tested on fixtures (`test-data/legacy`, `test-data/legacy-edge`). cargo rows pending CI. Branched off `release/1.0.x`. | → `done` when slice01 reproduces (CI green). |
-| A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`<SLICE02_SHA>`; 6/6; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 93.86% line); `odm migrate docs/design` → 12 `odd` nodes committed under `nodes/2026/07/`, legacy intact; `odm check` green ("ok, 12 nodes"), green-by-construction (document nodes orphan-exempt); three slice01 flags settled **without amendment** (distinct `(type=odd,number)` space; `supersedes` parser hardened for `null`/number/`"ODD-NN"`; no multi-supersession in corpus); no `07-deferred` → `deferred→retire` interim stands; idempotent + `--dry-run` at real scale; **no** `odm-index` change. cargo rows pending CI. Branched off slice01. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (self-host cutover) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-4 | slice04 (PM-skill population) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-5 | slice05 (retire redundant framework prose) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-6 | **Compose:** `odm migrate` imports legacy ODDs into the new model — idempotent, `--dry-run`-able, supersede-not-delete (no legacy file removed) | arc-scale demo: migrate a legacy corpus; re-run is a no-op; no deletions | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice01, `4479076`): faithful mapping + idempotent (keyed on preserved `number`) + `--dry-run` + never-delete (byte-snapshot proven) + loud-on-malformed, on fixtures. To **reproduce at arc scale** at arc-close (never inherited) — on odm's own corpus once slice02 lands. | reproduce at arc scale |
-| A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | | reproduce at arc scale |
+| A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | mechanism-complete (slice02, `<SLICE02_SHA>`): `odm migrate docs/design` imports 12 `odd` nodes; `odm check` exit 0 (green-by-construction) on the imported graph; legacy intact; idempotent. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-8 | **Compose:** odm **self-hosts** — its plan lives under `nodes/` and `odm orient`/`rollup`/`check` run on the real corpus | arc-scale demo: `odm orient` over the self-hosted plan | serious | arc-plan / 0013 §9 | open | | reproduce at arc scale. The self-hosting trigger. |
 | A-9 | **Compose:** the PM skill is populated from ODD-0001 and the redundant *mechanical* framework prose is retired with a pointer to `odm check` | arc-scale demo: the skill carries the "run `odm <cmd>`" entries; the retired prose points to odm | serious | arc-plan / 0013 §11 | open | | reproduce at arc scale |
 | A-10 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
@@ -138,6 +138,34 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.4 — 2026-07-06
+**slice02 closed (A-2 attested; A-7 mechanism-complete) + bubble-up propagated —
+the importer met reality; odm's own ODDs are migrated.** `odm migrate docs/design`
+imported odm's real ODD corpus (12 ODDs, numbers `2`/`9`–`19`) into 12 `odd` nodes
+committed under `nodes/2026/07/`, with the legacy `docs/design` untouched
+(supersede-not-delete) — the first real step of self-hosting. **`odm check` is
+green** on the imported graph ("ok, 12 nodes"), and green *by construction*:
+document nodes are orphan-exempt and non-parent-capable, and the imported nodes
+carry no edges/affects/deferred, so no findings arise — no fabricated edge, no
+forced green. **The three slice01 flags settled against reality, none forcing an
+amendment:** (1) `odd` is a **distinct numbering space** — idempotence keys on
+`(type=odd, number)`, no collision on the real corpus; (2) the real `supersedes`
+shape is `null` throughout, and the parser was hardened (`de_opt_ref`) to also
+accept a bare number and a `"ODD-00NN"` string ref (future-proof, with a fixture);
+(3) **no multi-supersession** occurs → the single-`supersedes`-edge model (with
+warn-on-multiple) is kept. No `07-deferred` ODD exists, so **`deferred → retire`**
+stands as the interim mapping (revisitable). Idempotent + `--dry-run` hold at real
+scale (a re-run creates 0). oxur's `crates/design/docs` is **decided out of scope**
+(odm's own docs first). **No `odm-index` change.** 6/6 attested; clippy clean; no
+`unsafe`; `odm-migrate` line cov ≥ 93.8%; full workspace green. **Bubble-up for
+slice03 (the plan-set cutover):** `odd` + work nodes will coexist in one store —
+keep the numbering spaces separated and confirm `check`/`orient` handle the mixed
+corpus (the document-node orphan-exemption is what makes it green); the
+**reflexive-import ordering** is the crux (import the plan describing the migration
+*last*; lean on `--dry-run` + a git checkpoint); legacy retirement becomes a live
+post-cutover question (both representations now coexist). *Plan-keeping:* CC
+propagated this bubble-up here itself. Surfaced by: slice02 close.
 
 ### v1.3 — 2026-07-06
 **slice01 closed (A-1 attested; A-6 mechanism-complete) + bubble-up propagated.**

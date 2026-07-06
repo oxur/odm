@@ -45,12 +45,51 @@ pub struct LegacyFrontmatter {
     #[serde(default)]
     pub state: Option<String>,
     /// The legacy number this doc supersedes → a `supersedes` edge on this node.
-    #[serde(default)]
+    /// Accepts `null`, a bare number, or a human ref string (`"ODD-0011"` /
+    /// `"11"`) — see [`de_opt_ref`] (slice02: the real corpus uses `null`, but the
+    /// human-facing `ODD-NN` convention makes the string form plausible).
+    #[serde(default, deserialize_with = "de_opt_ref")]
     pub supersedes: Option<u32>,
     /// The legacy number that supersedes this doc → a `supersedes` edge on *that*
-    /// node (reverse-derived, ODD-0013 §9).
-    #[serde(default, rename = "superseded-by")]
+    /// node (reverse-derived, ODD-0013 §9). Same shapes as [`supersedes`].
+    ///
+    /// [`supersedes`]: LegacyFrontmatter::supersedes
+    #[serde(default, rename = "superseded-by", deserialize_with = "de_opt_ref")]
     pub superseded_by: Option<u32>,
+}
+
+/// Deserializes a legacy document reference that may be `null`, a bare number,
+/// or a human string ref (`"ODD-0011"`, `"odd-11"`, `"0011"`, `"11"`) into the
+/// referenced legacy `number`. A non-empty string that carries no number is a
+/// hard error (a *loud* malformed skip, never a silent `None` that would drop the
+/// supersession intent).
+fn de_opt_ref<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    /// The accepted on-disk shapes (an absent/`null` value is `None` before this).
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Num(u32),
+        Str(String),
+    }
+    match Option::<Raw>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(Raw::Num(n)) => Ok(Some(n)),
+        Some(Raw::Str(s)) => first_number(&s).map(Some).ok_or_else(|| {
+            serde::de::Error::custom(format!("reference {s:?} carries no document number"))
+        }),
+    }
+}
+
+/// The first contiguous run of ASCII digits in `s`, parsed as a `u32`
+/// (`"ODD-0011"` → 11, `"11"` → 11, `"none"` → `None`).
+fn first_number(s: &str) -> Option<u32> {
+    let start = s.find(|c: char| c.is_ascii_digit())?;
+    let rest = &s[start..];
+    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    rest[..end].parse().ok()
 }
 
 /// One legacy document: its parsed frontmatter, its markdown body (carried
@@ -188,6 +227,33 @@ mod tests {
     fn split_frontmatter_rejects_missing_delimiters() {
         assert!(split_frontmatter("no frontmatter here").is_err());
         assert!(split_frontmatter("---\nnumber: 7\nno closing fence").is_err());
+    }
+
+    #[test]
+    fn first_number_extracts_a_ref_number() {
+        assert_eq!(first_number("ODD-0011"), Some(11));
+        assert_eq!(first_number("odd-11"), Some(11));
+        assert_eq!(first_number("0011"), Some(11));
+        assert_eq!(first_number("11"), Some(11));
+        assert_eq!(first_number("none"), None);
+        assert_eq!(first_number(""), None);
+    }
+
+    #[test]
+    fn de_opt_ref_accepts_null_number_and_string() {
+        #[derive(serde::Deserialize)]
+        struct Holder {
+            #[serde(default, deserialize_with = "de_opt_ref")]
+            r: Option<u32>,
+        }
+        let null: Holder = serde_norway::from_str("r: null").unwrap();
+        assert_eq!(null.r, None);
+        let num: Holder = serde_norway::from_str("r: 7").unwrap();
+        assert_eq!(num.r, Some(7));
+        let s: Holder = serde_norway::from_str("r: \"ODD-0011\"").unwrap();
+        assert_eq!(s.r, Some(11));
+        // A string with no number is a hard error (loud), never a silent None.
+        assert!(serde_norway::from_str::<Holder>("r: \"none\"").is_err());
     }
 
     #[test]

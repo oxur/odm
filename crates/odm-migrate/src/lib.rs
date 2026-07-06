@@ -20,6 +20,24 @@
 //! | `supersedes`/`superseded-by` | → | a `supersedes` edge on the superseding node |
 //! | title/author/created/updated/tags/component | → | carried (author → `extra`) |
 //! | node type | → | `NodeType::Odd` |
+//!
+//! ## Numbering space (slice02, settled against the real corpus)
+//!
+//! `odd` numbers are a **distinct numbering space** from work-node
+//! (`project`/`arc`/`slice`) numbers: the idempotence check keys on
+//! `(type == odd, number)` — `existing_odd_numbers` filters to `odd` nodes — so
+//! a legacy ODD `#13` never collides with a work node `#13`. Confirmed on odm's
+//! own `docs/design` (ODD numbers `2`, `9`–`19`, no collisions).
+//!
+//! ## Supersession value shape (slice02)
+//!
+//! `supersedes`/`superseded-by` accept `null`, a bare number, or a human ref
+//! string (`"ODD-0011"`) — see [`legacy::LegacyFrontmatter`]. odm's real corpus
+//! uses `null` throughout (no supersession); the string form is handled for
+//! robustness. No real ODD supersedes more than one predecessor, so the model's
+//! single `supersedes` edge (warn-on-multiple) is sufficient — no amendment
+//! needed. There are no `07-deferred` ODDs, so `deferred → retire` stands as the
+//! interim mapping (revisitable if a real deferred ODD appears).
 
 pub mod legacy;
 pub mod mapping;

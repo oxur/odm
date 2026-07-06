@@ -1,7 +1,7 @@
-//! In-process test for the `odm migrate` command surface (arc06 slice01, M-1).
-//! Drives [`odm_cli::dispatch`] against a temp store, migrating the fixture
-//! legacy corpus. Test name carries the substring the ledger Verify filters on
-//! (`migrate_command_exists`).
+//! In-process tests for the `odm migrate` command surface. Drives
+//! [`odm_cli::dispatch`] against a temp store. Test names carry the substrings
+//! the ledger Verify commands filter on: `migrate_command_exists` (slice01 M-1),
+//! `check_green_on_migrated_odm_docs` (slice02 N-2).
 
 use std::path::{Path, PathBuf};
 
@@ -16,6 +16,11 @@ fn fixtures(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-data").join(name)
 }
 
+/// The workspace path of the live `docs/design` corpus.
+fn real_docs() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/design")
+}
+
 fn run(root: &Path, args: &[&str]) -> (bool, String, String) {
     let argv: Vec<&str> = std::iter::once("odm").chain(args.iter().copied()).collect();
     let cli = Cli::try_parse_from(&argv).expect("args structurally valid");
@@ -23,6 +28,17 @@ fn run(root: &Path, args: &[&str]) -> (bool, String, String) {
     let mut err = Vec::new();
     let ok = odm_cli::dispatch(cli, root, &mut out, &mut err).is_ok();
     (ok, String::from_utf8(out).unwrap(), String::from_utf8(err).unwrap())
+}
+
+/// Like [`run`] but returns the intended exit code (for `check`, which returns
+/// its own code rather than erroring).
+fn run_code(root: &Path, args: &[&str]) -> (Option<u8>, String) {
+    let argv: Vec<&str> = std::iter::once("odm").chain(args.iter().copied()).collect();
+    let cli = Cli::try_parse_from(&argv).expect("args structurally valid");
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let code = odm_cli::dispatch(cli, root, &mut out, &mut err).ok();
+    (code, String::from_utf8(out).unwrap())
 }
 
 #[test]
@@ -65,4 +81,20 @@ fn migrate_command_reports_empty_corpus() {
     let (ok, out, _err) = run(store_dir.path(), &["migrate", empty.path().to_str().unwrap()]);
     assert!(ok);
     assert!(out.contains("no legacy documents found"), "empty-corpus message:\n{out}");
+}
+
+// ----- N-2: `odm check` is green on the migrated real ODD corpus -------------
+
+#[test]
+fn check_green_on_migrated_odm_docs() {
+    // Import odm's real `docs/design` into a fresh store (migrate never mutates
+    // the legacy tree — proven in odm-migrate's never-delete test), then assert
+    // `odm check` is green (exit 0) on the imported `odd` graph.
+    let store_dir = TempDir::new().unwrap();
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", real_docs().to_str().unwrap()]);
+    assert!(ok, "migrate real docs dispatches cleanly:\n{err}");
+    assert!(err.contains("created"), "some ODDs imported:\n{err}");
+
+    let (code, out) = run_code(store_dir.path(), &["check"]);
+    assert_eq!(code, Some(0), "check is green on the imported odd corpus:\n{out}");
 }

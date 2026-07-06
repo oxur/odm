@@ -111,8 +111,8 @@ const DATA = {
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","wip"],["02","migrate odm's own docs","plan"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
-        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). Arc-plan deepened (v1.2): idempotence keys on the preserved legacy number (fresh ULID identity, skip-if-exists); state-scalar→odd gate position; A5 carry-ins folded (CLAUDE.md oxur-cli doc-drift → slice05; two-reads optimization parked as non-A6). slice01 open set drawn (migrate importer core) — with CC: odm-migrate crate + `odm migrate` command; legacy(number/state-dir/supersedes-pair/dustbin)→new(ULID+number/gate/edge/supersede) mapping; idempotent, --dry-run, NEVER-delete; tested on fixtures (slice02 runs it on odm's real docs). On A-8 reproduced → odm self-hosts. Git: branches off release/1.0.x." },
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","wip"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
+        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slice01 CDC-verified (odm-migrate crate + `odm migrate`; faithful legacy→new mapping; idempotent, --dry-run, NEVER-delete proven by byte-snapshot). slice02 open set drawn (migrate odm's OWN docs — the importer meets reality) — with CC: run migrate on docs/design (~13 ODDs) → odd nodes under nodes/, `odm check` GREEN on the imported graph; settle the 3 slice01 flags against the real corpus (odd numbering space; real supersedes value shape; multi-supersession → amend if needed) + the deferred mapping (A5 marker vs retire). oxur docs out of scope; the plan-set self-host is slice03. On A-8 reproduced → odm self-hosts. Git: off release/1.0.x." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -200,7 +200,7 @@ const summary = document.getElementById('summary');
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
  ['Latest', 'A5 ✓ closed','var(--done)'],
- ['Active', 'A6 · 0/5 (final)','var(--active)']
+ ['Active', 'A6 · 1/5 (final)','var(--active)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
