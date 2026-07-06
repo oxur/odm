@@ -45,6 +45,10 @@ help:
 	@echo "  $(YELLOW)make check$(RESET)            - Build + lint + test"
 	@echo "  $(YELLOW)make check-all$(RESET)        - Build + lint + coverage"
 	@echo ""
+	@echo "$(GREEN)Dependencies:$(RESET)"
+	@echo "  $(YELLOW)make check-deps$(RESET)       - Report compatible dependency updates (fails if any)"
+	@echo "  $(YELLOW)make deps$(RESET)             - Upgrade dependencies (cargo upgrade)"
+	@echo ""
 	@echo "$(GREEN)Cleaning:$(RESET)"
 	@echo "  $(YELLOW)make clean$(RESET)            - Clean bin directory"
 	@echo "  $(YELLOW)make clean-all$(RESET)        - Full clean (cargo clean)"
@@ -214,6 +218,44 @@ coverage-html:
 	@cargo llvm-cov --html
 	@echo "$(GREEN)✓ HTML coverage report generated$(RESET)"
 	@echo "$(CYAN)→ Report: target/llvm-cov/html/index.html$(RESET)"
+
+# Dependency management
+
+# Ensure cargo-binstall is available for fast (prebuilt) tool installation.
+.PHONY: ensure-binstall
+ensure-binstall:
+	@command -v cargo-binstall >/dev/null 2>&1 || { \
+		echo "$(YELLOW)→ Installing cargo-binstall...$(RESET)"; \
+		curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash; \
+	}
+
+.PHONY: check-deps
+check-deps: ensure-binstall
+	@echo "$(BLUE)Checking for outdated dependencies...$(RESET)"
+	@command -v cargo-outdated >/dev/null 2>&1 || { \
+		echo "$(YELLOW)→ Installing cargo-outdated...$(RESET)"; \
+		cargo binstall -y cargo-outdated; \
+	}
+	@OUTPUT=$$(cargo outdated --root-deps-only --ignore-external-rel 2>/dev/null); \
+	echo "$$OUTPUT"; \
+	echo ""; \
+	if echo "$$OUTPUT" | grep -E "^[a-z0-9_-]+\s+" | grep -v "^----" | awk '{print $$3}' | grep -v "^---$$" | grep -v "^Compat$$" | grep -E "^[0-9]" | grep -q .; then \
+		echo "$(RED)✗ Compatible dependency updates available$(RESET)"; \
+		echo "$(YELLOW)→ Run 'make deps' to update and commit the updated Cargo.lock$(RESET)"; \
+		exit 1; \
+	else \
+		echo "$(GREEN)✓ All dependencies up to date$(RESET)"; \
+	fi
+
+.PHONY: deps
+deps: ensure-binstall
+	@echo "$(BLUE)Updating dependencies...$(RESET)"
+	@command -v cargo-upgrade >/dev/null 2>&1 || { \
+		echo "$(YELLOW)→ Installing cargo-edit...$(RESET)"; \
+		cargo binstall -y cargo-edit; \
+	}
+	@cargo upgrade
+	@echo "$(GREEN)✓ Cargo deps upgraded (review + commit the updated Cargo.toml/Cargo.lock)$(RESET)"
 
 # Combined check targets
 .PHONY: check
