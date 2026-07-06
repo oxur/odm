@@ -64,6 +64,6 @@
 
 ## Closure
 
-Closed at commit `<SHA>` on 2026-07-06. Verified by: CC (proposed-done, attested);
+Closed at commit `f4b5ac7` on 2026-07-06. Verified by: CC (proposed-done, attested);
 CDC to reproduce. Rows: 7. Done: 7. Deferred: 0. No-op: 0.
 On close → **the A5 arc-close** (composition check A-1…A-13; class-(b) rows reproduced at arc scale).
