@@ -1,0 +1,24 @@
+[package]
+name = "odm-migrate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Legacy → node-model importer for odm: the odm migrate mapping (Arc 06)"
+
+[lints]
+workspace = true
+
+[dependencies]
+odm-core = { path = "../odm-core" }
+odm-store = { path = "../odm-store" }
+serde = { workspace = true }
+serde_norway.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

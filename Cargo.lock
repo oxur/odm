@@ -1819,6 +1819,7 @@ dependencies = [
  "clap",
  "odm-core",
  "odm-index",
+ "odm-migrate",
  "odm-reconcile",
  "odm-store",
  "serde",
@@ -1864,6 +1865,20 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "ulid",
+]
+
+[[package]]
+name = "odm-migrate"
+version = "1.0.0"
+dependencies = [
+ "chrono",
+ "odm-core",
+ "odm-store",
+ "serde",
+ "serde_norway",
+ "tempfile",
+ "thiserror 1.0.69",
+ "walkdir",
 ]
 
 [[package]]

@@ -17,6 +17,7 @@ odm-core = { path = "../odm-core" }
 odm-store = { path = "../odm-store" }
 odm-index = { path = "../odm-index" }
 odm-reconcile = { path = "../odm-reconcile" }
+odm-migrate = { path = "../odm-migrate" }
 clap.workspace = true
 anyhow.workspace = true
 serde = { workspace = true }

@@ -13,6 +13,7 @@
 mod commands;
 mod context;
 mod json;
+mod migrate;
 mod orient;
 mod reconcile;
 mod rollup;
@@ -392,6 +393,17 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
+    /// Import a legacy number-/state-directory ODD corpus into the node model.
+    ///
+    /// Idempotent (re-running is a no-op, keyed on the preserved legacy number),
+    /// `--dry-run`-able, and never deletes or mutates a legacy file.
+    Migrate {
+        /// Path to the legacy corpus (e.g. a `docs/design` with `NN-state/` dirs).
+        legacy_path: String,
+        /// Report the plan and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
@@ -508,6 +520,9 @@ pub fn dispatch(
         }
         Command::Decomposed { reference, children, dry_run, yes: _ } => {
             commands::decomposed(&store, &reference, &children, dry_run, err)?;
+        }
+        Command::Migrate { legacy_path, dry_run } => {
+            migrate::migrate(&store, root, &legacy_path, dry_run, out, err)?;
         }
     }
     Ok(EXIT_OK)

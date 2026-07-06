@@ -431,6 +431,19 @@ impl Frontmatter {
     pub fn retire(&mut self, reason: impl Into<String>, on: NaiveDate) {
         self.retired = Some(Retirement { reason: reason.into(), on });
     }
+
+    /// Records a string-valued key not modeled by the typed schema into the
+    /// forward-compat catch-all, so it survives a round-trip and is emitted with
+    /// the frontmatter. This is the sanctioned way to carry a value the schema
+    /// does not (yet) type — e.g. `odm migrate` carrying a legacy `author`, which
+    /// ODD-0013 §2.3 has no typed field for. A later slice that types the key
+    /// takes it over from `extra` transparently.
+    pub fn insert_extra(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.extra.insert(
+            serde_norway::Value::String(key.into()),
+            serde_norway::Value::String(value.into()),
+        );
+    }
 }
 
 /// A node's **deferred** marker (ODD-0013 Q-A3-1): parked work with a checkable

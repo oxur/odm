@@ -244,6 +244,30 @@ fn mutators_and_retirement_roundtrip() {
     assert!(reparsed.emit().unwrap().contains("retired:"));
 }
 
+#[test]
+fn insert_extra_carries_an_unmodeled_key_through_roundtrip() {
+    // `odm migrate` uses this to carry a legacy `author` (no typed field).
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let mut fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Odd,
+        "Doc",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    );
+    assert_eq!(fm.unknown_key_count(), 0);
+    fm.insert_extra("author", "Ada Lovelace");
+    assert_eq!(fm.unknown_key_count(), 1);
+
+    let doc = Document::new(fm, "body\n");
+    let emitted = doc.emit().unwrap();
+    assert!(emitted.contains("author: Ada Lovelace"), "extra key emitted:\n{emitted}");
+    // Round-trips: the unmodeled key survives parse ∘ emit.
+    assert_eq!(Document::parse(&emitted).unwrap(), doc);
+}
+
 // ----- I-5: unknown keys preserved -----------------------------------------
 
 #[test]

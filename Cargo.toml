@@ -8,6 +8,7 @@ members = [
     "crates/odm-graph",
     "crates/odm-index",
     "crates/odm-reconcile",
+    "crates/odm-migrate",
 ]
 # The pre-rebuild crate is preserved as the harvest source (see legacy/oxur-odm).
 # It is not a workspace member and is not built by CI.
