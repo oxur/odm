@@ -110,9 +110,9 @@ const DATA = {
         note:"✅ CLOSED (composed; CI-green on release/1.0.x 2026-07-06). All 8 slices CDC-verified; arc-close composition check passed + independent arc-gate review (PASS-WITH-NOTES) — arc05-reconciliation/closing-report.md. The marquee state-drift killer (ODD-0001 C2) lands, and ODD-0019 makes it incremental on every command: bare `odm` runs ZERO volatile probes, honest 'last checked Xm ago', drift-aware ROLLUP cutoff, `next` stays graph-pure. Zero index change across ALL 8 slices (the slice02 store-vs-index boundary held the whole arc). Ledger reconciled at close: slice08 appended as stable A-14 (not a renumber). Carried to A6: two-reads optimization + CLAUDE.md oxur-cli doc-drift fix." },
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
-        cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
-        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slices 01–02 CDC-verified: odm-migrate crate + `odm migrate`; faithful legacy→new mapping; NEVER-delete (byte-proven). The importer MET REALITY: 12 ODDs → 12 odd nodes under nodes/2026/07/ (legacy intact), `odm check` GREEN, all 3 slice01 flags settled against the real corpus with NO model amendment (numbering space distinct; supersedes parser hardened for null/number/ODD-NN; no multi-supersede; no deferred). Calibration: that green is over ISOLATED doc nodes — the connected-graph self-host demo (A-8) is slice03. NEXT: slice03 — self-host cutover (plan-set → nodes; orient/rollup on the self-hosted corpus; the loop closes). Crux: reflexive-import ordering (migrate the plan governing the migration LAST). Git: off release/1.0.x." },
+        cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; versioned per-type schemas (ODD-0020); self-host the plan; PM skill from ODD-0001; retire redundant framework prose.",
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","plan"],["04","self-host cutover","plan"],["05","PM-skill population","plan"],["06","retire framework prose","plan"]],
+        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slices 01–02 CDC-verified: importer + `odm migrate`; 12 ODDs → 12 odd nodes (legacy intact, byte-proven), `odm check` GREEN, 3 flags settled with NO amendment. ★ SCHEMA-VERSIONING FOLDED IN (Duncan; ODD-0020): per-type frontmatter markers `schema: <type>/vN.N` (reuses check/v1 idiom); current=v1.0, unversioned legacy⇒v0.1; NEW slice03 (before self-host so the plan-set enters at v1.0) → self-host/PM/retire shifted to 04/05/06. Ledger reconciled by stable-IDs (A-11 retire, A-12 schema compose; real-evidence rows untouched). NEXT: slice03 — schema versioning. Then slice04 self-host cutover (the loop closes; crux = reflexive-import ordering). Git: off release/1.0.x." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -200,7 +200,7 @@ const summary = document.getElementById('summary');
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
  ['Latest', 'A5 ✓ closed','var(--done)'],
- ['Active', 'A6 · 2/5 (final)','var(--active)']
+ ['Active', 'A6 · 2/6 (final)','var(--active)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });

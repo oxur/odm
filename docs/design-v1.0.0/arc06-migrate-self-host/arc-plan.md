@@ -48,16 +48,21 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
    idempotent describe-or-create; `--dry-run`; never-delete. — `odm-migrate`.
 2. **slice02 — migrate odm's own docs.** Run the importer on `docs/design` (0011–0018);
    resolve real-corpus edge cases; `check` green on the imported graph.
-3. **slice03 — self-host cutover.** Bring the `design-v1.0.0` plan set (project-plan,
-   arc-plans, slice docs) into the node model; the design docs move under `nodes/`;
-   `orient`/`rollup` run on the self-hosted corpus. *The loop closes.*
-4. **slice04 — PM-skill population.** From ODD-0001, build the standalone PM skill in
-   `billosys/ai-engineering`: GOOD/BAD counter-examples + "when you need to X, run
+3. **slice03 — schema versioning (ODD-0020).** Add the per-type `schema: <type>/vN.N`
+   frontmatter marker + per-type field-validity (a `check` extension); `migrate` stamps
+   `<type>/v1.0` and reads unversioned legacy as `v0.1`; new odm-created nodes stamp `v1.0`.
+   **Precedes self-host** so the plan-set enters `nodes/` already at `v1.0`. — `odm-core` /
+   `odm-migrate` / `odm-cli`. *(Inserted v1.5 — the operator's schema-versioning decision.)*
+4. **slice04 — self-host cutover** *(was slice03)*. Bring the `design-v1.0.0` plan set
+   (project-plan, arc-plans, slice docs) into the node model; the design docs move under
+   `nodes/`; `orient`/`rollup` run on the self-hosted corpus. *The loop closes.*
+5. **slice05 — PM-skill population** *(was slice04)*. From ODD-0001, build the standalone PM
+   skill in `billosys/ai-engineering`: GOOD/BAD counter-examples + "when you need to X, run
    `odm <cmd>`" entries, seeded by the prior project's missteps.
-5. **slice05 — retire redundant framework prose.** Replace the framework's *mechanical*
-   PM rules (numbering, ordering, deferral-tracking, drift-watching) with pointers to
-   `odm check` / the relevant commands; keep the posture/craft prose that odm does not
-   mechanize.
+6. **slice06 — retire redundant framework prose** *(was slice05)*. Replace the framework's
+   *mechanical* PM rules (numbering, ordering, deferral-tracking, drift-watching) with
+   pointers to `odm check` / the relevant commands; keep the posture/craft prose that odm
+   does not mechanize. *(Folds in the carried `CLAUDE.md` oxur-cli doc-drift fix, v1.2.)*
 
 ## Arc Ledger
 
@@ -70,14 +75,16 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | A-1 | slice01 (`migrate` importer core) closed | ptr: slice01 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`4479076`; 7/7; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 91.03% line, `odm-cli` migrate.rs 96.61%); new `odm-migrate` crate + `odm migrate <path> [--dry-run]`; faithful mapping (number→number+ULID, state→cumulative `odd` gate / dustbin→retire, supersedes-pair→edge, type=odd, metadata carried, author→`extra`); idempotent on preserved `number`; `--dry-run` writes nothing; never-delete proven by byte-snapshot; malformed/edge → reported skip/warn, no panic; **no** `odm-index` change. Tested on fixtures (`test-data/legacy`, `test-data/legacy-edge`). cargo rows pending CI. Branched off `release/1.0.x`. | → `done` when slice01 reproduces (CI green). |
 | A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`028d21d`; 6/6; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 93.86% line); `odm migrate docs/design` → 12 `odd` nodes committed under `nodes/2026/07/`, legacy intact; `odm check` green ("ok, 12 nodes"), green-by-construction (document nodes orphan-exempt); three slice01 flags settled **without amendment** (distinct `(type=odd,number)` space; `supersedes` parser hardened for `null`/number/`"ODD-NN"`; no multi-supersession in corpus); no `07-deferred` → `deferred→retire` interim stands; idempotent + `--dry-run` at real scale; **no** `odm-index` change. cargo rows pending CI. Branched off slice01. | → `done` when slice02 reproduces (CI green). |
-| A-3 | slice03 (self-host cutover) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
-| A-4 | slice04 (PM-skill population) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
-| A-5 | slice05 (retire redundant framework prose) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-3 | slice03 (**schema versioning** — ODD-0020) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-4 | slice04 (self-host cutover) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (PM-skill population) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
 | A-6 | **Compose:** `odm migrate` imports legacy ODDs into the new model — idempotent, `--dry-run`-able, supersede-not-delete (no legacy file removed) | arc-scale demo: migrate a legacy corpus; re-run is a no-op; no deletions | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice01, `4479076`): faithful mapping + idempotent (keyed on preserved `number`) + `--dry-run` + never-delete (byte-snapshot proven) + loud-on-malformed, on fixtures. To **reproduce at arc scale** at arc-close (never inherited) — on odm's own corpus once slice02 lands. | reproduce at arc scale |
 | A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | mechanism-complete (slice02, `028d21d`): `odm migrate docs/design` imports 12 `odd` nodes; `odm check` exit 0 (green-by-construction) on the imported graph; legacy intact; idempotent. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-8 | **Compose:** odm **self-hosts** — its plan lives under `nodes/` and `odm orient`/`rollup`/`check` run on the real corpus | arc-scale demo: `odm orient` over the self-hosted plan | serious | arc-plan / 0013 §9 | open | | reproduce at arc scale. The self-hosting trigger. |
 | A-9 | **Compose:** the PM skill is populated from ODD-0001 and the redundant *mechanical* framework prose is retired with a pointer to `odm check` | arc-scale demo: the skill carries the "run `odm <cmd>`" entries; the retired prose points to odm | serious | arc-plan / 0013 §11 | open | | reproduce at arc scale |
 | A-10 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
+| A-11 | slice06 (retire redundant framework prose) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested. **Class-(a) stable ID** — appended (not a renumber) per the stable-ID discipline when slice03=schema was inserted; class-(a) = A-1…A-5 **+ A-11** (6 slices). |
+| A-12 | **Compose:** nodes carry a per-type `schema: <type>/vN.N` marker; `migrate` stamps `v1.0` and reads unversioned legacy as `v0.1`; a wrong-type field is a `check` finding | arc-scale demo: migrate → stamped nodes; a v0.1 legacy read; `check` flags a wrong-type field | serious | ODD-0020 / arc-plan v1.5 | open | | reproduce at arc scale. **Class-(b) stable ID** — the schema-versioning capability (slice03). |
 
 Closes in `arc06-migrate-self-host/closing-report.md`: per-row walk + composition verdict,
 independently gated. A failed class-(b) row spawns a **remediation slice**, not a re-pass.
@@ -138,6 +145,21 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.5 — 2026-07-06
+**Schema-versioning folded in (ODD-0020) — a new slice03 inserted before self-host.** Operator
+decision (Duncan + CDC): version the file/frontmatter metadata schema with **per-type markers**
+(`schema: <type>/vN.N` — reusing the `check/v1` idiom), current = **v1.0**, unversioned legacy
+⇒ **v0.1** (design-docs-only). Captured as **ODD-0020**. Folded into A6: **slice03 = schema
+versioning** (the marker + per-type field-validity as a `check` extension + `migrate` stamps
+`v1.0` / reads legacy as `v0.1`), sequenced **before** the self-host cutover so the plan-set
+enters `nodes/` already at `v1.0`; **self-host → slice04, PM-skill → slice05, retire →
+slice06**. Ledger reconciled by the **stable-ID discipline** (don't disturb rows with
+content): the empty placeholders A-3/A-4/A-5 relabeled (schema/self-host/PM), slice06-retire
+appended as stable **A-11** (class-a), the schema compose row appended as stable **A-12**
+(class-b) — A-1/A-2 + the migrate/check compose rows (A-6/A-7, real evidence) untouched.
+class-(a) = A-1…A-5 + A-11 (6 slices); compose = A-6–A-9 + A-12; bubble-up A-10. Surfaced by:
+the operator's schema-versioning proposal + its intersection with the imminent self-host.
 
 ### v1.4 — 2026-07-06
 **slice02 closed (A-2 attested; A-7 mechanism-complete) + bubble-up propagated —
