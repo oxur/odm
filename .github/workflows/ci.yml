@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, "release/*"]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, "release/*" ]
 
 env:
   RUST_BACKTRACE: 1
