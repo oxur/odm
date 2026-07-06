@@ -268,6 +268,57 @@ fn insert_extra_carries_an_unmodeled_key_through_roundtrip() {
     assert_eq!(Document::parse(&emitted).unwrap(), doc);
 }
 
+// ----- arc06 slice03 (ODD-0020): the schema marker -------------------------
+
+#[test]
+fn schema_marker_round_trip() {
+    use odm_core::schema::{SchemaMarker, SchemaVersion};
+
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let mut fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Odd,
+        "Doc",
+        day(2026, 7, 6),
+        day(2026, 7, 6),
+        Origin::Planned,
+    );
+    fm.stamp_schema();
+    assert_eq!(fm.schema(), Some(SchemaMarker::current(NodeType::Odd)));
+    assert_eq!(fm.schema_version(), SchemaVersion::CURRENT);
+
+    let doc = Document::new(fm, "body\n");
+    let emitted = doc.emit().unwrap();
+    assert!(emitted.contains("schema: odd/v1.0"), "schema marker emitted:\n{emitted}");
+    // Additive round-trip: parse ∘ emit is identity.
+    assert_eq!(Document::parse(&emitted).unwrap(), doc);
+}
+
+#[test]
+fn schema_absent_is_v0_1() {
+    use odm_core::schema::SchemaVersion;
+
+    // A node with no `schema:` field reads as v0.1 (computed, not written).
+    let text = format!(
+        "---\n\
+         id: {SAMPLE_ULID}\n\
+         number: 3\n\
+         type: odd\n\
+         name: Legacy\n\
+         created: 2026-06-20\n\
+         updated: 2026-06-20\n\
+         origin: planned\n\
+         ---\n\
+         # Legacy\n"
+    );
+    let doc = Document::parse(&text).unwrap();
+    assert_eq!(doc.frontmatter().schema(), None);
+    assert_eq!(doc.frontmatter().schema_version(), SchemaVersion::LEGACY);
+    // Absent stays absent on emit (no fabricated schema on a legacy node).
+    assert!(!doc.emit().unwrap().contains("schema:"), "no schema written when absent");
+}
+
 // ----- I-5: unknown keys preserved -----------------------------------------
 
 #[test]

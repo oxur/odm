@@ -35,6 +35,7 @@ mod origin;
 pub mod recompose;
 pub mod rollup;
 pub mod satisfaction;
+pub mod schema;
 pub mod status;
 
 pub use desired::{DesiredFact, FileExpect, ProbeClass, ProbeSpec, ShellExpect};
@@ -42,3 +43,4 @@ pub use id::{Id, IdParseError};
 pub use node::Node;
 pub use node_type::{NodeType, ParseNodeTypeError};
 pub use origin::{Origin, ParseOriginError};
+pub use schema::{SchemaMarker, SchemaParseError, SchemaVersion};

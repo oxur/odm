@@ -2,6 +2,7 @@
 id: 01KWWGS8HD2WG9V52BDMB11TA5
 number: 17
 type: odd
+schema: odd/v1.0
 name: Interop — projection out, reference-and-reconcile in
 created: 2026-06-20
 updated: 2026-06-20

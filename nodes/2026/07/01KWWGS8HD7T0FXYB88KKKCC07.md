@@ -2,6 +2,7 @@
 id: 01KWWGS8HD7T0FXYB88KKKCC07
 number: 16
 type: odd
+schema: odd/v1.0
 name: Research — SWE project- & epic-level PM failures and best practices
 created: 2026-06-20
 updated: 2026-06-20

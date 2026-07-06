@@ -76,6 +76,21 @@ impl Mode {
     }
 }
 
+/// A node whose schema marker was **backfilled** (stamped) this run — an existing
+/// unversioned `nodes/` file brought up to `<type>/v1.0` (ODD-0020 V-5). Under
+/// `--dry-run`, a node that *would* be stamped.
+#[derive(Debug, Clone)]
+pub struct Upgraded {
+    /// The node's number.
+    pub number: u32,
+    /// The node's identity.
+    pub id: Id,
+    /// The node's name.
+    pub name: String,
+    /// The schema marker stamped (e.g. `"odd/v1.0"`).
+    pub schema: String,
+}
+
 /// A node the run created (or, under `--dry-run`, *would* create).
 #[derive(Debug, Clone)]
 pub struct Created {
@@ -132,6 +147,8 @@ pub struct MigrationReport {
     pub created: Vec<Created>,
     /// Legacy docs skipped, with reasons.
     pub skipped: Vec<Skipped>,
+    /// Nodes whose schema marker was backfilled (stamped) this run (ODD-0020 V-5).
+    pub upgraded: Vec<Upgraded>,
     /// Non-fatal warnings (dangling / unrepresentable supersession edges).
     pub warnings: Vec<String>,
     /// Whether this was a dry run (nothing was written).
@@ -149,6 +166,12 @@ impl MigrationReport {
     #[must_use]
     pub fn skipped_count(&self) -> usize {
         self.skipped.len()
+    }
+
+    /// The number of existing nodes whose schema was backfilled this run.
+    #[must_use]
+    pub fn upgraded_count(&self) -> usize {
+        self.upgraded.len()
     }
 }
 
@@ -201,9 +224,16 @@ pub fn migrate_with_gates(
     let mut report = MigrationReport {
         created: Vec::new(),
         skipped: Vec::new(),
+        upgraded: Vec::new(),
         warnings: Vec::new(),
         dry_run: mode.is_dry_run(),
     };
+
+    // Schema backfill (ODD-0020 V-5): stamp any existing unversioned `nodes/` file
+    // to `<type>/v1.0` before importing — folds the backfill into migrate as the
+    // single schema-upgrade entry point (idempotent once stamped). Newly-created
+    // nodes below are stamped at build time, so they are never seen here.
+    report.upgraded = backfill_schema(store, mode)?;
 
     // Read every legacy doc; a read/parse failure is a reported skip, not fatal.
     let mut docs: Vec<LegacyDoc> = Vec::new();
@@ -275,6 +305,39 @@ pub fn migrate_with_gates(
     report.created.sort_by_key(|c| c.number);
     report.skipped.sort_by(|a, b| a.number.cmp(&b.number).then(a.path.cmp(&b.path)));
     Ok(report)
+}
+
+/// Stamps `<type>/v1.0` on every node in the store that lacks a schema marker
+/// (ODD-0020 V-5) — the slice02 `odd` nodes predate the field. Idempotent (a
+/// stamped node is skipped), and never deletes. Under [`Mode::DryRun`] it reports
+/// what it *would* stamp without writing.
+///
+/// `nodes/` is odm-owned, so this rewrites node files in place — the never-mutate
+/// rule applies to legacy `docs/design`, **not** to `nodes/`.
+///
+/// # Errors
+///
+/// [`MigrateError`] on a store load/persist failure.
+pub fn backfill_schema(store: &Store, mode: Mode) -> Result<Vec<Upgraded>, MigrateError> {
+    let documents = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let mut upgraded = Vec::new();
+    for mut document in documents {
+        if document.frontmatter().schema().is_some() {
+            continue; // already versioned — idempotent skip
+        }
+        document.frontmatter_mut().stamp_schema();
+        let (number, id, name, schema) = {
+            let fm = document.frontmatter();
+            let marker = fm.schema().expect("just stamped");
+            (fm.number(), fm.id(), fm.name().to_string(), marker.to_string())
+        };
+        if !mode.is_dry_run() {
+            store.persist(&document).map_err(|source| MigrateError::Persist { number, source })?;
+        }
+        upgraded.push(Upgraded { number, id, name, schema });
+    }
+    upgraded.sort_by_key(|u| u.number);
+    Ok(upgraded)
 }
 
 /// The legacy `number`s already present as `odd` nodes in the store (the

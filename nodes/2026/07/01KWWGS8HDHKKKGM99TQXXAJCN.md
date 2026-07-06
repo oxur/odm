@@ -2,6 +2,7 @@
 id: 01KWWGS8HDHKKKGM99TQXXAJCN
 number: 2
 type: odd
+schema: odd/v1.0
 name: Oxur Design Documentation CLI - Build Plan
 created: 2025-12-27
 updated: 2025-12-27

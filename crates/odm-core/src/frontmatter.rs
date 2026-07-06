@@ -152,11 +152,11 @@ impl Document {
 /// The typed frontmatter schema (ODD-0013 §2.3).
 ///
 /// Fields are declared — and therefore emitted — in canonical order: `id`,
-/// `number`, `type`, `name`, `created`, `updated`, `tags`, `component`,
-/// `origin`, `reserved`, `retired`, `edges`, `status`, `decomposed`,
-/// `desired_facts`, `deferred`. Any keys not modeled here are captured in a
-/// hidden catch-all and re-emitted last, so they survive a round-trip until
-/// their owning slices model them.
+/// `number`, `type`, `schema`, `name`, `created`, `updated`, `tags`,
+/// `component`, `origin`, `reserved`, `retired`, `edges`, `status`,
+/// `decomposed`, `desired_facts`, `deferred`. Any keys not modeled here are
+/// captured in a hidden catch-all and re-emitted last, so they survive a
+/// round-trip until their owning slices model them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frontmatter {
     /// Stable ULID identity.
@@ -165,6 +165,13 @@ pub struct Frontmatter {
     number: u32,
     #[serde(rename = "type")]
     node_type: NodeType,
+    /// The per-type versioned schema marker (`<type>/vMAJOR.MINOR`, ODD-0020).
+    /// Absent ⇒ `v0.1` on read (a *computed* legacy default — see
+    /// [`schema_version`](Frontmatter::schema_version)); every odm-created node is
+    /// stamped `<type>/v1.0` at creation. Additive + skipped-when-absent, so an
+    /// unversioned legacy node round-trips byte-identically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schema: Option<crate::schema::SchemaMarker>,
     /// Human label.
     name: String,
     /// Creation date (the human copy; also encoded in the ULID).
@@ -232,6 +239,7 @@ impl Frontmatter {
             id,
             number,
             node_type,
+            schema: None,
             name: name.into(),
             created,
             updated,
@@ -430,6 +438,35 @@ impl Frontmatter {
     /// retirement is recorded in frontmatter, never by deleting the file.
     pub fn retire(&mut self, reason: impl Into<String>, on: NaiveDate) {
         self.retired = Some(Retirement { reason: reason.into(), on });
+    }
+
+    /// The stored schema marker, if the node carries one (ODD-0020).
+    #[must_use]
+    pub fn schema(&self) -> Option<crate::schema::SchemaMarker> {
+        self.schema
+    }
+
+    /// The node's *effective* schema version: its stored version, or
+    /// [`SchemaVersion::LEGACY`](crate::schema::SchemaVersion::LEGACY) (`v0.1`)
+    /// when unversioned (the computed legacy default — ODD-0020 §2).
+    #[must_use]
+    pub fn schema_version(&self) -> crate::schema::SchemaVersion {
+        self.schema.map_or(crate::schema::SchemaVersion::LEGACY, |m| m.version)
+    }
+
+    /// Stamps the current schema marker for this node's type
+    /// (`<type>/v1.0`) — called by every odm create/write path so no node is
+    /// written unversioned (ODD-0020 §2). Idempotent.
+    pub fn stamp_schema(&mut self) {
+        self.schema = Some(crate::schema::SchemaMarker::current(self.node_type));
+    }
+
+    /// Sets the schema marker (builder form of [`stamp_schema`](Self::stamp_schema)
+    /// for a specific marker, e.g. when reconstructing or testing).
+    #[must_use]
+    pub fn with_schema(mut self, marker: crate::schema::SchemaMarker) -> Self {
+        self.schema = Some(marker);
+        self
     }
 
     /// Records a string-valued key not modeled by the typed schema into the

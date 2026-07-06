@@ -22,6 +22,12 @@
 //!    whose `reenter_when` references a `desired_fact` it does not declare (see
 //!    [`Violation::DanglingReenterWhen`]).
 //!
+//! [`content_validity`] adds two **content-level** families (arc06 slice03,
+//! ODD-0020) that need the actual frontmatter (which the index omits), so the CLI
+//! runs them over store-loaded nodes: **per-type field-validity**
+//! ([`Violation::FieldNotValidForType`]) and the **schema-version marker**
+//! ([`Violation::UnsupportedSchema`]).
+//!
 //! Graph-level checks (cycles-without-tears, out-of-order/staleness,
 //! recomposition, below-threshold satisfaction) are deliberately **not** here;
 //! they are `check` v2 (Arc 02), which adds validators alongside these without
@@ -112,6 +118,24 @@ pub enum Violation {
         /// The unresolved `reenter_when` fact id.
         reenter_when: String,
     },
+    /// A field is present that is **not valid for the node's type** (arc06 slice03,
+    /// ODD-0020 §2): the per-type schema contract is violated — e.g. `desired_facts`
+    /// on an `odd`, or `supersedes` on a `slice`. A structural contract violation,
+    /// so it is an Error (see [`content_validity`]).
+    FieldNotValidForType {
+        /// The offending field name (e.g. `"desired_facts"`).
+        field: &'static str,
+        /// The node's type, on which that field is not valid.
+        node_type: crate::NodeType,
+    },
+    /// A node is stamped with a schema **newer** than this binary supports (arc06
+    /// slice03, ODD-0020 §5): e.g. an `odd/v1.1` node read by a `v1.0` binary. A
+    /// reported condition — the reader cannot fully understand it — never a silent
+    /// misparse.
+    UnsupportedSchema {
+        /// The offending schema marker (e.g. `"odd/v1.1"`).
+        schema: String,
+    },
 }
 
 /// Validates the structure of a node corpus, returning all findings.
@@ -141,6 +165,74 @@ pub fn check(nodes: &[Frontmatter]) -> Vec<Finding> {
 /// Builds a finding for `fm` with the given violation.
 fn finding(fm: &Frontmatter, violation: Violation) -> Finding {
     Finding { node: fm.id(), number: fm.number(), name: fm.name().to_string(), violation }
+}
+
+/// Content-level validity (arc06 slice03, ODD-0020): the checks that need the
+/// node's **actual frontmatter content** — per-type field-validity and the
+/// schema-version marker — which the derived index deliberately omits. The CLI
+/// therefore runs this over **store-loaded** frontmatters (mirroring A5's
+/// store-read for drift/deferred), separately from the index-backed [`check`].
+///
+/// Findings are returned id-ordered for stable output.
+#[must_use]
+pub fn content_validity(nodes: &[Frontmatter]) -> Vec<Finding> {
+    let mut ordered: Vec<&Frontmatter> = nodes.iter().collect();
+    ordered.sort_by_key(|fm| fm.id());
+
+    let mut findings = Vec::new();
+    for fm in &ordered {
+        check_field_validity(fm, &mut findings);
+        check_schema_version(fm, &mut findings);
+    }
+    findings
+}
+
+/// Per-type field-validity (ODD-0020 §2). The type-specific fields fall into two
+/// buckets: **work-only** (`desired_facts`, `deferred` — probeable/parked work)
+/// and **document-only** (`supersedes`, `affects` — document lineage/governance).
+/// A field from the wrong bucket for the node's type is a contract violation.
+fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
+    let ty = fm.node_type();
+    if ty.is_document() {
+        // Work-only fields are not valid on a document node.
+        if !fm.desired_facts().is_empty() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "desired_facts", node_type: ty },
+            ));
+        }
+        if fm.deferred().is_some() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "deferred", node_type: ty },
+            ));
+        }
+    }
+    if ty.is_work() {
+        // Document-only fields are not valid on a work node.
+        if fm.edges().supersedes.is_some() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "supersedes", node_type: ty },
+            ));
+        }
+        if !fm.edges().affects.is_empty() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "affects", node_type: ty },
+            ));
+        }
+    }
+}
+
+/// Schema-version validity (ODD-0020 §5): a node stamped with a schema newer than
+/// this binary supports is a reported error, never a silent misparse.
+fn check_schema_version(fm: &Frontmatter, findings: &mut Vec<Finding>) {
+    if let Some(marker) = fm.schema() {
+        if marker.version.is_newer_than_current() {
+            findings.push(finding(fm, Violation::UnsupportedSchema { schema: marker.to_string() }));
+        }
+    }
 }
 
 /// Required-field completeness. Per-type required fields live in

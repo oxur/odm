@@ -111,7 +111,7 @@ const DATA = {
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; versioned per-type schemas (ODD-0020); self-host the plan; PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","plan"],["04","self-host cutover","plan"],["05","PM-skill population","plan"],["06","retire framework prose","plan"]],
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","wip"],["04","self-host cutover","plan"],["05","PM-skill population","plan"],["06","retire framework prose","plan"]],
         note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slices 01–02 CDC-verified: importer + `odm migrate`; 12 ODDs → 12 odd nodes (legacy intact, byte-proven), `odm check` GREEN, 3 flags settled with NO amendment. ★ SCHEMA-VERSIONING FOLDED IN (Duncan; ODD-0020): per-type frontmatter markers `schema: <type>/vN.N` (reuses check/v1 idiom); current=v1.0, unversioned legacy⇒v0.1; NEW slice03 (before self-host so the plan-set enters at v1.0) → self-host/PM/retire shifted to 04/05/06. Ledger reconciled by stable-IDs (A-11 retire, A-12 schema compose; real-evidence rows untouched). NEXT: slice03 — schema versioning. Then slice04 self-host cutover (the loop closes; crux = reflexive-import ordering). Git: off release/1.0.x." },
     ]},
 

@@ -203,6 +203,127 @@ fn migrate_malformed_frontmatter_is_a_reported_skip() {
     );
 }
 
+// ----- V-4: migrate stamps imported nodes `odd/v1.0` ------------------------
+
+#[test]
+fn migrate_stamps_schema_v1() {
+    use odm_core::schema::{SchemaMarker, SchemaVersion};
+
+    let legacy_dir = TempDir::new().unwrap();
+    copy_tree(&fixtures("legacy"), legacy_dir.path());
+    let before = snapshot_bytes(legacy_dir.path());
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    migrate(&store, legacy_dir.path(), Mode::Commit).expect("migrate");
+
+    // Every imported node is stamped `odd/v1.0` (the v0.1 → v1.0 upgrade path).
+    let nodes = store.load_all().unwrap();
+    assert!(!nodes.is_empty());
+    for doc in &nodes {
+        assert_eq!(
+            doc.frontmatter().schema(),
+            Some(SchemaMarker::current(NodeType::Odd)),
+            "#{} stamped odd/v1.0",
+            doc.frontmatter().number()
+        );
+        assert_eq!(doc.frontmatter().schema_version(), SchemaVersion::CURRENT);
+    }
+    // The legacy source is understood as v0.1 (no schema) and left untouched.
+    assert_eq!(before, snapshot_bytes(legacy_dir.path()), "legacy files byte-unchanged");
+}
+
+// ----- V-5: backfill stamps pre-existing unversioned nodes ------------------
+
+#[test]
+fn backfill_stamps_unversioned_nodes() {
+    use chrono::NaiveDate;
+    use odm_core::schema::SchemaMarker;
+    use odm_core::{Id, Origin};
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let day = NaiveDate::from_ymd_opt(2026, 7, 6).unwrap();
+
+    // Persist an unversioned node (as slice02 wrote before the schema field).
+    let fm = odm_core::frontmatter::Frontmatter::new(
+        Id::new(),
+        7,
+        NodeType::Odd,
+        "Unversioned",
+        day,
+        day,
+        Origin::Planned,
+    );
+    assert!(fm.schema().is_none(), "sanity: starts unversioned");
+    store.persist(&Document::new(fm, "body\n")).unwrap();
+
+    // Backfill stamps it `odd/v1.0`.
+    let upgraded = odm_migrate::backfill_schema(&store, Mode::Commit).expect("backfill");
+    assert_eq!(upgraded.len(), 1, "one node stamped");
+    assert_eq!(upgraded[0].schema, "odd/v1.0");
+    assert_eq!(
+        store.load_all().unwrap()[0].frontmatter().schema(),
+        Some(SchemaMarker::current(NodeType::Odd)),
+        "node now carries odd/v1.0"
+    );
+
+    // Idempotent: a second backfill stamps nothing.
+    let again = odm_migrate::backfill_schema(&store, Mode::Commit).expect("re-backfill");
+    assert!(again.is_empty(), "re-run stamps nothing (idempotent)");
+
+    // Dry-run over a fresh unversioned node writes nothing.
+    let dry_dir = TempDir::new().unwrap();
+    let dry_store = Store::open(dry_dir.path());
+    let fm2 = odm_core::frontmatter::Frontmatter::new(
+        Id::new(),
+        8,
+        NodeType::Odd,
+        "Unversioned2",
+        day,
+        day,
+        Origin::Planned,
+    );
+    dry_store.persist(&Document::new(fm2, "body\n")).unwrap();
+    let dry = odm_migrate::backfill_schema(&dry_store, Mode::DryRun).expect("dry backfill");
+    assert_eq!(dry.len(), 1, "dry-run reports the would-stamp");
+    assert!(
+        dry_store.load_all().unwrap()[0].frontmatter().schema().is_none(),
+        "dry-run wrote nothing"
+    );
+}
+
+#[test]
+fn migrate_folds_in_the_backfill() {
+    use chrono::NaiveDate;
+    use odm_core::{Id, Origin};
+
+    // A store with a pre-existing unversioned node; migrate over an empty legacy
+    // dir still backfills it (migrate is the single schema-upgrade entry point).
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let day = NaiveDate::from_ymd_opt(2026, 7, 6).unwrap();
+    let fm = odm_core::frontmatter::Frontmatter::new(
+        Id::new(),
+        9,
+        NodeType::Odd,
+        "Old",
+        day,
+        day,
+        Origin::Planned,
+    );
+    store.persist(&Document::new(fm, "body\n")).unwrap();
+
+    let empty_legacy = TempDir::new().unwrap();
+    let report = migrate(&store, empty_legacy.path(), Mode::Commit).expect("migrate");
+    assert_eq!(report.created_count(), 0, "nothing to import from an empty dir");
+    assert_eq!(report.upgraded_count(), 1, "the unversioned node is backfilled");
+    assert_eq!(
+        store.load_all().unwrap()[0].frontmatter().schema_version(),
+        odm_core::schema::SchemaVersion::CURRENT
+    );
+}
+
 // ----- helpers --------------------------------------------------------------
 
 /// Recursively copies `src` into `dst` (files + dirs).

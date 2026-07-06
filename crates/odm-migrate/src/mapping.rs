@@ -162,6 +162,9 @@ pub fn build_node(
             fm.retire(*reason, prep.updated);
         }
     }
+    // Every imported node is stamped the current schema (`odd/v1.0`, ODD-0020 V-4):
+    // the legacy source (no `schema:`) is understood as v0.1; the new node is v1.0.
+    fm.stamp_schema();
     fm
 }
 

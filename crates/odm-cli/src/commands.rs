@@ -215,6 +215,9 @@ pub fn new(
     let created = id.created_at().date_naive();
     let mut fm =
         Frontmatter::new(id, next_number, node_type, name, created, created, Origin::Planned);
+    // Every odm-created node is stamped the current schema (`<type>/v1.0`, ODD-0020
+    // V-2) — no new node is ever written unversioned.
+    fm.stamp_schema();
     if let Some(parent_id) = parent_id {
         fm.edges_mut().part_of = Some(parent_id);
     }
@@ -938,6 +941,8 @@ fn violation_label(v: &Violation) -> &'static str {
         Violation::SupersessionCycle { .. } => "supersession-cycle",
         Violation::StaleDoc { .. } => "stale-doc",
         Violation::DanglingReenterWhen { .. } => "dangling-reenter_when",
+        Violation::FieldNotValidForType { .. } => "wrong-type-field",
+        Violation::UnsupportedSchema { .. } => "unsupported-schema",
         // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
         // generically rather than failing the build when they appear.
         _ => "violation",
@@ -972,6 +977,12 @@ fn violation_detail(v: &Violation) -> String {
         Violation::SupersessionCycle { cycle } => {
             let ids: Vec<String> = cycle.iter().map(ToString::to_string).collect();
             format!("`supersedes` forms a cycle: {}", ids.join(" -> "))
+        }
+        Violation::FieldNotValidForType { field, node_type } => {
+            format!("`{field}` is not a valid field on a `{}` node", node_type.as_str())
+        }
+        Violation::UnsupportedSchema { schema } => {
+            format!("schema {schema:?} is newer than this binary supports")
         }
         _ => "structural violation".to_string(),
     }
@@ -1013,6 +1024,12 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
             "edit {file}: point `deferred.reenter_when` at one of this node's `desired_facts` \
              ids (declared: {reenter_when:?} is not among them)"
         ),
+        Violation::FieldNotValidForType { field, .. } => {
+            format!("edit {file}: remove `{field}` (not valid for this node's type)")
+        }
+        Violation::UnsupportedSchema { .. } => {
+            format!("upgrade odm, or edit {file}'s `schema:` to a version this binary supports")
+        }
         _ => format!("inspect {file}"),
     }
 }
@@ -1123,6 +1140,24 @@ fn aggregate(
     // (a) schema + link-integrity + supersession (v1) — hard errors; the
     // stale-doc finding (slice05) is a Warning (advisory, --strict-gated).
     for f in odm_core::check::check(frontmatters) {
+        entries.push(CheckEntry {
+            severity: violation_severity(&f.violation),
+            code: violation_label(&f.violation),
+            node: Some(f.node),
+            number: Some(f.number),
+            name: Some(f.name.clone()),
+            detail: violation_detail(&f.violation),
+            fix: violation_fix(store, &f),
+        });
+    }
+
+    // (a2) content-level validity (arc06 slice03, ODD-0020) — per-type field
+    // validity + schema-version. These need the actual frontmatter content
+    // (`desired_facts`/`deferred`/`schema`), which the derived index omits, so
+    // read the store for this cheap per-node pass (the A5 store-read pattern).
+    let documents = store.load_all().context("loading the corpus for content validity")?;
+    let full: Vec<Frontmatter> = documents.iter().map(|d| d.frontmatter().clone()).collect();
+    for f in odm_core::check::content_validity(&full) {
         entries.push(CheckEntry {
             severity: violation_severity(&f.violation),
             code: violation_label(&f.violation),

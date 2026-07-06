@@ -45,9 +45,10 @@ pub(crate) fn migrate(
     render(&report, out)?;
     writeln!(
         err,
-        "{}: {} created, {} skipped, {} warning(s){}",
+        "{}: {} created, {} upgraded, {} skipped, {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
         report.created_count(),
+        report.upgraded_count(),
         report.skipped_count(),
         report.warnings.len(),
         if report.dry_run { " — nothing written" } else { "" },
@@ -62,18 +63,27 @@ fn resolve(root: &Path, legacy_path: &str) -> PathBuf {
     if p.is_absolute() { p.to_path_buf() } else { root.join(p) }
 }
 
-/// Renders the report: a plan/result table (create/skip rows) + any warnings.
+/// Renders the report: a plan/result table (create/upgrade/skip rows) + warnings.
 fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
-    if report.created.is_empty() && report.skipped.is_empty() {
+    if report.created.is_empty() && report.skipped.is_empty() && report.upgraded.is_empty() {
         writeln!(out, "migrate: no legacy documents found.")?;
         return Ok(());
     }
 
     let verb = if report.dry_run { "would create" } else { "created" };
+    let upgrade_verb = if report.dry_run { "would upgrade" } else { "upgraded" };
     let mut builder = Builder::default();
     builder.push_record(["action", "#", "name / path", "note"]);
     for c in &report.created {
         builder.push_record([verb, &c.number.to_string(), &c.name, &created_note(c)]);
+    }
+    for u in &report.upgraded {
+        builder.push_record([
+            upgrade_verb,
+            &u.number.to_string(),
+            &u.name,
+            &format!("→ {}", u.schema),
+        ]);
     }
     for s in &report.skipped {
         let num = s.number.map_or_else(|| "—".to_string(), |n| n.to_string());

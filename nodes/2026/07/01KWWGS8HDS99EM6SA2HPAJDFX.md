@@ -2,6 +2,7 @@
 id: 01KWWGS8HDS99EM6SA2HPAJDFX
 number: 12
 type: odd
+schema: odd/v1.0
 name: odm — Project Definition (v-major rebuild)
 created: 2026-06-20
 updated: 2026-06-20

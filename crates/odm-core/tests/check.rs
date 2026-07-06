@@ -270,3 +270,105 @@ fn check_flags_dangling_reenter_when() {
             .all(|f| !matches!(f.violation, Violation::DanglingReenterWhen { .. }))
     );
 }
+
+// ----- arc06 slice03 (ODD-0020): content-level validity (schema + per-type) ---
+
+mod content {
+    use super::*;
+    use odm_core::check::content_validity;
+    use odm_core::desired::{DesiredFact, ProbeSpec, ShellExpect};
+    use odm_core::frontmatter::{Deferral, Supersedes as CoreSupersedes};
+    use odm_core::schema::{SchemaMarker, SchemaVersion};
+
+    fn odd(id_s: &str, number: u32, name: &str) -> Frontmatter {
+        Frontmatter::new(id(id_s), number, NodeType::Odd, name, day(), day(), Origin::Planned)
+    }
+
+    fn slice(id_s: &str, number: u32, name: &str) -> Frontmatter {
+        Frontmatter::new(id(id_s), number, NodeType::Slice, name, day(), day(), Origin::Planned)
+    }
+
+    fn a_fact() -> DesiredFact {
+        DesiredFact {
+            id: "up".to_string(),
+            describe: "service up".to_string(),
+            probe: ProbeSpec::Shell {
+                run: "true".to_string(),
+                inputs: Vec::new(),
+                expect: ShellExpect { exit: 0, stdout_contains: None },
+            },
+        }
+    }
+
+    #[test]
+    fn check_flags_wrong_type_field() {
+        // `desired_facts` on an odd (work-only field on a document) → Error.
+        let bad_odd = odd(A, 1, "Doc").with_desired_facts(vec![a_fact()]);
+        let findings = content_validity(&[bad_odd]);
+        assert!(
+            findings.iter().any(|f| matches!(
+                &f.violation,
+                Violation::FieldNotValidForType {
+                    field: "desired_facts",
+                    node_type: NodeType::Odd
+                }
+            )),
+            "desired_facts on odd flagged: {findings:?}"
+        );
+
+        // `supersedes` on a slice (document-only field on a work node) → Error.
+        let mut bad_slice = slice(B, 2, "Work");
+        bad_slice.edges_mut().supersedes =
+            Some(CoreSupersedes { node: id(C), kind: SupersedeKind::Obsoletes });
+        assert!(
+            content_validity(&[bad_slice]).iter().any(|f| matches!(
+                &f.violation,
+                Violation::FieldNotValidForType { field: "supersedes", node_type: NodeType::Slice }
+            )),
+            "supersedes on slice flagged"
+        );
+
+        // A valid odd (supersedes is fine on a document) and a valid slice
+        // (desired_facts/deferred are fine on work) → no field-validity findings.
+        let mut good_odd = odd(A, 1, "Doc");
+        good_odd.edges_mut().supersedes =
+            Some(CoreSupersedes { node: id(B), kind: SupersedeKind::Obsoletes });
+        let good_slice =
+            slice(B, 2, "Work").with_desired_facts(vec![a_fact()]).with_deferred(Some(Deferral {
+                because: "waiting".to_string(),
+                reenter_when: "up".to_string(),
+            }));
+        assert!(
+            content_validity(&[good_odd, good_slice])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::FieldNotValidForType { .. })),
+            "valid nodes produce no field-validity finding"
+        );
+    }
+
+    #[test]
+    fn unknown_newer_schema_is_reported_error() {
+        // A node stamped with a newer schema than this binary supports → reported.
+        let newer = odd(A, 1, "Doc").with_schema(SchemaMarker {
+            node_type: NodeType::Odd,
+            version: SchemaVersion { major: 1, minor: 1 },
+        });
+        let findings = content_validity(&[newer]);
+        assert!(
+            findings
+                .iter()
+                .any(|f| matches!(&f.violation, Violation::UnsupportedSchema { schema } if schema == "odd/v1.1")),
+            "newer schema reported: {findings:?}"
+        );
+
+        // The current schema (v1.0) and an unversioned (v0.1) node are fine.
+        let current = odd(B, 2, "Now").with_schema(SchemaMarker::current(NodeType::Odd));
+        let legacy = odd(C, 3, "Old"); // no schema ⇒ v0.1
+        assert!(
+            content_validity(&[current, legacy])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::UnsupportedSchema { .. })),
+            "current + legacy schema are supported"
+        );
+    }
+}
