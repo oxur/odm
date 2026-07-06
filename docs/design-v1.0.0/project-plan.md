@@ -69,7 +69,16 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
   detection is racy-git-correct, the index self-heals, and the 100k benchmark promoted
   ODD-0014's `[P]` perf claims to `[E]`. Forward-carried: the **adapter-fidelity invariant**
   is now a hard gate in `arc05`'s arc-plan (v1.2).
-- **A5 / A6 — PLANNED, not started.** Arc-plans drafted this session
+- **A5 — Reconciliation: ✅ CLOSED (composed; CI-green 2026-07-06, `release/1.0.x`).** All 8
+  slices CDC-verified; arc-close composition check passed with an independent arc-gate review
+  (`arc05-reconciliation/closing-report.md`, PASS-WITH-NOTES). The marquee state-drift killer
+  lands: `desired_facts` + shell/file probes; drift in `reconcile`/`rollup`/`orient`; `affects`
+  → stale-doc check; deferred + re-entry. Per the **v1.8 redirection (ODD-0019)** freshness is
+  **incremental on every command** (rides the A4 stat-cache; bare `odm` runs zero volatile
+  probes; honest "last checked Xm ago"). A5's zero-index-change streak held across all 8
+  slices. Carried to A6: two-reads-per-command optimization; the `CLAUDE.md` oxur-cli
+  doc-drift fix. **Only A6 remains for the v1.0.0 DoD.**
+- **A6 — PLANNED, not started.** Arc-plan drafted this session
   (`arcNN-<slug>/arc-plan.md`); per *plan late, plan deep*, no per-slice doc sets exist
   yet — those are written when each arc becomes the active work.
 
@@ -139,15 +148,15 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-2 | A2 (graph, gates & derived order) closed + composed | ptr: arc02 close | correctness | project-plan | done | merged to `main`, CI-green | Same disclosed gap as P-1 (no formal arc closing-report). |
 | P-3 | A3 (rollup & orient) closed + composed | ptr: `arc03-rollup-and-orient/arc-close.md` | correctness | project-plan | done | arc-close composition check passed, no silent drops; merged | A3's bubble-up forced no project-plan change (recorded). (File is `arc-close.md`; canonical name is `closing-report.md`.) |
 | P-4 | A4 (index & cache) closed + composed | ptr: `arc04-index-cache/closing-report.md` | correctness | project-plan | done | **reproduced/reconciled:** arc-close done (`arc04-index-cache/closing-report.md`) — 8/8 slices CDC-verified, class-(b) composition rows A-9…A-13 reproduced at arc scale (structural CDC + executable **CI green 2026-06-30**), independent arc-gate review **PASS-WITH-NOTES**; ODD-0014 `[P]`→`[E]`. | Delivered set is *broader* than the roadmap line (also `check`+`rollup`) — over-delivery, not drift. |
-| P-5 | A5 (reconciliation) closed + composed | ptr: arc05 closing-report | correctness | project-plan | open | | attested-on-close. |
+| P-5 | A5 (reconciliation) closed + composed | ptr: `arc05-reconciliation/closing-report.md` | correctness | project-plan | done | **reproduced/reconciled:** arc-close done — 8/8 slices CDC-verified, class-(b) compose rows reproduced at arc scale, independent arc-gate review **PASS-WITH-NOTES**; CI green on `release/1.0.x`. Freshness model (ODD-0019) realized; zero index change across the arc. | Delivered incremental-freshness beyond the roadmap line (ODD-0019) — over-delivery, not drift. |
 | P-6 | A6 (migrate, self-host & PM-skill) closed + composed | ptr: arc06 closing-report | correctness | project-plan | open | | attested-on-close. |
 | P-7 | **Compose (DoD):** a fresh session reaches full situational awareness from `odm orient` alone | project-scale demo: fresh session, `odm orient` only | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now; reproduce at project scale on close. The headline DoD. |
 | P-8 | **Compose (DoD):** every dependency is a queryable edge; `next`/`blocked`/`path` answer correctly | project-scale demo over a real corpus | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-9 | **Compose (DoD):** `check` catches cycles-without-tears, dangling refs, out-of-order work, broken recomposition | project-scale demo: seed each violation, observe the finding | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-10 | **Compose (DoD):** status is multi-gate with evidence levels | project-scale demo | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
-| P-11 | **Compose (DoD):** desired-vs-actual drift is detected and reported (the prod-DB-503 class) | project-scale demo: declare a fact, diverge reality, observe drift | serious | project-plan / 0001-C2 | open | | Lands with A5 (reconciliation). |
+| P-11 | **Compose (DoD):** desired-vs-actual drift is detected and reported (the prod-DB-503 class) | project-scale demo: declare a fact, diverge reality, observe drift | serious | project-plan / 0001-C2 | done | **reproduced (A5, CI green):** `odm reconcile`/`rollup`/`orient` detect + report drift end-to-end (arc05 A-8/A-10 reproduced at arc scale); fresh on every command (ODD-0019). The C2 marquee case is cashed. | Landed with A5 (reconciliation). |
 | P-12 | **Compose (DoD):** odm self-hosts — manages its own plan as nodes; these design docs are queryable via `odm orient` | project-scale demo: migrate + orient on odm's own corpus | serious | project-plan / 0013 §9 | open | | Lands with A6 (the self-hosting trigger). |
-| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; one finding forward-carried (the adapter-fidelity invariant → arc05 v1.2) — recorded, v1.4. |
+| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; adapter-fidelity invariant → arc05 v1.2 (v1.4). A5: no roadmap re-scope; three findings forward-carried to A6 (two-reads optimization; `CLAUDE.md` oxur-cli doc-drift; volatile-re-entry behavior change) — recorded, v1.6. |
 
 Closes in a project-level `closing-report.md` with the per-row walk and the **project
 gate** (go / adjust / kill against the DoD, reviewed by the operator + an independent
@@ -155,6 +164,20 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.6 — 2026-07-06
+**A5 (Reconciliation) closed + composed — CI green on `release/1.0.x`.** Arc 05 reached its
+arc-close: 8/8 slices CDC-verified, class-(b) compose rows reproduced at arc scale, an
+**independent arc-gate review** (PASS-WITH-NOTES) — the reconciliation capability (the marquee
+state-drift killer, ODD-0001 C2) lands, and the **v1.8 freshness redirection (ODD-0019)**
+makes it incremental on every command. Flipped **P-5** (A5 closed+composed) and **P-11**
+(the C2 drift-DoD compose row) → `done`. **Bubble-up disposition (P-13): no roadmap
+re-scope** — A5 delivered its capability (plus incremental freshness beyond the roadmap
+line). Three findings forward-carried to A6, not dropped: the two-reads-per-bare-command
+optimization, the `CLAUDE.md` oxur-cli doc-drift, and the volatile-re-entry behavior change.
+**MVP (A1–A3) + A4 + A5 are in; only A6 (migrate + self-host + PM-skill) remains for the
+v1.0.0 DoD.** Git: work is on `release/1.0.x` (main reset onto `release/0.3.x`, the pre-rebuild
+import); future branches cut from `release/1.0.x`. Surfaced by: the A5 arc-close.
 
 ### v1.5 — 2026-06-30
 **CI green — A4 fully closed (P-4 `done`).** Duncan confirmed workspace CI is green across

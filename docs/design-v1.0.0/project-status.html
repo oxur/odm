@@ -103,16 +103,16 @@ const DATA = {
                 ["05","graph adapter + derived readers","done"],["06","enrich origin/decomposed + wire check/rollup/orient","done"],["07","early-cutoff invalidation","done"],["08","100k benchmark","done"]],
         note:"✅ Arc-close done; independent gate PASS-WITH-NOTES; CI green 2026-06-30 → all rows reproduced (P-4 done). ODD-0014 [P]→[E]." },
 
-      { id:"A5", name:"Reconciliation", status:"active", deps:"A2, A3", crate:"odm-reconcile",
-        cap:"desired_facts + Probe trait (shell/file); reconcile on demand + scheduled; drift folded into rollup/orient; affects edge + stale-doc-vs-decision check; deferred surfacing.",
+      { id:"A5", name:"Reconciliation", status:"complete", deps:"A2, A3", crate:"odm-reconcile",
+        cap:"desired_facts + Probe trait (shell/file); reconcile on demand; drift folded into rollup/orient; affects edge + stale-doc check; deferred surfacing + re-entry; incremental freshness on every command (ODD-0019).",
         slices:[["01","desired_facts + Probe trait + shell probe","done"],["02","file probe + probe-runner","done"],["03","odm reconcile (on demand)","done"],["04","drift in rollup/orient","done"],
                 ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","done"]],
-        note:"▶ ACTIVE — ALL 8 SLICES DELIVERED (8/8 CDC-verified); the A5 arc-close runs next. ODD-0019 realized end-to-end: bare `odm` runs the incremental pass (ZERO volatile probes — the slice04 regression dissolved), volatile facts show honest 'last checked Xm ago', `odm reconcile` = explicit refresh, ROLLUP.md cutoff drift-aware, `next` stays graph-pure. Zero index change across ALL 8 slices — the slice02 store-vs-index boundary held the whole way. Carried to arc-close: (a) two-reads-per-bare-command optimization (flagged follow); (b) CLAUDE.md oxur-cli doc-drift fix. NEXT: A5 arc-close — composition check A-1…A-13, class-(b) rows reproduced at arc scale, independent gate (fresh-context subagent, as in A4), bubble-up to project-plan." },
+        note:"✅ CLOSED (composed; CI-green on release/1.0.x 2026-07-06). All 8 slices CDC-verified; arc-close composition check passed + independent arc-gate review (PASS-WITH-NOTES) — arc05-reconciliation/closing-report.md. The marquee state-drift killer (ODD-0001 C2) lands, and ODD-0019 makes it incremental on every command: bare `odm` runs ZERO volatile probes, honest 'last checked Xm ago', drift-aware ROLLUP cutoff, `next` stays graph-pure. Zero index change across ALL 8 slices (the slice02 store-vs-index boundary held the whole arc). Ledger reconciled at close: slice08 appended as stable A-14 (not a renumber). Carried to A6: two-reads optimization + CLAUDE.md oxur-cli doc-drift fix." },
 
       { id:"A6", name:"Migrate, self-host & PM-skill", status:"planned", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; self-host the plan; populate the PM skill from ODD-0001; retire redundant framework prose.",
         slices:[["01","migrate importer core","plan"],["02","migrate odm's own docs","plan"],["03","self-host cutover","plan"],["04","PM-skill population","plan"],["05","retire framework prose","plan"]],
-        note:"The self-hosting trigger — after cutover these design docs become queryable via odm orient. Strong case for sequencing this next." },
+        note:"◀ NEXT — the only remaining arc for the v1.0.0 DoD. The self-hosting trigger: after cutover these design docs become odm nodes, queryable via `odm orient` (odm dogfoods itself). Folds in the A5 carry-overs (CLAUDE.md oxur-cli doc-drift; two-reads optimization). Arc-plan drafted; per plan-late-plan-deep it gets deepened + per-slice docs when it becomes active." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -199,8 +199,8 @@ const summary = document.getElementById('summary');
 [['MVP','A1–A3 ✓','var(--done)'],
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
- ['Latest', 'A4 ✓ CI-green','var(--done)'],
- ['Active', 'A5 · 8/8 → close','var(--active)']
+ ['Latest', 'A5 ✓ closed','var(--done)'],
+ ['Next', 'A6 (self-host)','var(--muted)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
