@@ -12,3 +12,20 @@ preserve_dustbin_structure = true
 
 # Automatically stage changes with git
 auto_stage_git = true
+
+# Per-type gate-sets (ODD-0013 §5.1). Added in arc06 slice04 (self-host cutover):
+# odm now manages its own plan as work nodes under `nodes/`, so `rollup`/`orient`/
+# `check` need the work-node gate-sets to render/validate status. The sequences are
+# the canonical ODD-0013 §5.1 sets; the self-host importer stamps status against
+# the same sequences.
+[gates.project]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.arc]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.slice]
+sequence = ["planned", "built", "tested"]
+
+[gates.odd]
+sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]

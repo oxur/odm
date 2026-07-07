@@ -404,6 +404,19 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Self-host odm's own plan set: import the project + arcs + slices under a
+    /// `design-vX.Y.Z/` tree into the node model as work nodes.
+    ///
+    /// Idempotent (keyed on the work node's `(type, number)`), `--dry-run`-able,
+    /// and never deletes or mutates the plan-set Markdown.
+    #[command(name = "self-host")]
+    SelfHost {
+        /// Path to the plan set (e.g. `docs/design-v1.0.0`).
+        plan_path: String,
+        /// Report the cutover plan and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
@@ -523,6 +536,9 @@ pub fn dispatch(
         }
         Command::Migrate { legacy_path, dry_run } => {
             migrate::migrate(&store, root, &legacy_path, dry_run, out, err)?;
+        }
+        Command::SelfHost { plan_path, dry_run } => {
+            migrate::self_host(&store, root, &plan_path, dry_run, out, err)?;
         }
     }
     Ok(EXIT_OK)

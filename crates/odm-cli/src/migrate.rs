@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use odm_core::NodeType;
 use odm_migrate::mapping::canonical_odd_gates;
-use odm_migrate::{Created, MigrationReport, Mode};
+use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::Store;
 use tabled::builder::Builder;
 use tabled::settings::Style;
@@ -53,6 +53,60 @@ pub(crate) fn migrate(
         report.warnings.len(),
         if report.dry_run { " — nothing written" } else { "" },
     )?;
+    Ok(())
+}
+
+/// Runs `odm self-host <plan-path> [--dry-run]`: imports odm's own `design-v1.0.0`
+/// plan set (project + A1–A6 arcs + slices) into `store` as work nodes — the
+/// loop-closer. The report goes to `out`; a one-line status to `err`.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if the cutover hits a store I/O failure.
+pub(crate) fn self_host(
+    store: &Store,
+    root: &Path,
+    plan_path: &str,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let plan_root = resolve(root, plan_path);
+    let mode = Mode::from_dry_run(dry_run);
+    let report = odm_migrate::selfhost::self_host(store, &plan_root, mode)
+        .with_context(|| format!("self-hosting the plan set at {}", plan_root.display()))?;
+
+    render_self_host(&report, out)?;
+    writeln!(
+        err,
+        "{}: {} created, {} skipped{}",
+        if report.dry_run { "self-host (dry-run)" } else { "self-host" },
+        report.created_count(),
+        report.skipped_count(),
+        if report.dry_run { " — nothing written" } else { "" },
+    )?;
+    Ok(())
+}
+
+/// Renders the self-host cutover report: a create/skip table of the work nodes.
+fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Result<()> {
+    if report.created.is_empty() && report.skipped.is_empty() {
+        writeln!(out, "self-host: no plan-set nodes found.")?;
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would create" } else { "created" };
+    let mut builder = Builder::default();
+    builder.push_record(["action", "#", "name", "id"]);
+    for c in &report.created {
+        builder.push_record([verb, &c.number.to_string(), &c.name, &c.id.to_string()]);
+    }
+    for s in &report.skipped {
+        let num = s.number.map_or_else(|| "—".to_string(), |n| n.to_string());
+        builder.push_record(["skip", &num, "(already exists)", &s.reason.to_string()]);
+    }
+    let mut table = builder.build();
+    table.with(Style::sharp());
+    writeln!(out, "{table}")?;
     Ok(())
 }
 

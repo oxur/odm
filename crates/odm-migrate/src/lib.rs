@@ -41,6 +41,9 @@
 
 pub mod legacy;
 pub mod mapping;
+pub mod selfhost;
+
+pub use selfhost::SelfHostReport;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
