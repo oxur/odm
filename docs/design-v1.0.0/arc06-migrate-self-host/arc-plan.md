@@ -37,6 +37,8 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
   imported graph.
 - **odm self-hosts:** its plan (0011–0018 + the `design-v1.0.0` plan set) lives under
   `nodes/`, and `odm orient`/`rollup`/`check` run on the real corpus.
+- The self-hosted CLI surface is **UAT-validated by the UAT / CLI-hardening arc** (extracted
+  from A6, v1.9) **before** the PM-skill documents it and the prose is retired.
 - The PM **skill** in `billosys/ai-engineering` is populated from ODD-0001 (GOOD/BAD
   counter-examples + "run `odm <cmd>`" entries), and the redundant *mechanical*
   framework prose is retired with a pointer to `odm check`.
@@ -56,13 +58,21 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 4. **slice04 — self-host cutover** *(was slice03)*. Bring the `design-v1.0.0` plan set
    (project-plan, arc-plans, slice docs) into the node model; the design docs move under
    `nodes/`; `orient`/`rollup` run on the self-hosted corpus. *The loop closes.*
-5. **slice05 — PM-skill population** *(was slice04)*. From ODD-0001, build the standalone PM
+5. **slice05 — PM-skill population.** From ODD-0001, build the standalone PM
    skill in `billosys/ai-engineering`: GOOD/BAD counter-examples + "when you need to X, run
-   `odm <cmd>`" entries, seeded by the prior project's missteps.
-6. **slice06 — retire redundant framework prose** *(was slice05)*. Replace the framework's
+   `odm <cmd>`" entries, seeded by the prior project's missteps. **Writes against the
+   UAT-settled surface** (the UAT/CLI-hardening arc runs first — see the pause note below).
+6. **slice06 — retire redundant framework prose.** Replace the framework's
    *mechanical* PM rules (numbering, ordering, deferral-tracking, drift-watching) with
    pointers to `odm check` / the relevant commands; keep the posture/craft prose that odm
-   does not mechanize. *(Folds in the carried `CLAUDE.md` oxur-cli doc-drift fix, v1.2.)*
+   does not mechanize. *(Folds in the carried `CLAUDE.md` oxur-cli doc-drift fix, v1.2 — now
+   superseded by the UAT arc's styling decision: adopt shared theming, not "no oxur-cli".)*
+
+> **⏸ A6 is PAUSED after slice04 (v1.9).** User-acceptance testing surfaced a substantial
+> batch of CLI / naming / numbering / output feedback — too large and too model-level (type
+> taxonomy, output architecture) for a slice. It was **extracted to its own arc** (the
+> UAT / CLI-hardening arc). A6 resumes at **slice05 (PM-skill)** once that arc wraps, so the
+> skill and the retired prose target the *settled* command surface.
 
 ## Arc Ledger
 
@@ -77,13 +87,13 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 | A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`028d21d`; 6/6; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 93.86% line); `odm migrate docs/design` → 12 `odd` nodes committed under `nodes/2026/07/`, legacy intact; `odm check` green ("ok, 12 nodes"), green-by-construction (document nodes orphan-exempt); three slice01 flags settled **without amendment** (distinct `(type=odd,number)` space; `supersedes` parser hardened for `null`/number/`"ODD-NN"`; no multi-supersession in corpus); no `07-deferred` → `deferred→retire` interim stands; idempotent + `--dry-run` at real scale; **no** `odm-index` change. cargo rows pending CI. Branched off slice01. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (**schema versioning** — ODD-0020) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`5b5dd43`; 6/6; cov schema.rs 96.55% / check.rs 95.34% / frontmatter.rs 99.52% / odm-migrate lib 99.21% line); `schema: <type>/vN.N` field (absent⇒v0.1; new nodes stamp `<type>/v1.0` via `odm new` + migrate); per-type field-validity a `check` **Error** (`content_validity`, store-read: work-only `{desired_facts,deferred}` / doc-only `{supersedes,affects}`); forward-compat (newer schema → reported `UnsupportedSchema`); backfill folded into migrate (`backfill_schema`). **Real backfill committed**: `odm migrate docs/design` → 13 `nodes/` files all `odd/v1.0` (12 upgraded + ODD-0020 created); `odm check` green (13 nodes); **no** `odm-index` change. cargo rows pending CI. Branched off slice02. | → `done` when slice03 reproduces (CI green). |
 | A-4 | slice04 (self-host cutover) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`4ac36f6`; 7/7; cov selfhost.rs 96.25% / odm-migrate lib 99.21% line); new `odm-migrate::selfhost` + `odm self-host <plan>`; **45 work nodes** committed (1 project + 6 arcs + 38 slices), each `<type>/v1.0`, in a correct containment tree; gate status from P-row/close-file (A1–A5 verified, A6 active) at `Asserted`; **`odm check` green on 58 nodes** (13 odd + 45 work, no findings); `rollup`/`orient` reproduce the real state; dir-structure adapter (no manifest); `[gates.*]` added to `odm.toml`; A7/A8 excluded (flagged); idempotent + `--dry-run` + never-delete; **no** `odm-index` change. cargo rows pending CI. Branched off slice03. | → `done` when slice04 reproduces (CI green). |
-| A-5 | slice05 (PM-skill population) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested |
+| A-5 | slice05 (PM-skill population) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested. (v1.8 briefly bumped this to slice06 for a UAT-slice insertion; v1.9 extracted UAT to its own arc and restored slice05.) |
 | A-6 | **Compose:** `odm migrate` imports legacy ODDs into the new model — idempotent, `--dry-run`-able, supersede-not-delete (no legacy file removed) | arc-scale demo: migrate a legacy corpus; re-run is a no-op; no deletions | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice01, `4479076`): faithful mapping + idempotent (keyed on preserved `number`) + `--dry-run` + never-delete (byte-snapshot proven) + loud-on-malformed, on fixtures. To **reproduce at arc scale** at arc-close (never inherited) — on odm's own corpus once slice02 lands. | reproduce at arc scale |
 | A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | mechanism-complete (slice02, `028d21d`): `odm migrate docs/design` imports 12 `odd` nodes; `odm check` exit 0 (green-by-construction) on the imported graph; legacy intact; idempotent. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-8 | **Compose:** odm **self-hosts** — its plan lives under `nodes/` and `odm orient`/`rollup`/`check` run on the real corpus | arc-scale demo: `odm orient` over the self-hosted plan | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice04, `4ac36f6`): the `design-v1.0.0` plan set (project + A1–A6 + slices) is imported as 45 work nodes under `nodes/`; `odm check` green (58 nodes), `odm rollup` reproduces A1–A5 done / A6 active, `odm orient` runs clean. To **reproduce at arc scale** at arc-close (never inherited). **P-12 reproducible-at-arc-close.** | reproduce at arc scale. The self-hosting trigger. |
 | A-9 | **Compose:** the PM skill is populated from ODD-0001 and the redundant *mechanical* framework prose is retired with a pointer to `odm check` | arc-scale demo: the skill carries the "run `odm <cmd>`" entries; the retired prose points to odm | serious | arc-plan / 0013 §11 | open | | reproduce at arc scale |
 | A-10 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
-| A-11 | slice06 (retire redundant framework prose) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested. **Class-(a) stable ID** — appended (not a renumber) per the stable-ID discipline when slice03=schema was inserted; class-(a) = A-1…A-5 **+ A-11** (6 slices). |
+| A-11 | slice06 (retire redundant framework prose) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested. **Class-(a) stable ID** — appended (not a renumber) when slice03=schema was inserted; class-(a) = A-1…A-5 **+ A-11** (6 slices). (v1.8 briefly bumped this to slice07; v1.9 restored slice06 when UAT was extracted to its own arc.) |
 | A-12 | **Compose:** nodes carry a per-type `schema: <type>/vN.N` marker; `migrate` stamps `v1.0` and reads unversioned legacy as `v0.1`; a wrong-type field is a `check` finding | arc-scale demo: migrate → stamped nodes; a v0.1 legacy read; `check` flags a wrong-type field | serious | ODD-0020 / arc-plan v1.5 | open | mechanism-complete (slice03, `5b5dd43`): `schema` field + per-type marker + `stamp_schema` on every create path + `content_validity` (`FieldNotValidForType`/`UnsupportedSchema`); migrate stamps `odd/v1.0`, reads legacy as `v0.1`; the 13 real `nodes/` files carry `odd/v1.0`. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale. **Class-(b) stable ID** — the schema-versioning capability (slice03). |
 
 Closes in `arc06-migrate-self-host/closing-report.md`: per-row walk + composition verdict,
@@ -125,11 +135,12 @@ slice). Independent of A4 (self-host does not require the index).
 
 ## Carry-ins from A5 (project-plan v1.6) + git
 
-- **`CLAUDE.md` oxur-cli doc-drift → folds into slice05** (retire/reconcile prose): the
-  project `CLAUDE.md` claims "CLI output uses `oxur_cli::common::output`/`oxur_cli::table`,"
-  but `odm-cli` has **no** `oxur-cli` dependency (it uses `tabled` + `writeln!`). A doc-keeping
-  fix — reconcile it while retiring redundant prose in slice05 (or a quick standalone fix
-  sooner). Recorded so it isn't lost.
+- **`CLAUDE.md` oxur-cli doc-drift → SUPERSEDED by the UAT arc.** Formerly: "odm-cli has no
+  `oxur-cli` dep (tabled + writeln!), so fix the stale CLAUDE.md claim." UAT reversed the
+  intent — Duncan wants the oxur-cli table styling/theming (via a **shared styling crate
+  extracted from oxur-cli**, to avoid the compiler-stack pull). So this becomes a real code
+  change in the UAT / CLI-hardening arc (chunk C-1), not a doc-keeping fix. Recorded so the
+  disposition-flip isn't lost.
 - **Two-reads-per-bare-command optimization → NOT an A6 concern** (it's an `odm-reconcile`
   perf follow, orthogonal to migrate/self-host/PM-skill). **Parked as a post-MVP backlog
   item**, not forced into this arc. Flagged here so the disposition is explicit.
@@ -145,6 +156,26 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.9 — 2026-07-07
+**UAT extracted to its own arc; A6 paused after slice04, resumes at slice05
+(PM-skill).** v1.8 briefly inserted UAT as an A6 slice05 (bumping PM→06, retire→07);
+on seeing the first feedback batch it was clear the UAT/CLI work is **too large and
+too model-level** (a shared styling-crate extraction; a node-type taxonomy change
+`odd`→`design` + new `research` type touching ODD-0013/0020; a `list` overhaul;
+command renames) to be a single slice. Per Duncan's call (and the mid-arc-pause
+precedent used across this project), it is **extracted to its own arc** — the
+UAT / CLI-hardening arc. **A6 is PAUSED after slice04** and **resumes at slice05
+(PM-skill)** once that arc wraps, so the skill + prose-retirement target the settled
+surface. The v1.8 slice05-insertion is fully reverted here: A-5 = slice05 (PM-skill),
+A-11 = slice06 (retire), A-13 removed; class-(a) = A-1…A-5 + A-11 (6 slices) again.
+The CLAUDE.md oxur-cli carry-in flips from a doc-fix to a real change (adopt shared
+theming). Surfaced by: the operator's move into UAT + the first feedback batch.
+
+### v1.8 — 2026-07-07 *(superseded same-day by v1.9)*
+Briefly inserted UAT as A6 slice05 (PM→slice06, retire→slice07, UAT ledger A-13).
+Reverted by v1.9 once the work proved arc-sized — kept here as an honest plan-keeping
+record, not current.
 
 ### v1.7 — 2026-07-07
 **slice04 closed (A-4 attested; A-8 mechanism-complete) — odm self-hosts; the loop

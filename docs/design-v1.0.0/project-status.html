@@ -7,7 +7,7 @@
     --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --ink:#e6edf3; --muted:#8b949e;
     --line:#2a313c; --accent:#58a6ff;
     --done:#3fb950; --closed:#2dd4bf; --planned:#d29922; --scoped:#a371f7; --tentative:#6e7681;
-    --active:#58a6ff;
+    --active:#58a6ff; --paused:#db6d28;
   }
   @media (prefers-color-scheme: light){
     :root{ --bg:#f6f8fa; --panel:#fff; --panel2:#f0f3f6; --ink:#1f2328; --muted:#636c76;
@@ -75,9 +75,9 @@
 
 <script>
 const C = {complete:'var(--done)', active:'var(--active)', closed:'var(--closed)', planned:'var(--planned)',
-           scoped:'var(--scoped)', tentative:'var(--tentative)'};
+           scoped:'var(--scoped)', tentative:'var(--tentative)', paused:'var(--paused)'};
 const LABEL = {complete:'Complete', active:'Active', closed:'Closed · CI-pending', planned:'Planned',
-               scoped:'Scoped', tentative:'Tentative'};
+               scoped:'Scoped', tentative:'Tentative', paused:'Paused'};
 
 // ── Data: edit here as the work moves. status ∈ complete|closed|planned|scoped|tentative
 const DATA = {
@@ -109,10 +109,14 @@ const DATA = {
                 ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","done"]],
         note:"✅ CLOSED (composed; CI-green on release/1.0.x 2026-07-06). All 8 slices CDC-verified; arc-close composition check passed + independent arc-gate review (PASS-WITH-NOTES) — arc05-reconciliation/closing-report.md. The marquee state-drift killer (ODD-0001 C2) lands, and ODD-0019 makes it incremental on every command: bare `odm` runs ZERO volatile probes, honest 'last checked Xm ago', drift-aware ROLLUP cutoff, `next` stays graph-pure. Zero index change across ALL 8 slices (the slice02 store-vs-index boundary held the whole arc). Ledger reconciled at close: slice08 appended as stable A-14 (not a renumber). Carried to A6: two-reads optimization + CLAUDE.md oxur-cli doc-drift fix." },
 
-      { id:"A6", name:"Migrate, self-host & PM-skill", status:"active", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
+      { id:"A6", name:"Migrate, self-host & PM-skill", status:"paused", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
         cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; versioned per-type schemas (ODD-0020); self-host the plan; PM skill from ODD-0001; retire redundant framework prose.",
-        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","done"],["04","self-host cutover","wip"],["05","PM-skill population","plan"],["06","retire framework prose","plan"]],
-        note:"▶ ACTIVE — the FINAL v1.0.0 arc (the self-hosting trigger). slices 01–03 CDC-verified. 01–02: importer + `odm migrate`; 12 ODDs → 12 odd nodes (legacy intact, byte-proven), `odm check` GREEN, 3 flags settled with NO amendment. ★ slice03 SCHEMA-VERSIONING (Duncan; ODD-0020) LANDED: per-type frontmatter markers `schema: <type>/vN.N` (new odm_core::schema; additive Option, absent⇒v0.1); new nodes stamp `<type>/v1.0` (odm new + migrate); per-type field-validity a `check` Error (content_validity, store-read: work-only {desired_facts,deferred} / doc-only {supersedes,affects}); forward-compat (newer schema → reported UnsupportedSchema); backfill folded into migrate. REAL BACKFILL committed: `odm migrate docs/design` → 13 nodes/ files ALL odd/v1.0 (12 upgraded + ODD-0020 imported); check green; NO odm-index change. CDC PASS-WITH-NOTES (per-type impl is per-class work/document; type↔schema mismatch check deferred — both watched, non-blocking). cargo rows pending CI. NEXT: slice04 self-host cutover — the plan-set enters nodes/ ALREADY stamped v1.0 (the loop closes; crux = reflexive-import ordering). Git: off release/1.0.x." },
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","done"],["04","self-host cutover","done"],["05","PM-skill population","plan"],["06","retire framework prose","plan"]],
+        note:"⏸ PAUSED after slice04 (v1.9) — the UAT / CLI-hardening arc runs first (substantial CLI/naming/type/output feedback from hands-on UAT, too model-level for a slice); A6 resumes at slice05 (PM-skill) once that arc wraps, so the skill + prose-retirement target the settled surface. ★★ THE LOOP CLOSED: odm SELF-HOSTS (slice04). slices 01–04 CDC-verified. 01–02: importer + `odm migrate`; 12 ODDs → 12 odd nodes, check GREEN, 3 flags no-amendment. 03 SCHEMA-VERSIONING (ODD-0020): per-type `schema:<type>/vN.N`, absent⇒v0.1, new nodes stamp v1.0, per-type field-validity a check Error, forward-compat; real backfill → 13 nodes/ all odd/v1.0. ★★ 04 SELF-HOST CUTOVER: new `odm self-host` + odm-migrate::selfhost; the design-v1.0.0 plan-set → 45 WORK NODES (1 project + 6 arcs + 38 slices) under nodes/, each <type>/v1.0, in a containment tree (arc part_of project, slice part_of arc); gate status from P-rows/close-files at Asserted (A1–A5 verified, A6 active); `odm check` GREEN on 58 nodes (13 odd + 45 work, NO findings); `odm rollup`/`orient` reproduce the real state — the hand-maintained truth is now DERIVABLE from odm querying itself. Reflexive-safe (dry-run, project persisted last, idempotent 0/45, never-delete); dir-structure adapter (no manifest); [gates.*] added to odm.toml (ODD-0013 §5.1); disjoint numbering (project=1000/arc=1000+100N/slice=arc+pos); A7/A8 excluded (scope). CDC PASS-WITH-NOTES (reflexive self-stamp + cutover-snapshot = properties of self-hosting a live plan, not defects; new decisions accepted). NO odm-index change. project-plan P-12 reproducible-at-arc-close. cargo rows pending CI. NEXT: slice05 PM-skill, then slice06 retire prose → arc close → v1.0.0 MVP-plus self-hosting. Git: off release/1.0.x." },
+      { id:"RH", name:"Release Hardening — CLI, types, naming & output (UAT)", status:"active", deps:"A6·s04", crate:"odm-cli; odm-core; odm-migrate; (shared styling crate)",
+        cap:"UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from oxur-cli); type taxonomy odd→design + new research; tree-structured de-numbered `list`; command renames (context→project, path→chain, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged surface (cc-prompt) vs model (ODD-0013/0020 amendment / ADR).",
+        slices:[["C1","styling/table crate","plan"],["C2","type taxonomy (design+research)","plan"],["C3","`list` overhaul (tree/date/status/width)","plan"],["C4","command surface cleanup","plan"],["C5","fold self-host into migrate","plan"]],
+        note:"▶ ACTIVE — named arc, canonical number DEFERRED (don't renumber the other CDC's A7/A8; numbering is itself under review here). Extracted from A6 (v1.9) when UAT batch 1 (14 findings) proved arc-sized + model-level. Flow: feedback → triage → chunked cc-prompts → re-run `odm self-host` to validate. Chunks: C-1 shared styling crate (colours/theming; reverses the 'no oxur-cli dep' call — ADR) + C-2 type taxonomy (odd→design, add research; ODD-0013/0020 amendment; re-stamp the 13 nodes) are FOUNDATIONAL → C-3 `list` overhaul (drop number col; date-first +--date=updated; status col; branch-and-leaf tree; max-width+elision; de-numbered names) → C-4 command cleanup (context→project, path→chain, new warns-not-displays, rollup md/json+--out) + C-5 fold self-host into migrate. Batch 1 of ~3–4 expected. NEXT: write C-1 cc-prompt (+ settle base-branch: A6 tip vs merge-A6-first). On close → A6 resumes at slice05 (PM-skill) against the settled surface." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -199,8 +203,8 @@ const summary = document.getElementById('summary');
 [['MVP','A1–A3 ✓','var(--done)'],
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
- ['Latest', 'A5 ✓ closed','var(--done)'],
- ['Active', 'A6 · 2/6 (final)','var(--active)']
+ ['Active', 'Release Hardening · 0/5','var(--active)'],
+ ['Paused', 'A6 · 4/6 (UAT first)','var(--paused)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
