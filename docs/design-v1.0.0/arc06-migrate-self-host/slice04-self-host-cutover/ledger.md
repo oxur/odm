@@ -79,7 +79,7 @@
 
 ## Closure
 
-Closed at commit `<SHA>` on 2026-07-07. Verified by: CC (proposed-done, attested);
+Closed at commit `4ac36f6` on 2026-07-07. Verified by: CC (proposed-done, attested);
 CDC to reproduce. Rows: 7. Done: 7. Deferred: 0. No-op: 0.
 On close → bubble up to `arc-plan.md` (A-4 + the A-8 mechanism) per
 LEDGER-DISCIPLINE v2.0 §A. **odm self-hosts** — project-plan **P-12** becomes
