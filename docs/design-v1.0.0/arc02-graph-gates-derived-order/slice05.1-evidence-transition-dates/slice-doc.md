@@ -3,7 +3,8 @@
 > Refs: ODD-0013 §2.3 (status schema) + §4.4 (evidence levels). `depends_on:`
 > **slice03** (`GateRecord` + `Status::set_gate` + `Evidence`) — independent of
 > slice04/05; lands before slice06 (check v2). Motivation:
-> `workbench/forecasting-telemetry.md` §6 — the two-clock telemetry's
+> `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md` §6
+> (was `workbench/forecasting-telemetry.md`) — the two-clock telemetry's
 > verification-latency signal, a record-now-or-lose-it schema capture.
 
 ## Why this slice exists (now)

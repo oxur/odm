@@ -55,7 +55,7 @@ impl Evidence {
 ///
 /// `reached`/`by`/`evidence` are the current reach (overwritten on a raise, as
 /// before). `evidence_dates` is the durable verification-latency signal
-/// (`workbench/forecasting-telemetry.md` §6): the first-reached date *per*
+/// (`docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md` §6): the first-reached date *per*
 /// level, preserved across raises so an `attested → reproduced` transition's
 /// timing is not lost. It is omitted on the wire when empty, so nodes written
 /// before this field existed round-trip byte-identically.

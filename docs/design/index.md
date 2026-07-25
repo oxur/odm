@@ -6,6 +6,7 @@ This index is automatically generated. Do not edit manually.
 
 | Number | Title | State | Updated |
 |--------|-------|-------|----------|
+| 0021 | Research — Information-Theoretic Complexity of Text (Code and Prose) | Draft | 2026-07-25 |
 | 0020 | Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0 | Accepted | 2026-07-06 |
 | 0019 | Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness | Accepted | 2026-07-01 |
 | 0018 | Research — Forecasting under small, bursty, DAG-structured work | Draft | 2026-06-24 |
@@ -29,6 +30,7 @@ This index is automatically generated. Do not edit manually.
 
 ### Draft
 
+- [0021 - Research — Information-Theoretic Complexity of Text (Code and Prose)](01-draft/0021-research-information-theoretic-complexity-of-text-code-and-prose.md)
 - [0018 - Research — Forecasting under small, bursty, DAG-structured work](01-draft/0018-research-forecasting-under-small-bursty-dag-work.md)
 - [0017 - Interop — projection out, reference-and-reconcile in](01-draft/0017-interop-projection-out-reference-and-reconcile-in.md)
 - [0015 - odm — Arc/Slice Breakdown (build plan)](01-draft/0015-odm-arc-slice-breakdown.md)

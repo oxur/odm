@@ -49,8 +49,9 @@ author: topological sort
 
 > SDLC step 1 output. The agreed spec for the drawing-board rebuild of `odm`.
 > Diff delivery against this; spec-softening is the failure mode to catch.
-> Authored 2026-06-19 by Claude + Duncan. Seed context: `odm-session-bootstrap.md`,
-> `planning-system-research.md`.
+> Authored 2026-06-19 by Claude + Duncan. Seed context: `odm-session-bootstrap.md`
+> (now `docs/dev/0025-odm-discussion-bootstrap-rebuild-planning.md`),
+> `planning-system-research.md` (now **ODD-0011**).
 
 ## Mission
 

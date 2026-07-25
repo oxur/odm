@@ -1,9 +1,12 @@
 # Arc 07 — Two-clock telemetry (plan-of-record)
 
 > Refs: **ODD-0018** (forecasting research gate — what A7 must collect for A8);
-> `workbench/forecasting-telemetry.md` (the method — §5 covariates, §5b CDC
-> instrumentation, §6 schema); ODD-0013 (node/gate/edge schema); `project-plan.md`
-> §4. `depends_on:` **A2** (gates + evidence + DAG) + **A3** (rollup/orient surface
+> **ODD-0021** (complexity research — the information-theoretic covariate family
+> slice05 draws its Tier-1 candidates from);
+> `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md`
+> (the method — §5 covariates, §5b CDC instrumentation, §6 schema; was
+> `workbench/forecasting-telemetry.md`); ODD-0013
+> (node/gate/edge schema); `project-plan.md` §4. `depends_on:` **A2** (gates + evidence + DAG) + **A3** (rollup/orient surface
 > to render into); *matures with* **A5** (richer reconciled evidence), but does not
 > require it.
 >
@@ -79,7 +82,15 @@ never a target; team/process, never per-actor** (Goodhart). Proposed new crate:
    graph: edge degree, **soft-satisfied-deps-at-start**, tears, topo position; ledger:
    row count, significance mix; gate-log: iterations, verification latency,
    evidence-at-close; calendar: elapsed-since-close, burst/drought); leading vs
-   lagging tagged; never per-actor.
+   lagging tagged; never per-actor. *Expanded (v1.2, ODD-0021):* the git
+   entropy/scatter/size lines are realized as the **Tier-1 compression kit**
+   (format-agnostic, code + prose alike, fixed versioned compressor):
+   `change_info` C(diff), `change_density` C(diff)/|diff| (formalizes "diff
+   entropy"), `change_displacement` NCD(before,after), `change_scatter_H`
+   (Hassan ICSE'09 — formalizes "scatter"), and `spec_info` C(slice-doc +
+   cc-prompt) — the **leading** prose-spec signal. Candidates for the
+   pre-registered short-list, subject to its hard cap (displace/subsume, not
+   append) — adjudicated in this slice's slice-doc per ODD-0021 §8.1.
 6. **slice06 — evidence matrix + telemetry surfacing.** Render the status×gate
    evidence matrix (oxur-cli table) + flow-efficiency / cycle-time / rework / drift
    summaries in `orient`/rollup; terminal + `--json`/markdown export. Descriptive only.
@@ -129,7 +140,10 @@ it once present).
   asserts — this is also the A6 PM-skill template's spine.
 - **Pre-registered covariate short-list** (slice05): commit forecasting-telemetry §5's
   short-list up front; everything else earns its way in from data (ODD-0018 §1.7,
-  small-N overfitting guardrail).
+  small-N overfitting guardrail). *Added (v1.2):* which ODD-0021 Tier-1 compression
+  covariates enter the cap, and what they displace/subsume; the compressor
+  choice + level is pinned and recorded (provenance) per the ODD-0021 §8.2
+  bake-off.
 - **Crate placement**: `odm-telemetry` (proposed) vs fold into `odm-index` — decide at
   slice01.
 
@@ -142,6 +156,19 @@ and **A8 (forecasting)** becomes buildable on the collected substrate.
 
 ## Version History
 
+### v1.2 — 2026-07-25
+**Folded the ODD-0021 Tier-1 compression kit into slice05** (expansion, not
+re-scope): the slice05 line now names the five compression-based covariates
+(`change_info`/`change_density`/`change_displacement`/`change_scatter_H`/
+`spec_info`) as the realization of its existing git entropy/scatter lines, and
+the short-list open question gains the adjudication + compressor-pinning items.
+Refs gain ODD-0021. Slice count, order, ledger rows, and capability unchanged —
+the covariate layer was always in scope; ODD-0021 gives it its formal footing
+(the information-theoretic family) and its leading prose signal. **Decision of
+record folded in:** complexity is a covariate feed, not a capability arc (no
+arc09). Surfaced by: the complexity research session (ODD-0021, CDC + Duncan) —
+not a slice bubble-up; recorded per the plan-change discipline.
+
 ### v1.1 — 2026-06-26
 Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B (class-(a)
 slice-closed, class-(b) composition, class-(c) bubble-up rows), matching the arc04–06
@@ -150,6 +177,7 @@ upgrade (v1→v2.0) now applied to the extension arcs.
 
 ### v1.0 — 2026-06-26
 Initial arc-plan, distilled to one-line altitude from
-`workbench/a7-telemetry-arc-breakdown.md` and ODD-0018, as part of the post-arc6
+`workbench/a7-telemetry-arc-breakdown.md` (untracked workbench draft, since
+retired — this arc-plan is canonical) and ODD-0018, as part of the post-arc6
 project-plan extension (project-plan v1.2). No slices started; design-ahead per *plan
 late, plan deep* — detail lands when the arc becomes active.

@@ -14,9 +14,11 @@ version: 1.0
 
 # Research — Forecasting under small, bursty, DAG-structured work
 
-> Research ODD gating **arc A8 (forecasting)**. Graduated from
-> `workbench/forecasting-research.md`. Companion to the design thread in
-> `workbench/forecasting-telemetry.md` (the method) and built on **ODD-0016**
+> Research ODD gating **arc A8 (forecasting)**. Graduated from the untracked
+> workbench memo `forecasting-research.md` (retired — this ODD is canonical).
+> Companion to the design thread in
+> `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md` (the
+> method; was `workbench/forecasting-telemetry.md`) and built on **ODD-0016**
 > (which already adjudicated the estimation / velocity / WSJF / CCPM / CHAOS
 > priors). Where this ODD and 0016 touch the same ground, 0016 governs the
 > estimation-evidence priors; this ODD extends them toward odm's specific data
@@ -224,7 +226,8 @@ A composite, each piece earning its place from §1–§2:
   (hierarchical pooling, survival censoring, correlated MC, conformal correction)
   are non-trivial and warranted the cited pass before code.
 - **A7 must capture what A8 needs:** precise (commit-timestamp) active spans;
-  open-slice censoring flags; the covariates of `forecasting-telemetry.md` §5; and
+  open-slice censoring flags; the covariates of
+  `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md` §5; and
   enough history that reference classes aren't empty.
 - **Add a baseline:** the total-cycle empirical Monte-Carlo is the control A8 builds
   *first*; the two-clock model is the experiment measured against it.

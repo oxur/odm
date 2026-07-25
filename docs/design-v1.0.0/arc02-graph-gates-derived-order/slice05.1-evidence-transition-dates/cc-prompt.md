@@ -13,7 +13,8 @@ back-compatible schema extension — the **recording** only; consumption is arc 
 2. `slice-doc.md` (same dir).
 3. `crates/odm-core/src/status.rs` — the current `GateRecord` / `Status::set_gate`.
 4. `docs/design/01-draft/0013-odm-architecture-design.md` §2.3, §4.4; and
-   `workbench/forecasting-telemetry.md` §6 (why this is captured now, not in A7).
+   `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md` §6
+   (why this is captured now, not in A7; was `workbench/forecasting-telemetry.md`).
 
 ## Load skills
 - **rust-guidelines** (`11-anti-patterns.md`, `05-type-design.md`, `02-api-design.md`).

@@ -40,7 +40,7 @@ cc-prompts, re-validated by re-running `odm self-host`.
 
 | Chunk | Scope | Kind | Covers (F-rows) | Depends on |
 |-------|-------|------|-----------------|------------|
-| **C-1 — Shared styling/table crate** | Colours + theming for all output; extract a small styling/table crate from `oxur-cli` (no compiler-stack pull). Reverses the "no oxur-cli dep" call. | model/arch (ADR) | F-1 | — (foundational) |
+| **C-1 — Adopt Oxur table styling/theming** | Colours + the warm-orange Oxur theme for all output. **Route OPEN** (needs joint investigation + decision, then an ADR): **(A)** depend on `oxur-cli` lib-only (`default-features = false` → `table` + `common::output`, no compiler stack) — matches odm's CLAUDE.md verbatim; **(B)** re-extract a standalone `oxur-table` crate (reverse the late-2025 fold) and depend on just that. See the record below. | model/arch (ADR) | F-1 | — (foundational) |
 | **C-2 — Type taxonomy** | `odd` → `design`; add `research` type; re-stamp the 13 migrated nodes; reclassify research docs; gate-sets + schema markers + migrate mapping. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
 | **C-3 — `odm list` overhaul** | Drop the number column; date-first + `--date=updated`; status column after type; branch-and-leaf tree (drop name-prefixing); max-width config+flag with ` ...` elision; names lose number-refs. | surface | F-4, F-5, F-6, F-7, F-8, F-9 | C-1, C-2 |
 | **C-4 — Command surface cleanup** | `context`→`project` (+`--name`, current default); `path`→`chain`; `new` warns-not-displays on re-run; `rollup` help + md/json output + `--out`/format name (defaults `md`/`ROLLUP`). | surface | F-10, F-11, F-12, F-13 | (light) C-1 |
@@ -85,12 +85,16 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 
 > One row per piece of operator feedback. Triage: **surface** (cc-prompt) / **model** (ODD
 > amendment or ADR first) / **question**. Accretes across UAT batches.
+>
+> **Source:** Duncan's raw first-pass, non-authoritative feedback is preserved verbatim in
+> `uat-punch-list.md` (same dir). The F-rows below are the CDC triage of that list; the punch
+> list is the *input*, this is the *working disposition*.
 
 ### Batch 1 — 2026-07-07
 
 | ID | Finding | Triage | Chunk | Disposition | Status |
 |----|---------|--------|-------|-------------|--------|
-| F-1 | Output is plain (no colours); adopt the `oxur-cli` table styling/theming (an established pattern) — **very important for v1**; OK to split the table/terminal code out of `oxur-cli` | **model/arch** | C-1 | Extract a shared styling/table crate from `oxur-cli` (no compiler-stack pull); record the dep reversal as an ADR | open |
+| F-1 | Output is plain (no colours); adopt the `oxur-cli` table styling/theming (an established pattern) — **very important for v1**; OK to split the table/terminal code out of `oxur-cli` | **model/arch** | C-1 | **Route OPEN (A vs B — needs joint investigation + discussion, then an ADR).** Realigns code to the *original intent* (see record). | open — route TBD |
 | F-2 | Don't surface `odd` as a type in the UI → use **`design`** | **model** | C-2 | Rename `NodeType::Odd`→`Design`; schema marker `odd/v1.0`→`design/v1.0`; gate-set `[gates.odd]`→`[gates.design]`; re-stamp the 13 nodes → ODD-0013/0020 amendment | open |
 | F-3 | Add a **`research`** type; reclassify research docs from `odd`/`design` → `research` | **model** | C-2 | New `NodeType::Research` + gate-set + schema marker; reclassify the relevant migrated nodes | open |
 | F-4 | Remove the **number column** from `odm list` | surface | C-3 | Drop the column (the `number` field stays as metadata; ULID is identity) | open |
@@ -114,7 +118,36 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 |-----|--------------|-------------|
 | ODD-0013 | Node-type taxonomy: `odd`→`design`; add `research`; per-type gate-sets updated | F-2, F-3 |
 | ODD-0020 | Schema markers: `design/v1.0`, `research/v1.0`; re-stamp path for the rename | F-2, F-3 |
-| ADR (new) | Reverse "no `oxur-cli` dep": adopt a shared styling/table crate extracted from `oxur-cli` | F-1 |
+| ADR (new) | Adopt Oxur table styling — **route A (oxur-cli lib-only) vs B (re-extract `oxur-table`)** — decision pending joint investigation. **Not** a "reversal" of intent: odm's CLAUDE.md + ODD-0012/0013 §11 already spec oxur-cli/tabled output; the *code* drifted. | F-1 |
+
+### Record — prior oxur-table history (found 2026-07-07)
+
+The oxur-cli styling was **discussed and built before**; F-1 realigns code to the
+original intent, it is not new:
+
+- **ODD-0001 (Oxur Letter of Intent)** lists `oxur-table/` as a standalone crate —
+  "Table formatting utility ✅ IMPLEMENTED."
+- **oxur design doc 0015, "oxur-table API (re)Design"** — a *Final* doc (2025-12-31);
+  a full table API redesign exists to lean on.
+- **`oxur-cli/src/table/README.md`** states it plainly: *"In late 2025 this module was
+  in its own crate but as oxur-cli started to take shape, oxur-table was moved to
+  oxur-cli/src/table."* It was **used by `oxd`** (odm's direct ancestor) for its `list`
+  — the warm-orange theme Duncan remembers. Recent dev notes `0016/0017-cli-table-cleanup`.
+- **odm's design intent already mandates it:** ODD-0012 + ODD-0013 §11 spec `odm-cli`
+  output as "oxur-cli/tabled"; odm's `CLAUDE.md` says depend on `oxur-cli`
+  `default-features = false` for `common::output` + `table`, *don't* enable `binary`.
+  The compiler-stack fear is already avoided by `default-features = false` (lang/comp/repl/
+  clap are all behind the `binary` feature). **The code drifted** to raw `tabled` + `writeln!`
+  with no oxur-cli and no theme → the plain output Duncan sees.
+- **Open scoping question** for the ADR: table **only**, or table **+ terminal output
+  helpers** (`common::output`: success/error/info/warning)? Duncan said "table/**terminal**"
+  → likely both.
+- The API to lean on (`oxur-cli/src/table/README.md`): `OxurTable::new(data).render()`,
+  generic over `Tabled`, `ColoredString` cells, TOML theme (ANSI + hex), warm-orange default.
+
+**Next-session action:** jointly investigate A vs B (read oxur-0015; weigh coupling to
+oxur-cli's release cadence vs the upstream work of publishing a standalone crate), decide,
+then write the ADR + the C-1 cc-prompt.
 
 ## Dependencies & git
 
@@ -135,6 +168,16 @@ five-iteration cap. Chunk closes bubble up to this arc-plan; the arc closes with
 the settled surface.
 
 ## Version History
+
+### v1.1 — 2026-07-07
+**C-1 reframed after finding the record.** F-1 is not a "reverse the no-oxur-cli decision" —
+odm's own intent (CLAUDE.md + ODD-0012/0013 §11) already mandates oxur-cli/tabled output; the
+*code* drifted to raw `tabled`. And `oxur-table` was **originally its own crate** (ODD-0001;
+Final API-redesign oxur-0015; folded into `oxur-cli/src/table` late 2025; used by `oxd`).
+So C-1 becomes a **two-route open decision** — (A) depend on `oxur-cli` lib-only, or (B)
+re-extract a standalone `oxur-table` — needing **joint investigation + discussion before the
+ADR** (Duncan's call: it touches the oxur repo). Record captured under "Amendments raised."
+Surfaced by: Duncan's "did we discuss this before?" + a repo/records search.
 
 ### v1.0 — 2026-07-07
 Arc created from UAT batch 1 (14 findings). Extracted from A6 (which had briefly held it as a

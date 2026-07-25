@@ -4,7 +4,10 @@
 > (LLM-collaboration planning conventions), and (2) the **`odm` SHOULD/SHOULDN'T
 > + GOOD/BAD example corpus**. Compiled 2026-06-19 by Claude (CDC/team-support
 > thread) from a long project-x session. Companion to
-> `planning-system-research.md` and `odm-session-bootstrap.md`.
+> `planning-system-research.md` (now **ODD-0011**,
+> `docs/design/06-final/0011-research-a-markdowngit-native-dependency-ordered-planning-system.md`)
+> and `odm-session-bootstrap.md` (now
+> `docs/dev/0025-odm-discussion-bootstrap-rebuild-planning.md`).
 >
 > **Stance:** this is a blameless engineering post-mortem. The project shipped a
 > lot of disciplined work; the failures below are *systemic* (information

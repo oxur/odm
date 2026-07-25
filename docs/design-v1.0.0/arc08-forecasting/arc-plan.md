@@ -1,8 +1,12 @@
 # Arc 08 — Forecasting (plan-of-record)
 
 > Refs: **ODD-0018** (the research gate — the defensible method, failure modes, and
-> guardrails; *read it before slicing this arc*); `workbench/forecasting-telemetry.md`
-> §7 (the corrected method); `project-plan.md` §4. `depends_on:` **A7** (the event log,
+> guardrails; *read it before slicing this arc*); **ODD-0021** (research-gate
+> companion — the complexity-covariate family, its retro-scoring pilot, and the
+> Tier-2 surprisal gate);
+> `docs/dev/research/0004-odm-telemetry-forecasting-post-arc6-thread.md`
+> §7 (the corrected method; was `workbench/forecasting-telemetry.md`);
+> `project-plan.md` §4. `depends_on:` **A7** (the event log,
 > the two clocks, the covariate records) + **A2** (the dependency DAG to simulate over).
 >
 > **Status:** scoped, not started — **post-MVP extension arc, design-ahead**, and the
@@ -109,6 +113,13 @@ known roadmap — it is a leaf.
   finite-sample (beta) correction — and the exchangeability violation under
   non-stationarity (ODD-0018 §2.8).
 - **Crate placement**: `odm-forecast` (proposed) atop `odm-telemetry`.
+- *Added (v1.2, ODD-0021):* **Do the compression covariates carry signal?** The
+  ODD-0021 §8.3 **retro-scoring pilot** (Tier-1 scores over the closed A1–A6
+  slices, regressed against iterations-used + active-work time) runs as
+  research-gate work — it needs only the existing git history + ledgers, **not
+  A7** — and its result feeds slice01's reference-class bucketing. The Tier-2
+  surprisal gate criteria (ODD-0021 §8.5) are pre-registered before residuals
+  are inspected.
 
 ## Method
 
@@ -119,6 +130,14 @@ the acceptance backbone above. Slice closes bubble up here; the arc closes with 
 forecast that isn't checked against what happened is assertion, not measurement.
 
 ## Version History
+
+### v1.2 — 2026-07-25
+**Added ODD-0021 as a research-gate companion** (expansion, not re-scope): refs
+gain ODD-0021; open questions gain the retro-scoring pilot (pre-A7, over the
+closed A1–A6 corpus) and the pre-registered Tier-2 surprisal gate. Slice shape,
+ledger, and capability unchanged. Surfaced by: the complexity research session
+(ODD-0021, CDC + Duncan) — not a slice bubble-up; recorded per the plan-change
+discipline.
 
 ### v1.1 — 2026-06-26
 Added the **`## Arc Ledger`** section per LEDGER-DISCIPLINE v2.0 §B, matching arc04–07.

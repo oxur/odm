@@ -81,7 +81,7 @@ const LABEL = {complete:'Complete', active:'Active', closed:'Closed · CI-pendin
 
 // ── Data: edit here as the work moves. status ∈ complete|closed|planned|scoped|tentative
 const DATA = {
-  generated: "2026-06-30",
+  generated: "2026-07-25",
   groups: [
     { title: "v1.0.0 — MVP (A1–A3) + core (A4–A6)", arcs: [
       { id:"A1", name:"Substrate & node CRUD", status:"complete", deps:"—", crate:"odm-core, odm-store, odm-cli, oxur-odm",
@@ -116,7 +116,7 @@ const DATA = {
       { id:"RH", name:"Release Hardening — CLI, types, naming & output (UAT)", status:"active", deps:"A6·s04", crate:"odm-cli; odm-core; odm-migrate; (shared styling crate)",
         cap:"UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from oxur-cli); type taxonomy odd→design + new research; tree-structured de-numbered `list`; command renames (context→project, path→chain, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged surface (cc-prompt) vs model (ODD-0013/0020 amendment / ADR).",
         slices:[["C1","styling/table crate","plan"],["C2","type taxonomy (design+research)","plan"],["C3","`list` overhaul (tree/date/status/width)","plan"],["C4","command surface cleanup","plan"],["C5","fold self-host into migrate","plan"]],
-        note:"▶ ACTIVE — named arc, canonical number DEFERRED (don't renumber the other CDC's A7/A8; numbering is itself under review here). Extracted from A6 (v1.9) when UAT batch 1 (14 findings) proved arc-sized + model-level. Flow: feedback → triage → chunked cc-prompts → re-run `odm self-host` to validate. Chunks: C-1 shared styling crate (colours/theming; reverses the 'no oxur-cli dep' call — ADR) + C-2 type taxonomy (odd→design, add research; ODD-0013/0020 amendment; re-stamp the 13 nodes) are FOUNDATIONAL → C-3 `list` overhaul (drop number col; date-first +--date=updated; status col; branch-and-leaf tree; max-width+elision; de-numbered names) → C-4 command cleanup (context→project, path→chain, new warns-not-displays, rollup md/json+--out) + C-5 fold self-host into migrate. Batch 1 of ~3–4 expected. NEXT: write C-1 cc-prompt (+ settle base-branch: A6 tip vs merge-A6-first). On close → A6 resumes at slice05 (PM-skill) against the settled surface." },
+        note:"▶ ACTIVE — named arc, canonical number DEFERRED (don't renumber the other CDC's A7/A8; numbering is itself under review here). Extracted from A6 (v1.9) when UAT batch 1 (14 findings) proved arc-sized + model-level. Flow: feedback → triage → chunked cc-prompts → re-run `odm self-host` to validate. Chunks: C-1 adopt Oxur table styling (warm-orange theme) — ROUTE OPEN, needs joint investigation + ADR: (A) depend on oxur-cli lib-only [default-features=false → table+common::output, no compiler stack; matches odm CLAUDE.md] vs (B) re-extract standalone oxur-table crate [reverses the late-2025 fold; it was ITS OWN crate per ODD-0001 + Final oxur-0015; used by oxd]. NB: realigns code to original intent — the code drifted, the intent was always oxur-cli/tabled + C-2 type taxonomy (odd→design, add research; ODD-0013/0020 amendment; re-stamp the 13 nodes) are FOUNDATIONAL → C-3 `list` overhaul (drop number col; date-first +--date=updated; status col; branch-and-leaf tree; max-width+elision; de-numbered names) → C-4 command cleanup (context→project, path→chain, new warns-not-displays, rollup md/json+--out) + C-5 fold self-host into migrate. Batch 1 of ~3–4 expected. NEXT: write C-1 cc-prompt (+ settle base-branch: A6 tip vs merge-A6-first). On close → A6 resumes at slice05 (PM-skill) against the settled surface." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -124,12 +124,12 @@ const DATA = {
         cap:"Event log from gates+git; two-clock split (active-work vs inter-slice latency); language-agnostic covariates + structured CDC-verification emission; status×gate evidence matrix. Collect + describe — no forecasting.",
         slices:[["01","telemetry schema + slice↔git linkage","plan"],["02","event-log derivation","plan"],["03","structured CDC-verification emission","plan"],
                 ["04","two-clock decomposition","plan"],["05","covariate collection & annotation","plan"],["06","evidence matrix + surfacing","plan"]],
-        note:"Independently valuable; builds post-A6 / self-host." },
+        note:"Independently valuable; builds post-A6 / self-host. 2026-07-25 (arc-plan v1.2): slice05 gains the ODD-0021 Tier-1 compression-covariate kit (change_info / change_density / change_displacement NCD / change_scatter_H / spec_info — the leading prose-spec signal); format-agnostic (code + prose), zero new deps beyond a pinned compressor. No arc09 — complexity is a covariate feed, decision of record in ODD-0021." },
 
       { id:"A8", name:"Forecasting", status:"scoped", deps:"A7, A2", crate:"odm-forecast",
         cap:"Monte-Carlo over the real DAG with censoring-corrected node-time distributions; Bayesian hierarchical reference classes; two-clock control experiment; honest widening ranges, never dates.",
         slices:[["01","reference classes + distribution fitting","plan"],["02","Monte-Carlo DAG engine","plan"],["03","two-clock experiment + calibration","plan"],["04","forecast surfacing + export","plan"]],
-        note:"Research-gated by ODD-0018. Metadata never targets; team/process never per-actor (Goodhart)." },
+        note:"Research-gated by ODD-0018 + companion ODD-0021 (complexity covariates; arc-plan v1.2). The ODD-0021 retro-scoring pilot (Tier-1 over closed A1–A6 slices vs iterations-used) runs as research-gate work — needs only git history + ledgers, not A7. Metadata never targets; team/process never per-actor (Goodhart)." },
 
       { id:"—", name:"Interop — export (out)", status:"tentative", deps:"A3", crate:"ODD-0017 Part A",
         cap:"One-way, honestly-lossy projection of the rollup into another team's vocabulary; also the evangelism engine." },

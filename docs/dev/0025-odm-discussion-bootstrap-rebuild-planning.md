@@ -1,5 +1,12 @@
 # odm — New Session Bootstrap: build the planning / doc-management system
 
+> **Editor's note (2026-07-25, added on archival — everything below is the
+> verbatim 2026-06-19 genesis capture; do not edit it).** Live pointers for
+> today's reader: the cited research report `planning-system-research.md` is now
+> **ODD-0011** (`docs/design/06-final/`); the requirements here matured into
+> **ODD-0012/ODD-0013**; the "what's true now / do this next" doc is
+> `docs/design-v1.0.0/CDC-SESSION-BOOTSTRAP.md`, whose §8 condenses this genesis.
+
 > **Purpose of this document.** Start a fresh Claude Desktop Cowork session,
 > dedicated to building `odm` into a standalone tool that makes our
 > collaboration-framework self-documenting and self-tracking. This file is
