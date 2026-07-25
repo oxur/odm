@@ -1,5 +1,15 @@
 # CLAUDE.md
 
+> **Resuming work? Read
+> [`docs/design-v1.0.0/CDC-SESSION-BOOTSTRAP.md`](docs/design-v1.0.0/CDC-SESSION-BOOTSTRAP.md)
+> first** — §0 is the dated resume (last: 2026-07-25, UAT phase). Then run
+> `odm orient` (build: `cargo build --release -p oxur-odm` → `target/release/odm`;
+> verified 2m54s from a clean container). The command-surface authority is
+> `docs/design-v1.0.0/odm-command-inventory.md`. **Do not mint new nodes before
+> the G-1 (ID scheme) decision** — see the workflow-gap review in
+> `arc-release-hardening/`.
+
+
 Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Project Overview

@@ -2,11 +2,60 @@
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-07-07** (end of the
-> self-host + UAT-pivot session). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-07-25** (§0; the §§1–7 body below it still reflects 2026-07-07 and reads as history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
+
+---
+
+## 0. Resume update — 2026-07-25 (UAT session; read this, then skim §§1–7 as history)
+
+**Phase: UAT, two passes by design** (operator decision): pass 1 = human
+usability (Duncan's `arc-release-hardening/uat-punch-list.md`, F-1…F-14 →
+chunks C-1…C-5); pass 2 = LLM acceptance
+(`arc-release-hardening/uat-report-llm-pass-batch2.md`, findings L-1…L-9,
+written by a CDC session that **built odm from source in its sandbox — 2m54s,
+stock toolchain — and drove the self-hosted store**; orient 17 ms, check 8 ms,
+59 nodes green). The next CDC session can and should do the same.
+
+**Operator priority (2026-07-25): ship v2 ASAP** — multi-stream PM pain in the
+lykn project is the driver. Ship-blocking shortlist and full evidence:
+**`arc-release-hardening/workflow-gap-coverage-review.md`** (G-1…G-12; its
+Ownership section explains what is odm's vs lykn's).
+
+**Authorities landed today:**
+- **`../odm-command-inventory.md`** — THE command-surface authority (current /
+  UAT-decided / future / legacy), reconstructed by the operator from the four
+  kickoff transcripts after the spec was found to exist nowhere in-repo.
+- **`arc-llm-command-surface/arc-plan.md`** (v1.1, unnumbered) — 7 shaped
+  slices closing the LLM gaps; reconciled against the inventory.
+
+**⚠ Before minting ANY new node: G-1.** The operator intends to switch the ID
+scheme (register-style `D-YYMM-XXXX` vs ULID) — recorded ONLY in the gap
+review. Write the ODD and get the decision **first**; identity cannot change
+after ship. CDC input is in the review (keep ULID as `id`; D-style competes
+with `number`).
+
+**Cautionary artifact:** node **#1605** was minted against a stale directory
+listing and retired the same day (`odm retire --because`, reason preserved) —
+the tombstone `arc06-…/slice05-uat-cli-feedback/` misled a reader exactly as
+UAT L-2 predicts. `check` was green throughout. Trust the arc-plan, not `ls`.
+
+**Next actions, in order:** (1) operator commits today's docs — everything
+above is `??`-untracked until then; (2) G-1 ODD; (3) triage the shortlist into
+release-hardening chunks (G-2 tear-rationale fix = **C-6**; its old routing
+"arc02 slice08" is a phantom — that slice does not exist); (4) scope G-5
+(generalize the importer; lykn `--dry-run` = UAT pass 3 — the long pole).
+
+**Process rule that does NOT transfer between Cowork projects** (memory stores
+are per-project; the lykn store will not follow you here): **read the
+collaboration-framework's `AI-CONSTITUTION-SUPPLEMENT.md` and
+`AI-ENGINEERING-METHODOLOGY.md` IN FULL at session start** — a 2026-07-25
+Opus 5 session ran on the SKILL.md summary alone and logged 4
+unwalked-consequence errors; MUST-gated docs were read, softly-worded ones
+skipped. Structural floor regardless: query-before-claim, counts not
+adjectives, `[ran:]/[read:]/[inferred]` provenance markers on state claims.
 
 ---
 
