@@ -154,7 +154,9 @@ fn build_record(
     let decomposed =
         fm.decomposed().map(|d| Decomposition { on: d.on, children: d.children.clone() });
     let title = fm.name().to_string();
+    let created = fm.created();
     let updated = fm.updated();
+    let retired = fm.retired().is_some();
 
     let content_hash = sha256(bytes);
     let meta_hash = meta_fingerprint(&MetaInput {
@@ -186,7 +188,9 @@ fn build_record(
         edges,
         decomposed,
         title,
+        created,
         updated,
+        retired,
     })
 }
 

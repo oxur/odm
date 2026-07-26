@@ -36,9 +36,11 @@ pub const MAGIC: [u8; 8] = *b"ODMINDEX";
 /// The current snapshot format version. Bumped on any incompatible change to the
 /// layout or the record shape; an older file is detected and rebuilt. **v2**
 /// (slice04): per-gate evidence + `number`/`component`. **v3** (slice06):
-/// `origin` + `decomposed`. An older index loads as
+/// `origin` + `decomposed`. **v4** (RH C-3): `created` + `retired`, which
+/// `list` needs to lead with the creation date and to exclude retired nodes
+/// without re-parsing the corpus. An older index loads as
 /// `RebuildNeeded(VersionMismatch)` and is rebuilt cold.
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION: u16 = 4;
 
 /// The hash algorithm used for the trailing checksum (and, by convention, the
 /// record fingerprints). A fast non-crypto hash (xxh3) is a deferred perf option

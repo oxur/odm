@@ -250,11 +250,14 @@ fn meta_hash_tracks_decomposed_and_origin() {
     assert_ne!(after_origin, after_decomp, "a decomposition change invalidates the meta_hash");
 }
 
-// ----- V-1: a v2 on-disk index self-heals to a rebuild (FORMAT_VERSION 3) -----
+// ----- V-1: a v2 on-disk index self-heals to a rebuild (FORMAT_VERSION 4) -----
 
 #[test]
 fn v2_index_triggers_rebuild() {
-    assert_eq!(FORMAT_VERSION, 3, "this slice bumped the format to v3");
+    // A deliberate sentinel: every format bump must come here and say so.
+    // v3 (A4 slice06) added `origin`/`decomposed`; v4 (RH C-3) added
+    // `created`/`retired`.
+    assert_eq!(FORMAT_VERSION, 4, "the format is at v4 (RH C-3)");
 
     let dir = TempDir::new().unwrap();
     let store = Store::open(dir.path());

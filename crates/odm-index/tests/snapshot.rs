@@ -56,7 +56,9 @@ fn sample() -> IndexRecord {
         ],
         decomposed: Some(Decomposition { on: day(), children: vec![id('B'), id('C')] }),
         title: "Store layer".to_string(),
+        created: day(),
         updated: day(),
+        retired: true,
     }
 }
 
@@ -192,7 +194,9 @@ prop_compose! {
         edges in proptest::collection::vec((arb_id(), arb_edge_kind()), 0..5),
         decomposed in proptest::option::of((arb_date(), proptest::collection::vec(arb_id(), 0..3))),
         title in ".{0,40}",
+        created in arb_date(),
         updated in arb_date(),
+        retired in proptest::bool::ANY,
     ) -> IndexRecord {
         IndexRecord {
             id, rel_path, mtime_secs, mtime_nsec, size, inode, mode,
@@ -207,7 +211,7 @@ prop_compose! {
                 .map(|(target, kind)| EdgeRef { target, kind, qualifier: None })
                 .collect(),
             decomposed: decomposed.map(|(on, children)| Decomposition { on, children }),
-            title, updated,
+            title, created, updated, retired,
         }
     }
 }

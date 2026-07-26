@@ -148,12 +148,16 @@ fn list_index_backed_matches_baseline() {
     let second = run(dir.path(), &["list"]);
     assert_eq!(first.out, second.out, "warm read matches cold-built read");
 
-    // The table has every node, sorted by number, with the expected columns.
-    assert!(first.out.contains("NUMBER") && first.out.contains("ID"));
+    // The table has every node, in containment order, with the C-3 columns
+    // (RH C-3 / F-4: NUMBER is gone; DATE leads and STATUS follows TYPE).
+    for column in ["DATE", "TYPE", "STATUS", "NAME", "ID"] {
+        assert!(first.out.contains(column), "{column} column present:\n{}", first.out);
+    }
+    assert!(!first.out.contains("NUMBER"), "the NUMBER column is gone:\n{}", first.out);
     for name in ["Proj", "Arc one", "Early", "Late"] {
         assert!(first.out.contains(name), "{name} present:\n{}", first.out);
     }
-    // Proj (#1) precedes Late (#4) — number order preserved.
+    // Proj (the project root) precedes its descendants — containment order.
     assert!(first.out.find("Proj").unwrap() < first.out.find("Late").unwrap());
 
     // A type filter narrows the table (index-backed).

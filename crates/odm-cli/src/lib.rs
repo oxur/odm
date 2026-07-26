@@ -13,6 +13,7 @@
 mod commands;
 mod context;
 mod json;
+mod listview;
 mod migrate;
 mod orient;
 mod reconcile;
@@ -43,6 +44,24 @@ const EXIT_ERROR: u8 = 2;
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+/// Which date `list`'s leading column shows.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum DateArg {
+    /// The node's creation date (the default).
+    Created,
+    /// The node's last-updated date.
+    Updated,
+}
+
+impl From<DateArg> for crate::listview::DateColumn {
+    fn from(value: DateArg) -> Self {
+        match value {
+            DateArg::Created => crate::listview::DateColumn::Created,
+            DateArg::Updated => crate::listview::DateColumn::Updated,
+        }
+    }
 }
 
 /// The kind of node `use` selects.
@@ -168,7 +187,10 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// List nodes, optionally filtered.
+    /// List nodes as a plan: date, type, status, containment tree.
+    ///
+    /// Retired and superseded nodes are omitted by default — they are not live
+    /// work; `--all` brings them back, marked in the STATUS column.
     List {
         /// Filter by node type.
         #[arg(long = "type")]
@@ -179,6 +201,16 @@ enum Command {
         /// Filter by component.
         #[arg(long)]
         component: Option<String>,
+        /// Which date the leading column shows.
+        #[arg(long, value_name = "WHICH", default_value = "created")]
+        date: DateArg,
+        /// Max width of the NAME column; longer names are elided with ` ...`.
+        /// Defaults to `[display] max_width` in `odm.toml`.
+        #[arg(long, value_name = "COLS")]
+        width: Option<usize>,
+        /// Include retired and superseded nodes.
+        #[arg(long, visible_alias = "include-retired")]
+        all: bool,
         /// Emit JSON instead of a table.
         #[arg(long)]
         json: bool,
@@ -478,14 +510,18 @@ pub fn dispatch(
         Command::New { node_type, name, parent, dry_run, yes: _ } => {
             commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
         }
-        Command::List { node_type, tag, component, json } => commands::list(
-            &store,
-            node_type.as_deref(),
-            tag.as_deref(),
-            component.as_deref(),
-            json,
-            out,
-        )?,
+        Command::List { node_type, tag, component, date, width, all, json } => {
+            let view = commands::ListView {
+                type_filter: node_type.as_deref(),
+                tag: tag.as_deref(),
+                component: component.as_deref(),
+                date: date.into(),
+                width,
+                include_withdrawn: all,
+                json,
+            };
+            commands::list(&store, root, view, out)?;
+        }
         Command::Show { reference, json } => commands::show(&store, &reference, json, out)?,
         Command::Rename { reference, name, dry_run, yes: _ } => {
             commands::rename(&store, &reference, &name, dry_run, err)?;

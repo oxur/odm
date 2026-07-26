@@ -97,8 +97,21 @@ pub struct IndexRecord {
     pub decomposed: Option<Decomposition>,
     /// The node's human title/name.
     pub title: String,
+    /// The node's creation date.
+    ///
+    /// Carried rather than derived from the ULID: a migrated node's `created`
+    /// is its *legacy* date, while its id was minted at import time, so the two
+    /// genuinely differ. `list` leads with this column (RH C-3 / F-5).
+    pub created: NaiveDate,
     /// The node's last-updated date.
     pub updated: NaiveDate,
+    /// Whether the node has been retired (withdrawn but kept — the file is
+    /// never deleted).
+    ///
+    /// A flag, not the [`odm_core::frontmatter::Retirement`] itself: `list`
+    /// needs only "is this live work?" to exclude it by default (RH C-3 /
+    /// F-15), and a consumer wanting the reason reads the node.
+    pub retired: bool,
 }
 
 /// A parent's affirmed "decomposition complete" assertion (ODD-0013 §4.5), as the

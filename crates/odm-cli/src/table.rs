@@ -25,7 +25,9 @@
 //! `oxur-odm` itself used. *Upstream follow-up:* `OxurTable::with_theme(…)` and
 //! a text-carrying footer would let this collapse back onto `OxurTable`.
 
-use oxur_term::table::{Builder, TableStyleConfig};
+use std::collections::HashSet;
+
+use oxur_term::table::{Builder, TableStyleConfig, TabledColor, helpers};
 use tabled::settings::Span;
 use tabled::settings::object::Cell;
 
@@ -50,6 +52,8 @@ pub(crate) struct Themed {
     rows: Vec<Vec<String>>,
     /// The summary-bar text (last row), e.g. `Total: 59 nodes`.
     summary: String,
+    /// Indices (into `rows`) of rows to render dimmed.
+    dimmed: HashSet<usize>,
 }
 
 impl Themed {
@@ -60,6 +64,7 @@ impl Themed {
             headers: headers.iter().map(|h| h.as_ref().to_string()).collect(),
             rows: Vec::new(),
             summary: String::new(),
+            dimmed: HashSet::new(),
         }
     }
 
@@ -72,14 +77,18 @@ impl Themed {
         self.rows.push(row);
     }
 
+    /// Renders the most recently pushed row dimmed — grey text over its band,
+    /// for content that is present but not live (RH C-3 / F-15: retired and
+    /// superseded nodes under `--all`).
+    pub(crate) fn dim_last(&mut self) {
+        if let Some(last) = self.rows.len().checked_sub(1) {
+            self.dimmed.insert(last);
+        }
+    }
+
     /// Sets the summary-bar text (the last line of the table).
     pub(crate) fn summary(&mut self, summary: impl Into<String>) {
         self.summary = summary.into();
-    }
-
-    /// How many data rows have been pushed — for phrasing the summary.
-    pub(crate) fn len(&self) -> usize {
-        self.rows.len()
     }
 
     /// Renders the table to a themed string (ANSI included).
@@ -110,7 +119,28 @@ impl Themed {
         // while the data sits one space in, which is the `oxur-odm` look.
         // `apply_to_table`'s type parameter is unused (it reads only the config
         // and the table it is handed); `String` satisfies the bound.
-        TableStyleConfig::default().apply_to_table::<String>(&mut table);
+        let theme = TableStyleConfig::default();
+        theme.apply_to_table::<String>(&mut table);
+
+        // Dimming rides *over* the theme, so it must be applied after it, and
+        // per cell — the theme colours whole rows, and a later row-wide colour
+        // would undo it. The band colour is kept so the stripe stays unbroken.
+        if !self.dimmed.is_empty() {
+            let bands = helpers::parse_row_bg_colors(&theme);
+            for &i in &self.dimmed {
+                let bg = helpers::get_data_row_bg_color(i, &bands);
+                for col in 0..cols {
+                    // +2: the title bar and the column names precede the data.
+                    helpers::apply_cell_color(
+                        &mut table,
+                        i + 2,
+                        col,
+                        TabledColor::FG_BRIGHT_BLACK,
+                        bg.clone(),
+                    );
+                }
+            }
+        }
         table.to_string()
     }
 }
@@ -157,7 +187,7 @@ mod tests {
         let mut t = Themed::new("NODES", &["NUMBER", "TYPE"]);
         t.row(["1100", "arc"]);
         t.row(["1101", "slice"]);
-        t.summary(format!("Total: {} nodes", t.len()));
+        t.summary("Total: 2 nodes");
         t
     }
 
@@ -216,7 +246,6 @@ mod tests {
         let mut t = Themed::new("T", &["A", "B"]);
         t.row(["1", "2", "3"]); // extra cell dropped
         t.row(["1"]); // missing cell blank
-        assert_eq!(t.len(), 2);
         t.summary("Total: 2");
         let out = plain(&t.render());
         assert!(!out.contains('3'), "the extra cell is dropped: {out:?}");

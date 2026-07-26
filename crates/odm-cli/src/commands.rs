@@ -30,6 +30,7 @@ use odm_store::Store;
 use serde::Serialize;
 
 use crate::context::Context;
+use crate::listview;
 use crate::table::Themed;
 use crate::term;
 
@@ -251,74 +252,155 @@ pub fn new(
     Ok(())
 }
 
-/// The `list` table's columns.
-const LIST_COLUMNS: [&str; 4] = ["NUMBER", "TYPE", "NAME", "ID"];
+/// The `list` table's columns (RH C-3 / F-4: no NUMBER).
+const LIST_COLUMNS: [&str; 5] = ["DATE", "TYPE", "STATUS", "NAME", "ID"];
 
-/// `list` — list nodes with optional type/tag/component filters. Data → `out`.
+/// The NAME column's default width bound when neither `--width` nor
+/// `[display] max_width` says otherwise (F-9).
+const DEFAULT_NAME_WIDTH: usize = 64;
+
+/// How `list` should render (RH C-3). Grouped into one struct because the flag
+/// set outgrew a readable argument list.
+pub struct ListView<'a> {
+    /// Filter by node type.
+    pub type_filter: Option<&'a str>,
+    /// Filter by tag.
+    pub tag: Option<&'a str>,
+    /// Filter by component.
+    pub component: Option<&'a str>,
+    /// Which date the leading column shows.
+    pub(crate) date: listview::DateColumn,
+    /// The NAME column's width bound; `None` defers to config, then the default.
+    pub width: Option<usize>,
+    /// Whether to include retired/superseded nodes (F-15).
+    pub include_withdrawn: bool,
+    /// Emit JSON instead of the table.
+    pub json: bool,
+}
+
+/// `list` — the plan view: date, type, status, containment tree. Data → `out`.
 ///
 /// The human table is **index-backed** (slice04): it `reconcile`s the `.odm/`
 /// index (freshening it against any edit) and renders from the index records —
-/// no full corpus parse. `--json` stays a full-node dump over `load_all`: it
-/// emits fields the index deliberately does not carry (`origin`/`reserved`/
-/// `retired`), since the index is the filter/sort accelerator, not a full-node
-/// store (ODD-0014 §3.5).
+/// no full corpus parse. The C-3 columns are all served from the index
+/// (`created` and `retired` were added to the record for exactly this).
+///
+/// `--json` stays a full-node dump over `load_all`: it emits fields the index
+/// deliberately does not carry, since the index is the filter/sort accelerator,
+/// not a full-node store (ODD-0014 §3.5). **JSON is unfiltered by `--all`** —
+/// a machine consumer gets every node and its `retired` field, and decides for
+/// itself; the default-hiding is a *human-view* affordance (F-15).
+///
+/// # Errors
+///
+/// Returns an error if the type filter names an unknown type, or if the store /
+/// index cannot be read.
 pub fn list(
     store: &Store,
-    type_filter: Option<&str>,
-    tag: Option<&str>,
-    component: Option<&str>,
-    json: bool,
+    root: &Path,
+    view: ListView<'_>,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let type_filter = type_filter
+    let type_filter = view
+        .type_filter
         .map(|t| t.parse::<NodeType>().map_err(|_| anyhow!("unknown type {t:?}")))
         .transpose()?;
 
-    if json {
+    if view.json {
         // Full-node serialization stays load_all-backed (see the doc comment).
         let mut nodes = store.load_all()?;
         nodes.retain(|d| {
             let fm = d.frontmatter();
             type_filter.is_none_or(|t| fm.node_type() == t)
-                && tag.is_none_or(|t| fm.tags().iter().any(|x| x == t))
-                && component.is_none_or(|c| fm.component() == Some(c))
+                && view.tag.is_none_or(|t| fm.tags().iter().any(|x| x == t))
+                && view.component.is_none_or(|c| fm.component() == Some(c))
         });
         nodes.sort_by_key(|d| d.frontmatter().number());
-        let view: Vec<NodeJson> = nodes.iter().map(NodeJson::from).collect();
-        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        let json_view: Vec<NodeJson> = nodes.iter().map(NodeJson::from).collect();
+        writeln!(out, "{}", serde_json::to_string_pretty(&json_view)?)?;
         return Ok(());
     }
 
     // Human table: reconcile-then-read the index (slice03 finding #2 / I-9).
     let index = odm_index::default_index_path(store.root());
     let snapshot = odm_index::reconcile(store, &index)?.snapshot;
-    let mut records: Vec<&odm_index::IndexRecord> = snapshot
+    let records: Vec<&odm_index::IndexRecord> = snapshot
         .records
         .iter()
         .filter(|r| {
             type_filter.is_none_or(|t| r.node_type == t)
-                && tag.is_none_or(|t| r.tags.iter().any(|x| x == t))
-                && component.is_none_or(|c| r.component.as_deref() == Some(c))
+                && view.tag.is_none_or(|t| r.tags.iter().any(|x| x == t))
+                && view.component.is_none_or(|c| r.component.as_deref() == Some(c))
         })
         .collect();
-    records.sort_by_key(|r| r.number);
 
-    if records.is_empty() {
+    let (gates, _) = load_gate_config(root)?;
+    let rows = listview::build_rows(
+        &records,
+        &snapshot.records,
+        &gates,
+        view.date,
+        view.include_withdrawn,
+    );
+
+    if rows.is_empty() {
         writeln!(out, "(no nodes)")?;
         return Ok(());
     }
+
+    let width = view.width.or_else(|| display_max_width(root)).unwrap_or(DEFAULT_NAME_WIDTH);
     let mut table = Themed::new("NODES", &LIST_COLUMNS);
-    for r in &records {
-        table.row([
-            r.number.to_string(),
-            r.node_type.as_str().to_string(),
-            r.title.clone(),
-            r.id.to_string(),
-        ]);
+    let mut shown = 0usize;
+    for row in &rows {
+        match row {
+            listview::Row::Node(node) => {
+                shown += 1;
+                table.row([
+                    node.date.to_string(),
+                    node.node_type.as_str().to_string(),
+                    node.status.label().to_string(),
+                    listview::elide(&node.name, width),
+                    node.id.to_string(),
+                ]);
+                // Present, but not live work (F-15).
+                if node.status.is_withdrawn() {
+                    table.dim_last();
+                }
+            }
+            listview::Row::Group(label) => {
+                table.row([
+                    "".to_string(),
+                    String::new(),
+                    String::new(),
+                    format!("── {label} ──"),
+                    String::new(),
+                ]);
+            }
+        }
     }
-    table.summary(format!("Total: {} node(s)", table.len()));
+    // The count is of what is *shown*; say so when rows were withheld, so a
+    // reader is never left to infer that the corpus is smaller than it is.
+    let hidden = snapshot.records.len() - shown;
+    table.summary(if view.include_withdrawn || hidden == 0 {
+        format!("Total: {shown} node(s)")
+    } else {
+        format!(
+            "Total: {shown} node(s) shown — {hidden} filtered or withdrawn (--all shows every node)"
+        )
+    });
     writeln!(out, "{}", table.render())?;
     Ok(())
+}
+
+/// The `[display] max_width` setting from `odm.toml`, if configured (F-9).
+///
+/// Read from the raw file like the gate-sets are, rather than through
+/// `StoreConfig`: that struct is the *store's* config (git identity), and a
+/// display preference does not belong in it.
+fn display_max_width(root: &Path) -> Option<usize> {
+    let text = std::fs::read_to_string(root.join("odm.toml")).ok()?;
+    let value: toml::Value = text.parse().ok()?;
+    value.get("display")?.get("max_width")?.as_integer().and_then(|n| usize::try_from(n).ok())
 }
 
 /// `show X` — node + edges + way-finding (parent and children). Data → `out`.

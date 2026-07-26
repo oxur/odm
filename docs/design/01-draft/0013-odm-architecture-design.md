@@ -9,7 +9,7 @@ updated: 2026-07-26
 state: Draft
 supersedes: null
 superseded-by: null
-version: 2.0
+version: 2.1
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -54,7 +54,12 @@ a markdown body (the human content / way-finding text).
   reused, but carries *no ordering claim* (the lesson of "Phase 8.5"). Used for
   display and as a CLI handle.
 - `name` / `title` — human label; freely editable; never affects identity or
-  file location.
+  file location. **Names do not embed numbers** (v2.1): write
+  `"Workspace scaffolding"`, not `"Slice 01 — Workspace scaffolding"`. A
+  number-reference in a name goes stale the moment anything is renumbered, and
+  duplicates what `number` and the containment tree already say. `odm list`
+  strips such prefixes on display, but the convention is that they are not
+  written in the first place.
 
 Commands accept a `number`, a unique `name` prefix, or a full `id` and resolve to
 the `id`. The id is what appears in frontmatter and git diffs.
@@ -492,6 +497,13 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.1 — 2026-07-26
+Naming convention added (§2.1): **names do not embed numbers** — a
+number-reference in a name goes stale on any renumber and duplicates `number`
+plus the containment tree. `odm list` de-numbers on display (RH C-3 / F-6);
+existing stored names are left alone until a re-`self-host` regenerates them.
+Surfaced by: RH UAT **F-6**. Realized in RH chunk **C-3**.
 
 ### v2.0 — 2026-07-26
 Node-type taxonomy: renamed document node `odd` → `design` (§2.2); added a

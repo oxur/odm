@@ -36,3 +36,9 @@ sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
 
 [gates.research]
 sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
+
+# Display preferences (RH C-3). `max_width` bounds the NAME column in
+# `odm list`; anything longer is elided with a trailing ` ...`. The `--width`
+# flag overrides it per-run; with neither set, `list` falls back to 64.
+[display]
+max_width = 64

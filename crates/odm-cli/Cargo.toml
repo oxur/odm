@@ -24,6 +24,7 @@ serde = { workspace = true }
 serde_json.workspace = true
 sha2.workspace = true
 chrono.workspace = true
+toml.workspace = true
 # Themed rendering (RH C-1): tables via `oxur_term::table::OxurTable`, status
 # lines via `crate::term` over `colored` (oxur-term's own output helpers write
 # to the process streams, which odm's injected writers cannot use).
