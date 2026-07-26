@@ -1,0 +1,50 @@
+# odm store configuration — the operational half (ODD-0022 §4.2).
+#
+# This file lives *in* the store, so it is versioned with the data it governs
+# and cannot drift from it. The code branch's `odm.toml` only says where the
+# store is.
+#
+# Populated at the RH C-5 cutover from the pre-split `odm.toml`, which carried
+# both halves. Every operational key that file held is below — the split moves
+# settings, it does not drop them.
+
+# Where design documents live, for `odm migrate`.
+docs_directory = "./docs/design"
+
+# Per-type gate-sets (ODD-0013 §5.1). odm manages its own plan as work nodes,
+# so `rollup`/`orient`/`check` need the work-node sets to render and validate
+# status; the sequences are the canonical §5.1 ones, and the importer stamps
+# status against these same sequences.
+[gates.project]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.arc]
+sequence = ["planned", "in-progress", "complete", "verified"]
+
+[gates.slice]
+sequence = ["planned", "built", "tested"]
+
+# Document gate-sets (RH C-2). `[gates.odd]` was renamed to `[gates.design]`
+# with its sequence unchanged; `[gates.research]` mirrors it (operator decision,
+# 2026-07-26 — see ODD-0013 §5.1), so a research doc in any state directory maps
+# onto a gate reach with no special-casing in the importer.
+[gates.design]
+sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
+
+[gates.research]
+sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
+
+# Display preferences (RH C-3). `max_width` bounds the NAME column in
+# `odm list`; anything longer is elided with a trailing ` ...`. The `--width`
+# flag overrides it per-run; with neither set, `list` falls back to 64.
+[display]
+max_width = 64
+
+# Carried over from the pre-split `odm.toml`, unread by the v1.0 crates: these
+# three are odm 0.3.x settings that only `legacy/oxur-odm` consumes. They are
+# kept here rather than deleted because the cutover's job is to relocate the
+# operational half intact, not to decide what the rebuild will re-adopt. The
+# arc that re-implements dustbin/auto-stage behaviour owns that decision.
+dev_directory = "./docs/dev"
+preserve_dustbin_structure = true
+auto_stage_git = true

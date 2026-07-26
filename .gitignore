@@ -1,0 +1,3 @@
+# Derived state: the index rebuilds from `nodes/`, and `context.json` is one
+# operator's current selection. The store's history holds sources only.
+/.odm/
