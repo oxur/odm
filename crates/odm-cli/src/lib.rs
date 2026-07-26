@@ -17,6 +17,8 @@ mod migrate;
 mod orient;
 mod reconcile;
 mod rollup;
+mod table;
+mod term;
 
 use std::process::ExitCode;
 
@@ -430,14 +432,18 @@ pub fn run() -> ExitCode {
     let root = match std::env::current_dir().context("determining the current directory") {
         Ok(root) => root,
         Err(e) => {
-            eprintln!("error: {e:#}");
+            // The sink here really is the process's stderr, so this is
+            // `oxur-term`'s own helper rather than the writer-scoped `term`.
+            oxur_term::common::output::error(&format!("{e:#}"));
             return ExitCode::from(EXIT_ERROR);
         }
     };
     match dispatch(cli, &root, &mut std::io::stdout(), &mut std::io::stderr()) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
-            eprintln!("error: {e:#}");
+            // The sink here really is the process's stderr, so this is
+            // `oxur-term`'s own helper rather than the writer-scoped `term`.
+            oxur_term::common::output::error(&format!("{e:#}"));
             ExitCode::from(EXIT_ERROR)
         }
     }

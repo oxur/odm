@@ -56,9 +56,13 @@ confyg = "0.3"     # odm-store: config
 clap = { version = "4.5", features = ["derive", "cargo"] }
 tabled = "0.17"
 colored = "2.1"
-# odm depends on oxur-cli only for library UI helpers (table styling, colored
-# output). default-features = false keeps the heavy `binary` feature deps out.
-oxur-cli = { version = "0.2.1", default-features = false }
+# Themed terminal output (warm-orange tables + status lines). `oxur-term` was
+# extracted from `oxur-cli` precisely so odm can take the UI helpers without the
+# compiler/REPL stack; it supersedes `oxur-cli` here and is the ONLY oxur
+# dependency odm carries. See arc-release-hardening/adr-c1-oxur-table-re-extraction.md
+# (Route B): `oxur-cli --no-default-features` does not compile (its crate-level
+# `config` is ungated → `config::paths` needs the binary-only `dirs`).
+oxur-term = { git = "https://github.com/oxur/oxur", tag = "0.2.1" }
 
 # Dev / test dependencies
 assert_cmd = "2.0"

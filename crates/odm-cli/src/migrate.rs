@@ -1,7 +1,7 @@
 //! `odm migrate` — import a legacy ODD corpus into the node model (Arc 06
 //! slice01). The mapping + safety live in the `odm-migrate` crate; this module
-//! resolves the gate-set, invokes it, and renders the [`MigrationReport`] with
-//! `writeln!` + `tabled` (no `oxur-cli` — the A5/slice03 finding).
+//! resolves the gate-set, invokes it, and renders the [`MigrationReport`] as an
+//! Oxur-themed table ([`oxur_term::table::OxurTable`], RH C-1).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,10 +11,10 @@ use odm_core::NodeType;
 use odm_migrate::mapping::canonical_odd_gates;
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::Store;
-use tabled::builder::Builder;
-use tabled::settings::Style;
 
 use crate::commands;
+use crate::table::Themed;
+use crate::term;
 
 /// Runs `odm migrate <legacy-path> [--dry-run]`: reads the legacy corpus, imports
 /// it into `store`, and renders the plan/result. The report (the answer) goes to
@@ -43,8 +43,7 @@ pub(crate) fn migrate(
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
-    writeln!(
-        err,
+    let status = format!(
         "{}: {} created, {} upgraded, {} skipped, {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
         report.created_count(),
@@ -52,7 +51,13 @@ pub(crate) fn migrate(
         report.skipped_count(),
         report.warnings.len(),
         if report.dry_run { " — nothing written" } else { "" },
-    )?;
+    );
+    // A dry run planned; a real run changed the store.
+    if report.dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
     Ok(())
 }
 
@@ -77,16 +82,23 @@ pub(crate) fn self_host(
         .with_context(|| format!("self-hosting the plan set at {}", plan_root.display()))?;
 
     render_self_host(&report, out)?;
-    writeln!(
-        err,
+    let status = format!(
         "{}: {} created, {} skipped{}",
         if report.dry_run { "self-host (dry-run)" } else { "self-host" },
         report.created_count(),
         report.skipped_count(),
         if report.dry_run { " — nothing written" } else { "" },
-    )?;
+    );
+    if report.dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
     Ok(())
 }
+
+/// The `self-host` cutover table's columns.
+const SELF_HOST_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME", "ID"];
 
 /// Renders the self-host cutover report: a create/skip table of the work nodes.
 fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Result<()> {
@@ -95,18 +107,26 @@ fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Res
         return Ok(());
     }
     let verb = if report.dry_run { "would create" } else { "created" };
-    let mut builder = Builder::default();
-    builder.push_record(["action", "#", "name", "id"]);
+    let title = if report.dry_run { "SELF-HOST (DRY RUN)" } else { "SELF-HOST" };
+    let mut table = Themed::new(title, &SELF_HOST_COLUMNS);
     for c in &report.created {
-        builder.push_record([verb, &c.number.to_string(), &c.name, &c.id.to_string()]);
+        table.row([verb.to_string(), c.number.to_string(), c.name.clone(), c.id.to_string()]);
     }
     for s in &report.skipped {
-        let num = s.number.map_or_else(|| "—".to_string(), |n| n.to_string());
-        builder.push_record(["skip", &num, "(already exists)", &s.reason.to_string()]);
+        table.row([
+            "skip".to_string(),
+            s.number.map_or_else(|| "—".to_string(), |n| n.to_string()),
+            "(already exists)".to_string(),
+            s.reason.to_string(),
+        ]);
     }
-    let mut table = builder.build();
-    table.with(Style::sharp());
-    writeln!(out, "{table}")?;
+    table.summary(format!(
+        "Total: {} {}, {} skipped",
+        report.created_count(),
+        if report.dry_run { "to create" } else { "created" },
+        report.skipped_count()
+    ));
+    writeln!(out, "{}", table.render())?;
     Ok(())
 }
 
@@ -117,6 +137,9 @@ fn resolve(root: &Path, legacy_path: &str) -> PathBuf {
     if p.is_absolute() { p.to_path_buf() } else { root.join(p) }
 }
 
+/// The `migrate` plan/result table's columns.
+const MIGRATE_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME / PATH", "NOTE"];
+
 /// Renders the report: a plan/result table (create/upgrade/skip rows) + warnings.
 fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
     if report.created.is_empty() && report.skipped.is_empty() && report.upgraded.is_empty() {
@@ -126,26 +149,36 @@ fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
 
     let verb = if report.dry_run { "would create" } else { "created" };
     let upgrade_verb = if report.dry_run { "would upgrade" } else { "upgraded" };
-    let mut builder = Builder::default();
-    builder.push_record(["action", "#", "name / path", "note"]);
+    let title = if report.dry_run { "MIGRATE (DRY RUN)" } else { "MIGRATE" };
+    let mut table = Themed::new(title, &MIGRATE_COLUMNS);
     for c in &report.created {
-        builder.push_record([verb, &c.number.to_string(), &c.name, &created_note(c)]);
+        table.row([verb.to_string(), c.number.to_string(), c.name.clone(), created_note(c)]);
     }
     for u in &report.upgraded {
-        builder.push_record([
-            upgrade_verb,
-            &u.number.to_string(),
-            &u.name,
-            &format!("→ {}", u.schema),
+        table.row([
+            upgrade_verb.to_string(),
+            u.number.to_string(),
+            u.name.clone(),
+            format!("→ {}", u.schema),
         ]);
     }
     for s in &report.skipped {
-        let num = s.number.map_or_else(|| "—".to_string(), |n| n.to_string());
-        builder.push_record(["skip", &num, &s.path.display().to_string(), &s.reason.to_string()]);
+        table.row([
+            "skip".to_string(),
+            s.number.map_or_else(|| "—".to_string(), |n| n.to_string()),
+            s.path.display().to_string(),
+            s.reason.to_string(),
+        ]);
     }
-    let mut table = builder.build();
-    table.with(Style::sharp());
-    writeln!(out, "{table}")?;
+    table.summary(format!(
+        "Total: {} {}, {} {}, {} skipped",
+        report.created_count(),
+        if report.dry_run { "to create" } else { "created" },
+        report.upgraded_count(),
+        if report.dry_run { "to upgrade" } else { "upgraded" },
+        report.skipped_count()
+    ));
+    writeln!(out, "{}", table.render())?;
 
     if !report.warnings.is_empty() {
         writeln!(out, "\nwarnings:")?;

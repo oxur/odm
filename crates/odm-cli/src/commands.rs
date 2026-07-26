@@ -3,8 +3,12 @@
 //! Output is dependency-injected: query **results (data) are written to `out`**
 //! while mutation confirmations and dry-run notices (**diagnostics**) are
 //! written to `err`. `run` wires these to stdout/stderr; tests wire them to
-//! buffers and drive commands in-process. Output stays plain so it is
-//! TTY-agnostic and stable to assert on.
+//! buffers and drive commands in-process.
+//!
+//! Rendering is Oxur's: tables go through [`oxur_term::table::OxurTable`] (the
+//! warm-orange theme) and status lines through [`crate::term`]. Both degrade to
+//! plain text off a terminal, so assertions stay stable — `colored` suppresses
+//! ANSI when stdout is not a TTY.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -24,9 +28,10 @@ use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 use serde::Serialize;
-use tabled::{Table, Tabled, settings::Style};
 
 use crate::context::Context;
+use crate::table::Themed;
+use crate::term;
 
 /// Exit code: the command succeeded (and, for `check`, the corpus is clean).
 pub const EXIT_OK: u8 = 0;
@@ -206,7 +211,10 @@ pub fn new(
         .find(|d| d.frontmatter().node_type() == node_type && d.frontmatter().name() == name)
     {
         let fm = existing.frontmatter();
-        writeln!(err, "exists: {} #{} {:?} ({})", node_type.as_str(), fm.number(), name, fm.id())?;
+        term::info(
+            err,
+            &format!("exists: {} #{} {:?} ({})", node_type.as_str(), fm.number(), name, fm.id()),
+        )?;
         return Ok(());
     }
 
@@ -225,31 +233,26 @@ pub fn new(
 
     let parent_note = parent_id.map(|p| format!(" (part_of {p})")).unwrap_or_default();
     if dry_run {
-        writeln!(
+        term::info(
             err,
-            "would create {} #{next_number} {name:?} ({id}){parent_note}",
-            node_type.as_str()
+            &format!(
+                "would create {} #{next_number} {name:?} ({id}){parent_note}",
+                node_type.as_str()
+            ),
         )?;
         return Ok(());
     }
 
     store.persist(&doc)?;
-    writeln!(err, "created {} #{next_number} {name:?} ({id}){parent_note}", node_type.as_str())?;
+    term::success(
+        err,
+        &format!("created {} #{next_number} {name:?} ({id}){parent_note}", node_type.as_str()),
+    )?;
     Ok(())
 }
 
-/// A row in the `list` table.
-#[derive(Tabled)]
-struct ListRow {
-    #[tabled(rename = "NUMBER")]
-    number: u32,
-    #[tabled(rename = "TYPE")]
-    node_type: String,
-    #[tabled(rename = "NAME")]
-    name: String,
-    #[tabled(rename = "ID")]
-    id: String,
-}
+/// The `list` table's columns.
+const LIST_COLUMNS: [&str; 4] = ["NUMBER", "TYPE", "NAME", "ID"];
 
 /// `list` — list nodes with optional type/tag/component filters. Data → `out`.
 ///
@@ -304,16 +307,17 @@ pub fn list(
         writeln!(out, "(no nodes)")?;
         return Ok(());
     }
-    let rows: Vec<ListRow> = records
-        .iter()
-        .map(|r| ListRow {
-            number: r.number,
-            node_type: r.node_type.as_str().to_string(),
-            name: r.title.clone(),
-            id: r.id.to_string(),
-        })
-        .collect();
-    writeln!(out, "{}", Table::new(rows).with(Style::sharp()))?;
+    let mut table = Themed::new("NODES", &LIST_COLUMNS);
+    for r in &records {
+        table.row([
+            r.number.to_string(),
+            r.node_type.as_str().to_string(),
+            r.title.clone(),
+            r.id.to_string(),
+        ]);
+    }
+    table.summary(format!("Total: {} node(s)", table.len()));
+    writeln!(out, "{}", table.render())?;
     Ok(())
 }
 
@@ -379,14 +383,14 @@ pub fn rename(
     let (id, number, old_name) = (fm.id(), fm.number(), fm.name().to_string());
 
     if dry_run {
-        writeln!(err, "would rename #{number} {old_name:?} -> {new_name:?} ({id})")?;
+        term::info(err, &format!("would rename #{number} {old_name:?} -> {new_name:?} ({id})"))?;
         return Ok(());
     }
 
     doc.frontmatter_mut().set_name(new_name);
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?; // same id => same path, file is rewritten in place
-    writeln!(err, "renamed #{number} {old_name:?} -> {new_name:?} ({id})")?;
+    term::success(err, &format!("renamed #{number} {old_name:?} -> {new_name:?} ({id})"))?;
     Ok(())
 }
 
@@ -404,14 +408,14 @@ pub fn retire(
     let (id, number, name) = (fm.id(), fm.number(), fm.name().to_string());
 
     if dry_run {
-        writeln!(err, "would retire #{number} {name:?} ({id}): {reason}")?;
+        term::info(err, &format!("would retire #{number} {name:?} ({id}): {reason}"))?;
         return Ok(());
     }
 
     doc.frontmatter_mut().retire(reason, today());
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?; // overwrites in place — file kept, not deleted
-    writeln!(err, "retired #{number} {name:?} ({id}): {reason}")?;
+    term::success(err, &format!("retired #{number} {name:?} ({id}): {reason}"))?;
     Ok(())
 }
 
@@ -435,10 +439,12 @@ pub fn supersede(
     }
 
     if dry_run {
-        writeln!(
+        term::info(
             err,
-            "would record #{new_number} supersedes #{old_number} ({})",
-            supersede_kind_str(kind)
+            &format!(
+                "would record #{new_number} supersedes #{old_number} ({})",
+                supersede_kind_str(kind)
+            ),
         )?;
         return Ok(());
     }
@@ -446,10 +452,9 @@ pub fn supersede(
     new_doc.frontmatter_mut().edges_mut().supersedes = Some(Supersedes { node: old_id, kind });
     new_doc.frontmatter_mut().set_updated(today());
     store.persist(&new_doc)?;
-    writeln!(
+    term::success(
         err,
-        "recorded: #{new_number} supersedes #{old_number} ({})",
-        supersede_kind_str(kind)
+        &format!("recorded: #{new_number} supersedes #{old_number} ({})", supersede_kind_str(kind)),
     )?;
     Ok(())
 }
@@ -523,7 +528,7 @@ pub fn link(
     }
 
     if dry_run {
-        writeln!(err, "would link #{number} {name:?} {} {target_id}", edge.as_str())?;
+        term::info(err, &format!("would link #{number} {name:?} {} {target_id}", edge.as_str()))?;
         return Ok(());
     }
 
@@ -549,7 +554,7 @@ pub fn link(
     }
     src.frontmatter_mut().set_updated(today());
     store.persist(&src)?;
-    writeln!(err, "linked #{number} {name:?} {} {target_id}", edge.as_str())?;
+    term::success(err, &format!("linked #{number} {name:?} {} {target_id}", edge.as_str()))?;
     Ok(())
 }
 
@@ -588,12 +593,15 @@ pub fn unlink(
         }
     };
     if !present {
-        writeln!(err, "no-op: #{number} {name:?} has no `{}` edge to {target_id}", edge.as_str())?;
+        term::warning(
+            err,
+            &format!("no-op: #{number} {name:?} has no `{}` edge to {target_id}", edge.as_str()),
+        )?;
         return Ok(());
     }
 
     if dry_run {
-        writeln!(err, "would unlink #{number} {name:?} {} {target_id}", edge.as_str())?;
+        term::info(err, &format!("would unlink #{number} {name:?} {} {target_id}", edge.as_str()))?;
         return Ok(());
     }
 
@@ -608,7 +616,7 @@ pub fn unlink(
     }
     src.frontmatter_mut().set_updated(today());
     store.persist(&src)?;
-    writeln!(err, "unlinked #{number} {name:?} {} {target_id}", edge.as_str())?;
+    term::success(err, &format!("unlinked #{number} {name:?} {} {target_id}", edge.as_str()))?;
     Ok(())
 }
 
@@ -649,7 +657,10 @@ pub fn set_gate(
     })?;
 
     if dry_run {
-        writeln!(err, "would set gate {gate:?}={} on #{number} {name:?}", evidence.as_str())?;
+        term::info(
+            err,
+            &format!("would set gate {gate:?}={} on #{number} {name:?}", evidence.as_str()),
+        )?;
         return Ok(());
     }
 
@@ -666,7 +677,7 @@ pub fn set_gate(
         })?;
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?;
-    writeln!(err, "set gate {gate:?}={} on #{number} {name:?}", evidence.as_str())?;
+    term::success(err, &format!("set gate {gate:?}={} on #{number} {name:?}", evidence.as_str()))?;
     Ok(())
 }
 
@@ -696,7 +707,7 @@ pub fn tear(
     })?;
 
     if dry_run {
-        writeln!(err, "would tear #{number} {name:?} depends_on {target_id}")?;
+        term::info(err, &format!("would tear #{number} {name:?} depends_on {target_id}"))?;
         return Ok(());
     }
 
@@ -709,7 +720,10 @@ pub fn tear(
     }
     src.frontmatter_mut().set_updated(today());
     store.persist(&src)?;
-    writeln!(err, "tore #{number} {name:?} depends_on {target_id} (because: {because})")?;
+    term::success(
+        err,
+        &format!("tore #{number} {name:?} depends_on {target_id} (because: {because})"),
+    )?;
     Ok(())
 }
 
@@ -757,10 +771,12 @@ pub fn decomposed(
     };
 
     if dry_run {
-        writeln!(
+        term::info(
             err,
-            "would affirm decomposition of #{number} {name:?} ({} child(ren))",
-            child_ids.len()
+            &format!(
+                "would affirm decomposition of #{number} {name:?} ({} child(ren))",
+                child_ids.len()
+            ),
         )?;
         return Ok(());
     }
@@ -769,7 +785,10 @@ pub fn decomposed(
     doc.frontmatter_mut().affirm_decomposed(child_ids, today());
     doc.frontmatter_mut().set_updated(today());
     store.persist(&doc)?;
-    writeln!(err, "affirmed decomposition of #{number} {name:?} ({count} child(ren))")?;
+    term::success(
+        err,
+        &format!("affirmed decomposition of #{number} {name:?} ({count} child(ren))"),
+    )?;
     Ok(())
 }
 
@@ -798,7 +817,7 @@ pub fn use_context(
         UseKind::Arc => ctx.arc = Some(fm.id()),
     }
     ctx.save(root)?;
-    writeln!(err, "context: {} = {} ({})", kind.label(), fm.name(), fm.id())?;
+    term::success(err, &format!("context: {} = {} ({})", kind.label(), fm.name(), fm.id()))?;
     Ok(())
 }
 
@@ -1348,12 +1367,19 @@ pub fn check(
     }
 
     if entries.is_empty() {
-        writeln!(out, "check: ok ({} node(s), no problems)", frontmatters.len())?;
+        term::success(out, &format!("check: ok ({} node(s), no problems)", frontmatters.len()))?;
         write_active_tears(out, &tears)?;
         return Ok(EXIT_OK);
     }
 
-    writeln!(out, "check: {errors} error(s), {warnings} warning(s)")?;
+    // The verdict carries the severity: a hard failure reads as an error, a
+    // warnings-only run (which does not fail without `--strict`) as a warning.
+    let verdict = format!("check: {errors} error(s), {warnings} warning(s)");
+    if errors > 0 {
+        term::error(out, &verdict)?;
+    } else {
+        term::warning(out, &verdict)?;
+    }
     for e in &entries {
         let who = match (e.number, &e.name, e.node) {
             (Some(n), Some(name), Some(id)) => format!("#{n} {name:?} ({id})"),

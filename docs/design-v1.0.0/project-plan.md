@@ -54,7 +54,28 @@ is independently demoable.
 **Dependency note:** A4, A5, and A6 all depend only on A1–A3 (now done), so none is
 forced as "next" by the graph — their order is a sequencing *choice*, recorded in §3.
 
-## 3. Current status (2026-06-26)
+### 2a. UAT-driven hardening arcs (named, number-deferred)
+
+> **Added v1.8 (2026-07-25).** Two arcs that did **not** exist in the original A1–A6
+> roadmap were inserted **within the A6 window** after hands-on UAT of the self-hosted
+> tool (A6 slice04). They are **named but deliberately un-numbered**: A7/A8 (§4) are
+> another CDC's active post-MVP arcs, and the A-numbering scheme is *itself* under review
+> inside the Release Hardening arc, so locking an A-number now would be premature. Both
+> are v1.0.0 **release-blocking** and are pure **expansion** of the roadmap — nothing in
+> A1–A6 is replaced.
+
+| Arc | Capability | `depends_on` | Status |
+|-----|-----------|--------------|--------|
+| **Release Hardening (RH)** | UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from `oxur-cli`); type taxonomy `odd`→`design` + new `research`; tree-structured de-numbered `list`; command renames (`context`→`project`, `path`→`chain`, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged **surface** (cc-prompt) vs. **model** (ODD-0013/0020 amendment or ADR). | A6·s04 (the self-hosted corpus UAT runs on) | **active** — `arc-release-hardening/arc-plan.md` (chunks C-1…C-5; batch 1 of ~3–4) |
+| **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
+
+**Sequencing (settled with operator, 2026-07-25):** Release Hardening (active) → LLM
+command surface (next) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
+so the skill and prose-retirement target the *settled* command surface. Both inserted
+arcs consume A6 slice04's self-hosted corpus; A6 is **paused after slice04**, not
+abandoned (§3).
+
+## 3. Current status (2026-07-25)
 
 - **A1 — COMPLETE.** Merged to `main`, CI-green.
 - **A2 — COMPLETE.** Merged to `main`, CI-green.
@@ -78,16 +99,32 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
   probes; honest "last checked Xm ago"). A5's zero-index-change streak held across all 8
   slices. Carried to A6: two-reads-per-command optimization; the `CLAUDE.md` oxur-cli
   doc-drift fix. **Only A6 remains for the v1.0.0 DoD.**
-- **A6 — PLANNED, not started.** Arc-plan drafted this session
-  (`arcNN-<slug>/arc-plan.md`); per *plan late, plan deep*, no per-slice doc sets exist
-  yet — those are written when each arc becomes the active work.
+- **A6 — Migrate, self-host & PM-skill: ▸ IN PROGRESS, ⏸ PAUSED after slice04.** Slices
+  01–04 CDC-verified. **★ The loop closed: odm SELF-HOSTS** (slice04) — `odm self-host`
+  imported the `design-v1.0.0` plan-set into **45 work nodes** (1 project + 6 arcs + 38
+  slices) under `nodes/`, `odm check` is green on 58 nodes (13 `odd` + 45 work), and
+  `rollup`/`orient` reproduce the hand-maintained truth (P-12 reproducible-at-arc-close;
+  cargo/executable rows pending CI). slice03 also landed schema-versioning (ODD-0020,
+  per-type `schema:<type>/vN.N`). **Paused after slice04** because hands-on UAT of the
+  self-hosted tool surfaced CLI/naming/type/output feedback too large and too model-level
+  for a slice — extracted into the **Release Hardening** arc (§2a). A6 **resumes at
+  slice05** (PM-skill) + slice06 (retire prose) once Release Hardening and the
+  LLM-command-surface arc wrap, so those target the settled surface. *(Was, at v1.0–1.6:
+  "PLANNED, not started.")*
+- **Release Hardening (UAT) — ▶ ACTIVE.** Named, number-deferred (§2a). Batch-1 punch
+  list (14 findings) triaged into chunks C-1…C-5; C-1 (adopt `oxur-cli` table styling)
+  route open pending an ADR — depend on `oxur-cli` lib-only vs. re-extract a standalone
+  `oxur-table` crate. No chunk code landed yet. `arc-release-hardening/arc-plan.md`.
+- **LLM command surface — ◆ NEXT (shaped, not started).** Named, number-deferred (§2a).
+  Shaped 2026-07-25 from the pass-2 LLM UAT; 7 slices closing the LLM situational-awareness
+  gaps, reconciled against `odm-command-inventory.md` (the command-surface authority). Runs
+  after Release Hardening, before A6 resumes.
 
-**Next-arc sequencing (open — operator's call):** dependencies leave A4/A5/A6 free to
-order. The recurring signal across the build is that **A3 triggers self-hosting**
-(A6's migrate + self-host), which would make odm dogfood its own plan immediately;
-A4 (index/perf) is optimization the corpus does not yet need; A5 (reconciliation)
-closes the marquee state-drift class. A reasonable case exists for **A6 next** (realize
-the self-hosting payoff) over the 0015 numeric order. Decide when picking the next arc.
+**Next-arc sequencing — RESOLVED** *(was "open — operator's call" at v1.0–1.6, when A4/A5/A6
+were free to order and a case was floated for taking A6 next to realize self-hosting
+early).* The order taken was **A4 → A5 → A6**: A4 and A5 are closed, A6 is in progress and
+self-hosts. The remaining v1.0.0 path is **Release Hardening (active) → LLM command surface
+(next) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5).
 
 ## 4. Post-MVP extension roadmap (v1.0.0+)
 
@@ -141,6 +178,15 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 > versioned DoD (e.g. a `design-v1.1.0/` project-plan with its own ledger). They are
 > **out-of-DoD by design, not silent drops.** No A7/A8 rows are added below pending
 > that call.
+>
+> **Scope note (UAT hardening arcs, v1.8).** Two **release-blocking** arcs — **Release
+> Hardening** and **LLM command surface** (§2a) — were inserted within the A6 window after
+> UAT of the self-hosted tool. Unlike A7/A8 these *are* v1.0.0 work. Whether they earn
+> their **own** project-ledger P-rows, or instead fold into the existing DoD-compose rows
+> — especially **P-7** ("full situational awareness from `odm orient` alone", which the
+> LLM-command-surface arc exists to actually satisfy) and **P-12** (self-host) — is an
+> **open operator call**, flagged here rather than silently dropped, to settle before the
+> v1.0.0 project close. **No new P-rows added pending that call.**
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
@@ -155,8 +201,8 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-9 | **Compose (DoD):** `check` catches cycles-without-tears, dangling refs, out-of-order work, broken recomposition | project-scale demo: seed each violation, observe the finding | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-10 | **Compose (DoD):** status is multi-gate with evidence levels | project-scale demo | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-11 | **Compose (DoD):** desired-vs-actual drift is detected and reported (the prod-DB-503 class) | project-scale demo: declare a fact, diverge reality, observe drift | serious | project-plan / 0001-C2 | done | **reproduced (A5, CI green):** `odm reconcile`/`rollup`/`orient` detect + report drift end-to-end (arc05 A-8/A-10 reproduced at arc scale); fresh on every command (ODD-0019). The C2 marquee case is cashed. | Landed with A5 (reconciliation). |
-| P-12 | **Compose (DoD):** odm self-hosts — manages its own plan as nodes; these design docs are queryable via `odm orient` | project-scale demo: migrate + orient on odm's own corpus | serious | project-plan / 0013 §9 | open | | Lands with A6 (the self-hosting trigger). |
-| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; adapter-fidelity invariant → arc05 v1.2 (v1.4). A5: no roadmap re-scope; three findings forward-carried to A6 (two-reads optimization; `CLAUDE.md` oxur-cli doc-drift; volatile-re-entry behavior change) — recorded, v1.6. |
+| P-12 | **Compose (DoD):** odm self-hosts — manages its own plan as nodes; these design docs are queryable via `odm orient` | project-scale demo: migrate + orient on odm's own corpus | serious | project-plan / 0013 §9 | open | | **Self-host landed (attested) at A6 slice04** — `odm self-host` → 45 work nodes, `check` green on 58, `rollup`/`orient` reproduce the state; cargo/exec rows pending CI. Reproduce at A6 arc-close for `done`. |
+| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; adapter-fidelity invariant → arc05 v1.2 (v1.4). A5: no roadmap re-scope; three findings forward-carried to A6 (two-reads optimization; `CLAUDE.md` oxur-cli doc-drift; volatile-re-entry behavior change) — recorded, v1.6. A6 (in progress): UAT of the self-hosted tool surfaced release-blocking CLI/type/naming/output work → **two arcs inserted** (Release Hardening, LLM command surface; §2a), A6 paused after slice04 — expansion (A1–A6 DoD unchanged), recorded v1.7/v1.8. |
 
 Closes in a project-level `closing-report.md` with the per-row walk and the **project
 gate** (go / adjust / kill against the DoD, reviewed by the operator + an independent
@@ -164,6 +210,36 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.8 — 2026-07-25
+**LLM command-surface arc shaped; command inventory landed; §2a/§3/§5 brought current.**
+Added **§2a** (the two named, number-deferred UAT hardening arcs) and rewrote §3's stale
+A6 line — *was "PLANNED, not started"* — to reflect A6 **in progress / self-hosting /
+paused after slice04**, plus the **active** Release Hardening arc and the **next**
+LLM-command-surface arc; the §3 "next-arc sequencing" open question is marked RESOLVED. The
+**LLM command surface** arc (`arc-llm-command-surface/arc-plan.md`, 7 slices) was shaped
+from the pass-2 LLM UAT and reconciled against the new **`odm-command-inventory.md`** — the
+command-surface authority, reconstructed by the operator from the four kickoff transcripts
+after the spec was found to live nowhere in-repo. §5 gains a **scope note**: whether the two
+UAT arcs earn their own P-rows or fold into P-7/P-12 is an open operator call (no new P-rows
+added). ⚠ **G-1**: the operator intends to switch the node ID scheme (register-style
+`D-YYMM-XXXX` vs ULID) — recorded in `arc-release-hardening/workflow-gap-coverage-review.md`;
+the ODD + decision must land **before any new node is minted** (identity cannot change after
+ship). **Surfaced by:** the pass-2 LLM UAT + the operator's command-surface reconstruction.
+Also re-synced the `project-status.html` dashboard (LLM-command-surface card added after RH).
+
+### v1.7 — 2026-07-07
+**A6 in progress — odm self-hosts (slice04); A6 paused; Release Hardening arc created.** A6
+moved from planned to in-progress: slices 01–04 CDC-verified. **★ slice04 closed the loop —
+`odm self-host`** imported the `design-v1.0.0` plan-set into 45 work nodes, `odm check` green
+on 58 nodes, `rollup`/`orient` reproduce the hand-maintained truth (**P-12** now
+reproducible-at-arc-close; cargo/exec rows pending CI); **slice03** landed schema-versioning
+(ODD-0020). Hands-on UAT of the self-hosted tool then produced CLI/naming/type/output feedback
+too large and too model-level for a slice, so — per the mid-arc-pause precedent — it was
+**extracted into the Release Hardening arc** (batch 1: 14 findings → chunks C-1…C-5) and **A6
+was paused after slice04**, to resume at slice05 once the surface settles. **Bubble-up
+disposition (P-13):** expansion, not re-scope — arcs inserted within the A6 window, the A1–A6
+DoD unchanged. **Surfaced by:** A6 slice04 self-host + Duncan's hands-on UAT.
 
 ### v1.6 — 2026-07-06
 **A5 (Reconciliation) closed + composed — CI green on `release/1.0.x`.** Arc 05 reached its

@@ -49,10 +49,15 @@ Shared dependency versions live in `[workspace.dependencies]`; crate manifests
 reference them with `<dep>.workspace = true` (no version literals). Lints are
 centralized in `[workspace.lints]` and inherited via `[lints] workspace = true`.
 
-The only external Oxur dependency is **`oxur-cli`** (crates.io, ≥0.2.1), used
-with `default-features = false` for its library UI helpers only
-(`common::output`, `table`). Do not enable its `binary` feature — that pulls in
-the entire Oxur language/compiler stack.
+The only external Oxur dependency is **`oxur-term`** (git, tag `0.2.1`) — the
+themed-table + terminal-helper crate extracted from `oxur-cli` for exactly this
+purpose (RH C-1; ADR `arc-release-hardening/adr-c1-oxur-table-re-extraction.md`).
+It brings only `tabled`/`colored`/`serde`/`toml`/`anyhow`.
+
+**Do not add `oxur-cli`.** It is superseded here, and it does not compile with
+`--no-default-features` (its crate-level `config` is ungated → `config::paths`
+needs the binary-only `dirs`); its default `binary` feature pulls the entire
+Oxur language/compiler stack.
 
 ## Build & Development Commands
 

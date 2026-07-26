@@ -247,18 +247,27 @@ fn render_human(
 ) -> anyhow::Result<()> {
     if counts.drifted == 0 && counts.errored == 0 {
         if counts.holds == 0 {
-            writeln!(out, "reconcile: no drift (no desired_facts declared)")?;
+            crate::term::success(out, "reconcile: no drift (no desired_facts declared)")?;
         } else {
-            writeln!(out, "reconcile: no drift ({} fact(s) hold)", counts.holds)?;
+            crate::term::success(
+                out,
+                &format!("reconcile: no drift ({} fact(s) hold)", counts.holds),
+            )?;
         }
         return Ok(());
     }
 
-    writeln!(
-        out,
+    // Confirmed drift fails the run; a couldn't-check-only run is a warning
+    // (it fails only under `--strict`).
+    let verdict = format!(
         "reconcile: {} drifted, {} couldn't-check ({} held)",
         counts.drifted, counts.errored, counts.holds
-    )?;
+    );
+    if counts.drifted > 0 {
+        crate::term::error(out, &verdict)?;
+    } else {
+        crate::term::warning(out, &verdict)?;
+    }
     for d in &drift.drifted {
         writeln!(
             out,

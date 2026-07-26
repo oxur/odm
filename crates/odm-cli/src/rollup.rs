@@ -164,7 +164,10 @@ pub fn rollup(
 
     odm_store::atomic::write(&path, markdown.as_bytes())
         .with_context(|| format!("writing {}", path.display()))?;
-    writeln!(err, "wrote {} ({} node(s))", path.display(), snapshot.records.len())?;
+    crate::term::success(
+        err,
+        &format!("wrote {} ({} node(s))", path.display(), snapshot.records.len()),
+    )?;
     Ok(())
 }
 
