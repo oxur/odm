@@ -40,7 +40,7 @@ cc-prompts, re-validated by re-running `odm self-host`.
 
 | Chunk | Scope | Kind | Covers (F-rows) | Depends on |
 |-------|-------|------|-----------------|------------|
-| **C-1 — Adopt Oxur table styling/theming** | Colours + the warm-orange Oxur theme for all output. **Route OPEN** (needs joint investigation + decision, then an ADR): **(A)** depend on `oxur-cli` lib-only (`default-features = false` → `table` + `common::output`, no compiler stack) — matches odm's CLAUDE.md verbatim; **(B)** re-extract a standalone `oxur-table` crate (reverse the late-2025 fold) and depend on just that. See the record below. | model/arch (ADR) | F-1 | — (foundational) |
+| **C-1 — Adopt Oxur table styling/theming** | Colours + the warm-orange Oxur theme for all output. **Route DECIDED — B** (ADR `adr-c1-oxur-table-re-extraction.md` §0; see F-1): re-extracted upstream as **`oxur-term`** (table + terminal helpers); odm depends on it alone (`oxur-cli` shed). Routes weighed were **(A)** `oxur-cli` lib-only vs **(B, chosen)** a standalone crate — see the record below. | model/arch (ADR) | F-1 | — (foundational) |
 | **C-2 — Type taxonomy** | `odd` → `design`; add `research` type; re-stamp the 13 migrated nodes; reclassify research docs; gate-sets + schema markers + migrate mapping. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
 | **C-3 — `odm list` overhaul** | Drop the number column; date-first + `--date=updated`; status column after type; branch-and-leaf tree (drop name-prefixing); max-width config+flag with ` ...` elision; names lose number-refs. | surface | F-4, F-5, F-6, F-7, F-8, F-9 | C-1, C-2 |
 | **C-4 — Command surface cleanup** | `context`→`project` (+`--name`, current default); `path`→`chain`; `new` warns-not-displays on re-run; `rollup` help + md/json output + `--out`/format name (defaults `md`/`ROLLUP`). | surface | F-10, F-11, F-12, F-13 | (light) C-1 |
@@ -169,8 +169,7 @@ then write the ADR + the C-1 cc-prompt.
   surface (A1–A3).
 - **Base branch:** the chunks build on the latest migrate + self-host + schema code, which
   lives on the **A6 slice04 tip** (`arc06-slice04-self-host-cutover`, off `release/1.0.x`,
-  unmerged). **Open item for C-1's cc-prompt:** branch off the A6 tip directly, *or* merge the
-  green A6-so-far to `release/1.0.x` first and branch from there. (Recommend deciding at C-1.)
+  unmerged). **Settled at C-1:** work branched off `release/1.0.x` as **`rh-c1-adopt-oxur-term`** (commits `fd6af52`→`0e9fd63`→`0d74240`); later chunks branch from here or `release/1.0.x`.
 - **Reflexive loop:** after C-2/C-3, re-run `odm self-host` to regenerate the corpus with the
   new type names + de-numbered names, and re-verify `check`-green (RH-7).
 
@@ -182,6 +181,9 @@ five-iteration cap. Chunk closes bubble up to this arc-plan; the arc closes with
 the settled surface.
 
 ## Version History
+
+### v1.4 — 2026-07-26
+**Reconciled two internal inconsistencies CC flagged at v1.3.** The **C-1 chunk row** still read "Route OPEN" against F-1's "DECIDED — Route B", and the **base-branch bullet** still read "Open item for C-1's cc-prompt" though C-1 had already branched (`rh-c1-adopt-oxur-term`, off `release/1.0.x`). Both updated to the settled state — CDC text, reconciled by CDC; no finding or ledger change. Surfaced by: CC's v1.2/v1.3 close notes.
 
 ### v1.3 — 2026-07-26
 **F-16 seated (id-collision repair).** CC and CDC wrote the Batch-2 table simultaneously and
