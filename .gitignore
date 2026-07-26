@@ -1,3 +1,11 @@
-# Derived state: the index rebuilds from `nodes/`, and `context.json` is one
-# operator's current selection. The store's history holds sources only.
-/.odm/
+# `.odm/` is derived state by default — the index and the drift snapshot are
+# caches that rebuild from `nodes/`, and anything added later will be too.
+# Ignoring the directory and re-admitting one file keeps that true without
+# needing an edit each time a new cache appears; the reverse (listing the caches)
+# fails open, and commits the next one by accident.
+/.odm/*
+
+# ...except the current focus, which is a deliberate statement about where the
+# work is, not a cache of what the nodes already say. It travels with the store
+# so a fresh session gets it from `odm orient`.
+!/.odm/context.json
