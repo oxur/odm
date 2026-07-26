@@ -9,7 +9,7 @@ updated: 2026-07-26
 state: Draft
 supersedes: null
 superseded-by: null
-version: 2.2
+version: 2.3
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -54,12 +54,27 @@ a markdown body (the human content / way-finding text).
   reused, but carries *no ordering claim* (the lesson of "Phase 8.5"). Used for
   display and as a CLI handle.
 - `name` / `title` — human label; freely editable; never affects identity or
-  file location. **Names do not embed numbers** (v2.1): write
-  `"Workspace scaffolding"`, not `"Slice 01 — Workspace scaffolding"`. A
-  number-reference in a name goes stale the moment anything is renumbered, and
-  duplicates what `number` and the containment tree already say. `odm list`
-  strips such prefixes on display, but the convention is that they are not
-  written in the first place.
+  file location. **Names embed no metadata** (v2.2, generalizing v2.1). A name
+  labels *the thing itself* — never its coordinates, nor the role of the
+  document it was derived from. Specifically, names carry:
+  - **no numbers or positional references** — `"Workspace scaffolding"`, not
+    `"Slice 01 — Workspace scaffolding"` or `"… (Arc 06)"`; that is `number`
+    plus the `part_of` tree;
+  - **no document-role labels** — not `"… (plan-of-record)"`, `"… (build
+    plan)"`; that is `type`, plus which plan document it came from.
+
+  Everything in that list is *already* carried by `number`, the containment
+  tree, and `type`/gates. Embedding it in the name duplicates it and goes stale
+  on any renumber or re-role. **Enforcement is at mint time:** the
+  `migrate`/`self-host` importer **normalizes** a derived name to this rule
+  rather than copying a plan-doc heading verbatim; `odm list`'s display
+  stripping is then belt-and-braces, not the mechanism.
+
+  *Scope note:* the normalizer targets the **mechanical, unambiguous** cases —
+  a leading `"<Type> NN —"` or `"… (Arc NN)"`, and the known role-suffixes
+  `(plan-of-record)`, `(build plan)`. Genuinely descriptive parentheticals that
+  carry meaning (e.g. `"(v-major rebuild)"`) are left to human judgment: the
+  rule prohibits *metadata*, not *qualifiers*.
 
 Commands accept a `number`, a unique `name` prefix, or a full `id` and resolve to
 the `id`. The id is what appears in frontmatter and git diffs.
@@ -505,6 +520,17 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.3 — 2026-07-26
+**§2.1 naming rule generalized:** from "names don't embed numbers" (v2.1) to **"names embed no
+metadata"** — names also carry no document-role labels (`(plan-of-record)`, `(build plan)`).
+**Enforcement moves to mint time**: the `migrate`/`self-host` importer normalizes a derived name
+instead of copying a plan-doc heading verbatim, so `odm list`'s display stripping (F-6) becomes
+belt-and-braces rather than the mechanism. The scope note is deliberate — the normalizer handles
+the mechanical cases only; a descriptive parenthetical like `"(v-major rebuild)"` is a
+*qualifier*, not metadata, and stays. Surfaced by: RH UAT **F-18** (33 of 60 node names carried a
+role-suffix inherited from a plan-doc H1). Realized in RH chunk **C-5** (which absorbed the
+standalone C-7); amendment stub `C-7-amendment-ODD-0013.md`.
 
 ### v2.2 — 2026-07-26
 Display names recorded for the two node families (§2.2): the CLI calls work
