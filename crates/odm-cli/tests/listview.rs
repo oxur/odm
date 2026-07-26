@@ -284,6 +284,22 @@ fn work_gate_statuses_carry_the_matching_palette_slots() {
 }
 
 #[test]
+fn type_cells_carry_one_hue_per_node_type() {
+    // One hue per type, so a long listing sorts by kind at a glance. Truecolor,
+    // because violet and orange have no basic ANSI slot.
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let raw = run(dir.path(), &["list"]).out;
+    let row_for = |name: &str| {
+        raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
+    };
+    assert!(row_for("Root project").contains("\u{1b}[38;2;176;98;158m"), "project is dim magenta");
+    assert!(row_for("First arc").contains("\u{1b}[38;2;167;139;250m"), "arc is violet");
+    assert!(row_for("Alpha").contains("\u{1b}[38;2;122;162;247m"), "slice is blue");
+    assert!(row_for("A design document").contains("\u{1b}[38;2;229;192;123m"), "design is yellow");
+}
+
+#[test]
 fn dimming_wins_over_the_state_colour_on_a_withdrawn_row() {
     // A retired row is dimmed whole; the status colour must not fight it.
     let dir = TempDir::new().unwrap();

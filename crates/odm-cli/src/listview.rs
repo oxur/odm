@@ -139,6 +139,33 @@ fn work_gate_color(label: &str) -> Option<TabledColor> {
     }
 }
 
+/// The colour a TYPE token renders in, or `None` to leave it uncoloured.
+///
+/// One hue per node type, so the eye can sort a long listing by kind without
+/// reading a word of it. Chosen as **truecolor**, not the basic ANSI slots, for
+/// two reasons: `violet` and `orange` have no basic slot at all, and the values
+/// can then be tuned to stay legible on the theme's dark band (`#451A03`)
+/// rather than depending on whatever the terminal maps its sixteen colours to.
+///
+/// The work types run cool-to-warm down the containment tree (project → arc →
+/// slice), and the document types take warm hues that echo the Oxur theme —
+/// which also keeps a type distinguishable from the STATUS beside it, since the
+/// status palette is basic ANSI.
+///
+/// `adr` and `note` are deliberately uncoloured: no colour has been chosen for
+/// them, and inventing one here would be a decision made by omission.
+pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
+    let (r, g, b) = match node_type {
+        NodeType::Project => (176, 98, 158),  // dim magenta
+        NodeType::Arc => (167, 139, 250),     // violet
+        NodeType::Slice => (122, 162, 247),   // blue
+        NodeType::Design => (229, 192, 123),  // yellow
+        NodeType::Research => (245, 160, 90), // orange
+        NodeType::Adr | NodeType::Note => return None,
+    };
+    Some(TabledColor::rgb_fg(r, g, b))
+}
+
 /// One rendered node row.
 #[derive(Debug, Clone)]
 pub(crate) struct NodeRow {

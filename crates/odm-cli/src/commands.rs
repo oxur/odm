@@ -255,6 +255,8 @@ pub fn new(
 /// The `list` table's columns (RH C-3 / F-4: no NUMBER).
 const LIST_COLUMNS: [&str; 5] = ["DATE", "TYPE", "STATUS", "NAME", "ID"];
 
+/// The `TYPE` column's index, for the per-type colouring.
+const TYPE_COLUMN: usize = 1;
 /// The `STATUS` column's index, for the per-state colouring.
 const STATUS_COLUMN: usize = 2;
 
@@ -379,11 +381,17 @@ pub fn list(
                     // is the stronger signal, so it wins over the status colour
                     // below rather than fighting it cell by cell.
                     table.dim_last();
-                } else if let Some(fg) = listview::status_color(node.status.label()) {
+                } else {
                     // Colour only, no weight — exactly as 0.3.5 rendered the
                     // STATUS column. See `listview::status_color` for which
-                    // palette a given gate comes from.
-                    table.color_last(STATUS_COLUMN, fg);
+                    // palette a given gate comes from, and `type_color` for the
+                    // per-type hues.
+                    if let Some(fg) = listview::type_color(node.node_type) {
+                        table.color_last(TYPE_COLUMN, fg);
+                    }
+                    if let Some(fg) = listview::status_color(node.status.label()) {
+                        table.color_last(STATUS_COLUMN, fg);
+                    }
                 }
             }
             listview::Row::Divider => table.divider(),

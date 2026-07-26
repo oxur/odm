@@ -236,7 +236,11 @@ bright green. `complete` green + `verified` bright green deliberately keeps ODD-
 "done at its layer" ≠ "verified live" split visible — the colours must not re-collapse what the
 gate model separates. Note the terminal gate differs by type (`verified` project/arc, `tested`
 slice, `final` design/research), so green means *done at that node's layer*, not *finished*.
-Dimming wins over the colour on a withdrawn row.
+Dimming wins over the colour on a withdrawn row. A **TYPE palette** was added alongside it —
+`project` dim magenta, `arc` violet, `slice` blue, `design` yellow, `research` orange (truecolor;
+`adr`/`note` left uncoloured rather than assigned by omission) — drawn from a different colour
+system than STATUS on purpose, so *what kind of thing is this* and *how far along is it* stay
+visually separable.
 
 ### v1.6 — 2026-07-26
 **C-2 CDC-verified; F-17 logged.** Independent CDC structural verification (`C-2-cdc-verification.md`) reproduced C-2's close — 60 nodes (9 design + 5 research + 46 work), zero `odd` in frontmatter, type/schema pairing clean, the 4 research ULIDs preserved, `restamp` bootstrap sound; `odm check` + `make check` operator-confirmed green. RH-2 Verify pointer → the CDC doc (closer ≠ verifier). New finding **F-17** (Batch 2): re-stamp does not refresh node *bodies* (node #20 keeps pre-amendment `odd/v1.0` text vs its source's `design/v1.0`) — snapshot-by-design vs body-refresh is an open migrate/self-host decision, not C-3. Surfaced by: the C-2 CDC verification.

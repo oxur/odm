@@ -54,6 +54,7 @@ tabled's to draw and would otherwise lay a `│` through it.
 | **F-9** width + elision | **`--width`** flag and **`[display] max_width`** in `odm.toml` (default 64); longer names are cut at `width − 4` and marked ` ...`, so the cell lands exactly on the limit. |
 | *(added in review)* `--group` | **`--group plan\|reference`** narrows to one family — the work tree, or the design/research/adr/note material. Display names for the model's *work*/*document* families, paired in ODD-0013 §2.2 (v2.2). |
 | *(added in review)* STATUS palette | The STATUS cell carries the **`oxur-odm` 0.3.5 state colours** — `draft` yellow, `under-review` cyan, `revised` blue, `accepted`/`final` green, `active` bright green, `deferred` magenta, `rejected`/`withdrawn`/`superseded` red — reused via the same `oxur_term::table::helpers::state_to_fg_color` the original called, on the same column, colour only (0.3.5 used no weight there). The **work sequences postdate that palette**, so they were mapped onto its *slots*: `planned` yellow, `in-progress`/`built` cyan, `complete`/`tested` green, `verified` bright green. |
+| *(added in review)* TYPE palette | One hue per node type, so a long listing sorts by kind without being read: `project` dim magenta, `arc` violet, `slice` blue, `design` yellow, `research` orange. Truecolor rather than the basic ANSI slots — violet and orange have no basic slot, and the values are tuned to stay legible on the theme's `#451A03` band. `adr`/`note` are left uncoloured rather than being assigned a hue by omission. |
 | **F-15** retired/superseded | **Excluded by default**; `--all` (alias `--include-retired`) brings them back with STATUS `retired`/`superseded` and the row **dimmed**; **`--status <VALUE>`** shows only the rows at one status — `--status retired` is exactly the set a default listing withholds. |
 
 ## The index needed two fields
@@ -131,24 +132,29 @@ the first pass. Spotted by the operator reading the rendered output.
    layer. The two palettes are disjoint, so the document one always wins where it applies. On a
    withdrawn row the **dimming wins** over the status colour, greying the row being the
    stronger signal.
-4. **`--status <VALUE>` answers "show me what was hidden".** Added on operator request during
+4. **Two palettes, two questions.** TYPE answers *what kind of thing is this?* and STATUS
+   answers *how far along is it?*, so they are deliberately drawn from different colour
+   systems: TYPE in truecolor hues, STATUS in the basic ANSI slots 0.3.5 used. A row can
+   therefore carry both without the eye having to disentangle which colour means what. On a
+   withdrawn row **both** give way to the dimming.
+5. **`--status <VALUE>` answers "show me what was hidden".** Added on operator request during
    review: the summary said a row had been withheld but gave no way to look at it. The flag
    filters on the rendered STATUS token and implies `--all` for a withdrawn value, so
    `--status retired` lands directly on the withheld set. It generalises past F-15 —
    `--status built` narrows to work at one gate — and, like every other filter, is applied
    before the tree is derived.
-5. **`--json` is deliberately unfiltered by `--all`.** The machine path emits every node and its
+6. **`--json` is deliberately unfiltered by `--all`.** The machine path emits every node and its
    `retired` field and lets the consumer decide; the default-hiding is a human-view affordance.
    That also keeps `--json` a stable contract for the LLM-surface arc.
-6. **A filtered view still renders.** `--type slice` would otherwise vanish into an empty tree
+7. **A filtered view still renders.** `--type slice` would otherwise vanish into an empty tree
    (its parents are filtered out), so a node whose parent is not in the shown set becomes a root
    of that view — flat, not missing.
-7. **F-15's superseded half has no corpus instance.** The audit found **exactly one** retired
+8. **F-15's superseded half has no corpus instance.** The audit found **exactly one** retired
    node (#1605) and **zero** supersedes edges. The prompt's "coarse scan flagged ~5 superseded
    ODDs" was a false positive: those five files match the *word* "superseded" in their bodies
    (ODD-0013's own frontmatter example, and prose). Superseded-exclusion is implemented and
    unit-tested, but it is exercised by fixtures, not by the live corpus.
-8. **Names still carry "(plan-of-record)" suffixes.** Not a number-reference, so out of F-6's
+9. **Names still carry "(plan-of-record)" suffixes.** Not a number-reference, so out of F-6's
    scope; if those should go too, that is a data change for a re-`self-host`, not a display rule.
 
 ## Verification
@@ -158,7 +164,7 @@ All local, Rust 1.85+ (attested-by-CC):
 | Check | Result |
 |-------|--------|
 | `cargo build --workspace` | clean |
-| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+20 new `listview` CLI tests, +6 new unit tests) |
+| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+21 new `listview` CLI tests, +6 new unit tests) |
 | `cargo clippy --all-targets --workspace -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `unsafe` | none added |
