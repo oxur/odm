@@ -6,7 +6,7 @@ This index is automatically generated. Do not edit manually.
 
 | Number | Title | State | Updated |
 |--------|-------|-------|----------|
-| 0022 | The odm store home — a dedicated orphan branch in a git worktree | Draft | 2026-07-26 |
+| 0022 | The odm store home — a dedicated orphan branch in a git worktree | Accepted | 2026-07-26 |
 | 0021 | Research — Information-Theoretic Complexity of Text (Code and Prose) | Draft | 2026-07-25 |
 | 0020 | Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0 | Accepted | 2026-07-26 |
 | 0019 | Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness | Accepted | 2026-07-01 |
@@ -26,12 +26,12 @@ This index is automatically generated. Do not edit manually.
 
 ### Accepted
 
+- [0022 - The odm store home — a dedicated orphan branch in a git worktree](04-accepted/0022-the-odm-store-home-a-dedicated-orphan-branch-in-a-git-worktree.md)
 - [0020 - Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0](04-accepted/0020-versioned-file-metadata-schemas-per-type-schema-markers.md)
 - [0019 - Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness](04-accepted/0019-incremental-drift-probes-as-rules-honest-staleness.md)
 
 ### Draft
 
-- [0022 - The odm store home — a dedicated orphan branch in a git worktree](01-draft/0022-the-odm-store-home-a-dedicated-orphan-branch-in-a-git-worktree.md)
 - [0021 - Research — Information-Theoretic Complexity of Text (Code and Prose)](01-draft/0021-research-information-theoretic-complexity-of-text-code-and-prose.md)
 - [0018 - Research — Forecasting under small, bursty, DAG-structured work](01-draft/0018-research-forecasting-under-small-bursty-dag-work.md)
 - [0017 - Interop — projection out, reference-and-reconcile in](01-draft/0017-interop-projection-out-reference-and-reconcile-in.md)
