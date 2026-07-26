@@ -58,7 +58,7 @@ already-exists paths; 04 is small).
 | SH-4 | Slice 04 (`rename`) closed | ptr: `slice04…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice04-store-rename/closing-report.md` (2026-07-26): build/test (**57 binaries, 0 failed**, +24 new)/clippy `-D warnings`/fmt green. `odm store rename` moves the worktree, renames the local branch, and rewrites `[store]` from the **observed** git state; every test ends by asserting the corpus is still reachable. Collisions stop (git would not — `worktree move` moves *into* an occupied dir, `mv`-style), no-op is clean, uncommitted work survives, a published branch warns local-only. | attested-by-CC → **reproduced** on CI. **A real bug was found and fixed in-slice:** the first cut skipped the locator write when the branch rename failed, leaving a green `check` over an **invisible corpus** — the exact failure L-5 exists to prevent. Now the locator is written from observation *even on failure*, and the error names what succeeded. |
 | SH-5 | **Compose:** `odm init` stands up a working home end-to-end — **bootstrap** on a fresh repo, **attach** on a clone (no fork), **ff-sync** freshens; divergence warns + stops | arc-scale demo: bootstrap → attach → ff-sync → rename, then `check` | serious | arc-plan | **reproduced** | Reproduced end-to-end 2026-07-26 against a local bare remote: **bootstrap** stands the home up on a fresh repo; **attach** checks it out in a clone; **ff-sync** fast-forwards when upstream advances; **rename** moves it — and `check` is green on 2 nodes after all four. Walk recorded in `slice04…/closing-report.md` and the arc closing report. | the arc's composition, reproduced by CC; CDC re-runs independently at arc close. |
 | SH-6 | **Compose (dogfood):** odm's own corpus lives on the orphan `odm` branch, `check` green there, and the working branch no longer carries `nodes/` | arc-scale demo: `init` + **RH C-5** re-self-host into the home → `check` green | serious | arc-plan / ODD-0022 | **attested** | Done 2026-07-26 by the RH C-5 cutover — see `arc-release-hardening/c5-closing-report.md`. odm's 60 nodes live on the orphan `odm` branch at `.worktrees/odm`; `check` green at 60 **in the home**; the working branch no longer carries `nodes/`; `odm.toml` is locator-only and the operational half moved to the store's `config.toml`. **Every ULID preserved** (pre/post sets diff-empty) — a relocation and re-stamp, not a re-derivation, which would have minted ids, broken every edge and tripped G-1. | **reproduced jointly with RH C-5** (the cutover). The dogfood proof; the payoff row. **The cutover found three defects nothing before it could have:** `orient` read the invocation root for the CLI context while `use` wrote the store root (identical until odm's own store moved — `use` succeeded, `orient` reported no focus); `init` scaffolded no store `.gitignore`, offering the derived index for commit on a shared branch; and ignoring all of `.odm/` to fix that would have withheld the current focus from every clone. All fixed in-chunk with regression tests that run against a **redirected** store, since an un-redirected one cannot distinguish the two roots. |
-| SH-7 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close. |
+| SH-7 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | **done** | arc-plan v1.6 | slices 01–04 dispositioned as they closed; SH-5/SH-6 dispositioned at the RH C-5 cutover close (v1.6). |
 
 Closes in `arc-store-home/closing-report.md`: per-slice walk + composition verdict (SH-5/SH-6),
 independently gated, **plus a bubble-up to `project-plan.md`** — a new arc in the roadmap (§2) and a
@@ -72,6 +72,24 @@ becomes the active work (plan-late, plan-deep). CC implements on local 1.85+; CD
 the arc closes with `closing-report.md` + the composition check + the project bubble-up.
 
 ## Version History
+
+### v1.6 — 2026-07-26
+**The arc closes: SH-6 attested via the RH C-5 cutover; SH-7 dispositioned.** RH C-5 relocated odm's
+own corpus onto the orphan `odm` branch (`.worktrees/odm`, 60 nodes), reduced `odm.toml` to a locator,
+split the operational config into the store's `config.toml`, and retired `nodes/` from the working
+branch — closing **SH-6** (the dogfood row) and completing **project-plan P-14**. **CDC reproduced the
+cutover independently** on a clean clone: `check` green cold at 60 nodes; VISION + CURRENT FOCUS render
+cold (L-3a); ids preserved (60 = 60, nothing minted — G-1-safe); `created` spans 2025-12-27 →
+2026-07-25 (14 distinct days, was 45× one date); one F-18 role-suffix hit, the #15 *document* node's
+genuine `(build plan)` title. An **independent fresh-context arc-gate** returned **PASS-WITH-NOTES**:
+all six load-bearing dogfood claims verified against the running binary; both implementer judgment calls
+endorsed — ULID-shard files are *not* relocated by corrected `created` dates (the shard is
+identity-derived; moving them would break `Store::load`), and `context.json` is shared-by-design (rides
+to clones to serve the fresh-session DoD), with a two-level project-focus/working-focus split recorded
+as the clean longer-term model. The gate's one note was this ledger reconciliation itself (SH-7 open + a
+v1.6 entry the closing report already cited) — now fixed. SH-1…SH-4 closed, SH-5 reproduced, SH-6
+attested. **arc-store-home is CLOSED** (durable CI-`reproduced` on the cargo rows + both-git-arms matrix
+still rides the push). Surfaced by: the RH C-5 cutover + the independent arc-gate.
 
 ### v1.5 — 2026-07-26
 **Slice 04 closed (SH-4 attested); the arc is code-complete and SH-5 reproduced.**
