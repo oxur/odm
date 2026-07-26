@@ -52,7 +52,7 @@ already-exists paths; 04 is small).
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
-| SH-1 | Slice 01 (resolution + two-config split) closed | ptr: `slice01…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Foundational. |
+| SH-1 | Slice 01 (resolution + two-config split) closed | ptr: `slice01…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice01-store-resolution/closing-report.md` (2026-07-26): build/test (**54 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green; `[store]` resolves to `<repo>/<base>/<name>`, absent ⇒ repo root; operational config from the store's `config.toml` with locator fallback; a hand-placed `.worktrees/odm/` store takes every node write while **nothing lands at the repo root**; back-compat reproduced on odm's own corpus (no `[store]` → `check` green at 60 nodes, `nodes/` unmoved). L-7 mechanically clean: no `git` subprocess, no worktree ops. | attested-by-CC → **reproduced** when CI runs the cargo rows. Foundational — slices 02–04 and RH C-5 build on this. Raised for later slices: `.odm/context.json` still keys off the invocation root while the index follows the store; `ROLLUP.md` likewise; `branch_name` parsed but unconsumed until slice 02. |
 | SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | SH-3 | Slice 03 (`init` attach + ff-sync) closed | ptr: `slice03…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | SH-4 | Slice 04 (`rename`) closed | ptr: `slice04…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Slottable. |
@@ -72,6 +72,27 @@ becomes the active work (plan-late, plan-deep). CC implements on local 1.85+; CD
 the arc closes with `closing-report.md` + the composition check + the project bubble-up.
 
 ## Version History
+
+### v1.1 — 2026-07-26
+**Slice 01 closed (SH-1 attested).** The store root resolves through `odm.toml`'s `[store]`
+locator, and the operational config (gate-sets, display, author) is read from the store's own
+`config.toml` — falling back to `odm.toml` when the store has none, so **no existing repo
+changes behaviour**: odm's own corpus is untouched, `check` green at 60 nodes with `nodes/`
+still at the repo root. Nothing is created — no worktree, no branch, no directory — and L-7
+verifies that mechanically (no `git` subprocess anywhere new).
+
+Two design points settled in the slice, both recorded in the closing report: **resolution never
+fails** (a malformed `[store]` falls back to the un-redirected default rather than making the
+corpus unreachable — strict parsing and its error stay in `StoreConfig::load`), and **`root`
+keeps meaning the *invocation* root** (only the node tree follows the store; a relative path
+argument and the config search still resolve against the cwd).
+
+**Three items the arc-plan did not anticipate**, raised for slices 02–04 rather than decided
+here: (1) `.odm/` now splits across two roots — the index follows the store, but
+`.odm/context.json` does not, and since it names node ids it arguably should; (2) `ROLLUP.md`
+stays at the invocation root, which is defensible for a projection *out* of the store but is a
+choice ODD-0022 does not make; (3) `branch_name` is parsed but has no consumer until slice 02.
+Silent-drop diff: none. Surfaced by: slice 01 implementation (CC).
 
 ### v1.0 — 2026-07-26
 Arc created from **ODD-0022 (Accepted)**. Named arc, number deferred (`arc-release-hardening`

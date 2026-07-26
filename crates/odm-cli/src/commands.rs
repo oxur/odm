@@ -26,7 +26,7 @@ use odm_core::recompose::{self, Issue};
 use odm_core::satisfaction::{Satisfaction, staleness_on_advance, threshold_from_toml};
 use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
-use odm_store::Store;
+use odm_store::{Store, StoreHome};
 use serde::Serialize;
 
 use crate::context::Context;
@@ -418,13 +418,14 @@ pub fn list(
     Ok(())
 }
 
-/// The `[display] max_width` setting from `odm.toml`, if configured (F-9).
+/// The `[display] max_width` setting from the operational config, if
+/// configured (F-9).
 ///
-/// Read from the raw file like the gate-sets are, rather than through
-/// `StoreConfig`: that struct is the *store's* config (git identity), and a
-/// display preference does not belong in it.
+/// Read from the raw text like the gate-sets are, rather than through
+/// `StoreConfig`: that struct is the author identity, and a display preference
+/// does not belong in it.
 fn display_max_width(root: &Path) -> Option<usize> {
-    let text = std::fs::read_to_string(root.join("odm.toml")).ok()?;
+    let text = StoreHome::resolve(root).operational_text();
     let value: toml::Value = text.parse().ok()?;
     value.get("display")?.get("max_width")?.as_integer().and_then(|n| usize::try_from(n).ok())
 }
@@ -1562,10 +1563,12 @@ pub(crate) fn integrity_findings(
 // derived order: next / blocked / path (ODD-0013 §4.1/§4.4)
 // ---------------------------------------------------------------------------
 
-/// Loads the gate-sets and satisfaction threshold from `<root>/odm.toml`
+/// Loads the gate-sets and satisfaction threshold from the operational config
 /// (absent file ⇒ empty gate-sets and the default threshold).
 pub(crate) fn load_gate_config(root: &Path) -> anyhow::Result<(GateSets, Evidence)> {
-    let text = std::fs::read_to_string(root.join("odm.toml")).unwrap_or_default();
+    // The store's `config.toml` when it has one, else the `odm.toml` the
+    // layered search finds — see `StoreHome` (ODD-0022 §4.2).
+    let text = StoreHome::resolve(root).operational_text();
     let gates = GateSets::from_toml_str(&text).map_err(|e| anyhow!("gate config: {e}"))?;
     let threshold = threshold_from_toml(&text).map_err(|e| anyhow!("satisfaction config: {e}"))?;
     Ok((gates, threshold))

@@ -5,8 +5,10 @@
 //! (`new`, `rename`, `retire`, `supersede`, `use`) accept `--dry-run` (write
 //! nothing) and `--yes` (run non-interactively), and report to stderr.
 //!
-//! The store root is the current working directory; `odm.toml` and the node
-//! tree are resolved from there.
+//! The invocation is rooted at the current working directory. From there
+//! `odm.toml` is found and its `[store]` locator resolved, which is what says
+//! where the node tree actually lives (ODD-0022 §4.2) — the repo root itself
+//! when no `[store]` section directs otherwise.
 
 #![deny(missing_docs)]
 
@@ -27,7 +29,7 @@ use anyhow::Context as _;
 use clap::{Parser, Subcommand, ValueEnum};
 use odm_core::frontmatter::SupersedeKind;
 use odm_core::status::Evidence;
-use odm_store::Store;
+use odm_store::{Store, StoreHome};
 
 use crate::commands::{EXIT_OK, LinkEdge, UseKind};
 
@@ -527,7 +529,12 @@ pub fn dispatch(
     out: &mut dyn std::io::Write,
     err: &mut dyn std::io::Write,
 ) -> anyhow::Result<u8> {
-    let store = Store::open(root);
+    // The store is wherever the locator says — the repo root when it says
+    // nothing. `root` stays the *invocation* root: it is what the layered
+    // config search starts from, and what a relative path argument is resolved
+    // against, neither of which moves with the store.
+    let home = StoreHome::resolve(root);
+    let store = Store::open(&home.store_root);
 
     // Bare `odm` (no subcommand) orients — it never bare-errors.
     let command = cli.command.unwrap_or(Command::Orient { json: false });

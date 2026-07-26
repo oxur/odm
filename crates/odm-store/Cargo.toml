@@ -12,6 +12,7 @@ description = "Persistence for odm: layout, atomic writes, git, scan/load (stub;
 odm-core = { path = "../odm-core" }
 gix.workspace = true
 confyg.workspace = true
+toml.workspace = true
 walkdir.workspace = true
 chrono.workspace = true
 serde = { workspace = true }

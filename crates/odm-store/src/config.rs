@@ -1,16 +1,20 @@
-//! `odm.toml` loading via a layered search (cwd → repo root → user config).
+//! The **operational** configuration — the settings that govern the data.
+//!
+//! Read from the store's own `config.toml` when it has one, and otherwise from
+//! the `odm.toml` found by the layered search (cwd → repo root → user config).
+//! Which file that is, is [`StoreHome`]'s decision; this module only parses.
 
 use std::path::{Path, PathBuf};
 
 use confyg::Confygery;
-use confyg::searchpath::Finder;
 use serde::Deserialize;
 
 use crate::error::{Result, StoreError};
+use crate::home::StoreHome;
 
-/// Store configuration, loaded from `odm.toml`.
+/// Store configuration — the author identity recorded on store commits.
 ///
-/// Every field has a default, so a missing or partial `odm.toml` is fine.
+/// Every field has a default, so a missing or partial config is fine.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct StoreConfig {
@@ -27,40 +31,43 @@ impl Default for StoreConfig {
 }
 
 impl StoreConfig {
-    /// Loads `odm.toml` by searching, in priority order: `start` (typically the
-    /// current directory), the enclosing git repository root, then the user
-    /// config directory. The first `odm.toml` found wins; if none is found, the
-    /// defaults are returned.
+    /// Loads the operational config for the store `start` resolves to.
+    ///
+    /// The file is the store's `config.toml` when it has one, else the
+    /// `odm.toml` found by the layered search — `start`, then the enclosing
+    /// repository root, then the user config directory (ODD-0022 §4.2). With
+    /// neither, the defaults are returned.
     ///
     /// # Errors
     ///
-    /// Returns [`StoreError::Config`] if a located `odm.toml` cannot be read or
+    /// Returns [`StoreError::Config`] if the located file cannot be read or
     /// does not deserialize.
     pub fn load(start: &Path) -> Result<Self> {
-        let mut finder = Finder::new();
-        finder.add_path(&start.to_string_lossy());
-        if let Some(root) = repo_root(start) {
-            finder.add_path(&root.to_string_lossy());
-        }
-        if let Some(user) = user_config_dir() {
-            finder.add_path(&user.to_string_lossy());
-        }
+        Self::from_home(&StoreHome::resolve(start))
+    }
 
-        match finder.find("odm.toml") {
-            Ok(found) => Confygery::new()
-                .and_then(|mut c| {
-                    c.add_file(&found)?;
-                    c.build::<StoreConfig>()
-                })
-                .map_err(|e| StoreError::Config(e.to_string())),
-            // Not found anywhere → defaults (not an error).
-            Err(_) => Ok(StoreConfig::default()),
-        }
+    /// [`Self::load`] against an already-resolved home, for a caller that has
+    /// one (and so need not resolve twice).
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::load`].
+    pub fn from_home(home: &StoreHome) -> Result<Self> {
+        let Some(path) = home.operational_path.as_ref() else {
+            // No config anywhere → defaults (not an error).
+            return Ok(StoreConfig::default());
+        };
+        Confygery::new()
+            .and_then(|mut c| {
+                c.add_file(&path.to_string_lossy())?;
+                c.build::<StoreConfig>()
+            })
+            .map_err(|e| StoreError::Config(e.to_string()))
     }
 }
 
 /// Walks up from `start` looking for a directory containing `.git`.
-fn repo_root(start: &Path) -> Option<PathBuf> {
+pub(crate) fn repo_root(start: &Path) -> Option<PathBuf> {
     let mut dir = Some(start);
     while let Some(d) = dir {
         if d.join(".git").exists() {
@@ -72,7 +79,7 @@ fn repo_root(start: &Path) -> Option<PathBuf> {
 }
 
 /// The user config directory: `$XDG_CONFIG_HOME/odm` or `$HOME/.config/odm`.
-fn user_config_dir() -> Option<PathBuf> {
+pub(crate) fn user_config_dir() -> Option<PathBuf> {
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         if !xdg.is_empty() {
             return Some(PathBuf::from(xdg).join("odm"));
