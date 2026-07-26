@@ -159,8 +159,11 @@ pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
         NodeType::Project => (212, 110, 197), // magenta
         NodeType::Arc => (167, 139, 250),     // violet
         NodeType::Slice => (122, 162, 247),   // blue
-        NodeType::Design => (229, 192, 123),  // yellow
-        NodeType::Research => (240, 128, 74), // red-orange
+        NodeType::Design => (240, 128, 74),   // orange
+        // Red at the *same* saturation and luminosity as `design`'s orange
+        // (HSL 84.7% / 61.6%, hue rotated 19.5° → 0°), so the two read as one
+        // family at one weight rather than either shouting over the other.
+        NodeType::Research => (240, 74, 74), // red
         NodeType::Adr | NodeType::Note => return None,
     };
     Some(TabledColor::rgb_fg(r, g, b))

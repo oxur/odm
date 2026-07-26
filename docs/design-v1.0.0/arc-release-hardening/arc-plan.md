@@ -237,8 +237,11 @@ bright green. `complete` green + `verified` bright green deliberately keeps ODD-
 gate model separates. Note the terminal gate differs by type (`verified` project/arc, `tested`
 slice, `final` design/research), so green means *done at that node's layer*, not *finished*.
 Dimming wins over the colour on a withdrawn row. A **TYPE palette** was added alongside it —
-`project` magenta, `arc` violet, `slice` blue, `design` yellow, `research` red-orange (truecolor;
-`adr`/`note` left uncoloured rather than assigned by omission) — drawn from a different colour
+`project` magenta, `arc` violet, `slice` blue, `design` orange, `research` red (truecolor;
+`design`/`research` share saturation and luminosity, differing only in hue; `adr`/`note` left
+uncoloured rather than assigned by omission), and **DATE/ID muted** to ~58% of their band so the
+middle three columns carry the eye — derived from the theme's row colours, so the alternating
+stripe survives — drawn from a different colour
 system than STATUS on purpose, so *what kind of thing is this* and *how far along is it* stay
 visually separable.
 

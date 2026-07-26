@@ -296,7 +296,30 @@ fn type_cells_carry_one_hue_per_node_type() {
     assert!(row_for("Root project").contains("\u{1b}[38;2;212;110;197m"), "project is dim magenta");
     assert!(row_for("First arc").contains("\u{1b}[38;2;167;139;250m"), "arc is violet");
     assert!(row_for("Alpha").contains("\u{1b}[38;2;122;162;247m"), "slice is blue");
-    assert!(row_for("A design document").contains("\u{1b}[38;2;229;192;123m"), "design is yellow");
+    assert!(row_for("A design document").contains("\u{1b}[38;2;240;128;74m"), "design is orange");
+}
+
+#[test]
+fn date_and_id_are_muted_but_keep_the_alternating_band() {
+    // The date and the id are context; muting them lets type/status/name carry
+    // the eye. The muting is per-band, so the alternating stripe survives.
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let raw = run(dir.path(), &["list"]).out;
+    let data: Vec<&str> = raw.lines().skip(2).filter(|l| l.contains("20")).collect();
+
+    let first_fg = |line: &str| {
+        let i = line.find("\u{1b}[38;2;").expect("a truecolor foreground");
+        line[i..].split('m').next().unwrap().to_string()
+    };
+    // Two different muted tones, one per band — and neither is the full-strength
+    // band colour the NAME column still carries.
+    let a = first_fg(data[0]);
+    let b = first_fg(data[1]);
+    assert_ne!(a, b, "the bands stay distinguishable when muted");
+    assert!(a.contains("147;125;99"), "band A date is muted: {a}");
+    assert!(b.contains("147;108;67"), "band B date is muted: {b}");
+    assert!(raw.contains("\u{1b}[38;2;254;215;170m"), "NAME keeps the full band colour");
 }
 
 #[test]

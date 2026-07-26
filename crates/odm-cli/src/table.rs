@@ -62,6 +62,8 @@ pub(crate) struct Themed {
     dimmed: HashSet<usize>,
     /// Per-cell foreground overrides: `(row index into `rows`, column, colour)`.
     cell_colors: Vec<(usize, usize, TabledColor)>,
+    /// Columns rendered in a muted version of their row's band colour.
+    muted: Vec<usize>,
 }
 
 /// A row of the table body.
@@ -84,6 +86,7 @@ impl Themed {
             summary: String::new(),
             dimmed: HashSet::new(),
             cell_colors: Vec::new(),
+            muted: Vec::new(),
         }
     }
 
@@ -116,6 +119,16 @@ impl Themed {
         if let Some(last) = self.rows.len().checked_sub(1) {
             self.cell_colors.push((last, col, fg));
         }
+    }
+
+    /// Renders `cols` in a **muted** version of each row's band colour, so the
+    /// columns between them carry the eye.
+    ///
+    /// The muting is derived from the theme's own row colours rather than fixed,
+    /// so the alternating stripe survives — two bands in, two bands out — and a
+    /// change to the theme carries through instead of silently desynchronising.
+    pub(crate) fn mute_columns(&mut self, cols: &[usize]) {
+        self.muted = cols.to_vec();
     }
 
     /// The rendered width of each column: the widest cell in it, header
@@ -205,6 +218,23 @@ impl Themed {
             }
         }
 
+        // Muting is applied first, so an explicit per-cell colour still wins.
+        // A whole-row dim already covers every column, so those rows are left
+        // to it rather than being coloured twice.
+        if !self.muted.is_empty() {
+            let bands = helpers::parse_row_bg_colors(&theme);
+            for (i, row) in self.rows.iter().enumerate() {
+                if !matches!(row, RowData::Cells(_)) || self.dimmed.contains(&i) {
+                    continue;
+                }
+                let Some(fg) = muted_band_fg(&theme, i) else { continue };
+                let bg = helpers::get_data_row_bg_color(i, &bands);
+                for &col in &self.muted {
+                    helpers::apply_cell_color(&mut table, i + 2, col, fg.clone(), bg.clone());
+                }
+            }
+        }
+
         // Per-cell colours ride over the theme for the same reason as dimming.
         if !self.cell_colors.is_empty() {
             let bands = helpers::parse_row_bg_colors(&theme);
@@ -269,6 +299,34 @@ fn divider_row(widths: &[usize]) -> String {
     segments.join(&RULE_JUNCTION.to_string())
 }
 
+/// How far a muted column is taken down from its band colour.
+const MUTE: f32 = 0.58;
+
+/// The muted foreground for data row `i`: its own band colour, scaled toward
+/// the background. Returns `None` if the theme names no row colours.
+fn muted_band_fg(theme: &TableStyleConfig, i: usize) -> Option<TabledColor> {
+    let colors = &theme.rows.colors;
+    if colors.is_empty() {
+        return None;
+    }
+    // Row `i` of the data is table row `i + 2`, and the theme's colorization
+    // cycles over table rows — so the band is the parity of `i`, given the
+    // title and header above it.
+    let (r, g, b) = parse_hex(&colors[i % colors.len()].fg)?;
+    let scale = |c: u8| (f32::from(c) * MUTE).round() as u8;
+    Some(TabledColor::rgb_fg(scale(r), scale(g), scale(b)))
+}
+
+/// Parses `#RRGGBB` (the form the theme writes) into its channels.
+fn parse_hex(hex: &str) -> Option<(u8, u8, u8)> {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return None;
+    }
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
+    Some((channel(0..2)?, channel(2..4)?, channel(4..6)?))
+}
+
 /// The separator colour the theme draws its verticals in — what a divider row
 /// is coloured with, so the rule and the verticals form one grid. Falls back to
 /// white if the theme names no vertical colour.
@@ -276,14 +334,9 @@ fn rule_color(theme: &TableStyleConfig) -> TabledColor {
     let Some(hex) = theme.style.vertical_fg_color.as_deref() else {
         return TabledColor::FG_WHITE;
     };
-    let hex = hex.trim_start_matches('#');
-    if hex.len() != 6 {
-        return TabledColor::FG_WHITE;
-    }
-    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
-    match (channel(0..2), channel(2..4), channel(4..6)) {
-        (Some(r), Some(g), Some(b)) => TabledColor::rgb_fg(r, g, b),
-        _ => TabledColor::FG_WHITE,
+    match parse_hex(hex) {
+        Some((r, g, b)) => TabledColor::rgb_fg(r, g, b),
+        None => TabledColor::FG_WHITE,
     }
 }
 

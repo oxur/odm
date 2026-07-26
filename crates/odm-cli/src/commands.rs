@@ -255,10 +255,14 @@ pub fn new(
 /// The `list` table's columns (RH C-3 / F-4: no NUMBER).
 const LIST_COLUMNS: [&str; 5] = ["DATE", "TYPE", "STATUS", "NAME", "ID"];
 
+/// The `DATE` column's index.
+const DATE_COLUMN: usize = 0;
 /// The `TYPE` column's index, for the per-type colouring.
 const TYPE_COLUMN: usize = 1;
 /// The `STATUS` column's index, for the per-state colouring.
 const STATUS_COLUMN: usize = 2;
+/// The `ID` column's index.
+const ID_COLUMN: usize = 4;
 
 /// The NAME column's default width bound when neither `--width` nor
 /// `[display] max_width` says otherwise (F-9).
@@ -364,6 +368,9 @@ pub fn list(
 
     let width = view.width.or_else(|| display_max_width(root)).unwrap_or(DEFAULT_NAME_WIDTH);
     let mut table = Themed::new("NODES", &LIST_COLUMNS);
+    // The date and the id are context, not the answer — muted so the type,
+    // status and name between them carry the eye.
+    table.mute_columns(&[DATE_COLUMN, ID_COLUMN]);
     let mut shown = 0usize;
     for row in &rows {
         match row {
