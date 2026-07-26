@@ -58,7 +58,7 @@ pub fn orient(
     let frontmatters =
         commands::index_frontmatters(store, &gates).context("reconciling the index to orient")?;
 
-    let ctx = Context::load(root)?;
+    let ctx = Context::load(store)?;
     let projects: Vec<&Frontmatter> =
         frontmatters.iter().filter(|f| f.node_type() == NodeType::Project).collect();
 

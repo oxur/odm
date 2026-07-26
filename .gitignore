@@ -32,3 +32,6 @@ Thumbs.db
 
 # Misc
 /workbench
+
+# odm's store worktree — a separate branch, never staged here.
+/.worktrees/

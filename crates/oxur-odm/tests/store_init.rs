@@ -39,6 +39,30 @@ fn odm(dir: &Path) -> AssertCommand {
     cmd
 }
 
+// ----- RH C-5: derived state stays out of the store's history ---------------
+
+#[test]
+fn the_scaffolded_store_ignores_its_derived_state() {
+    let dir = repo();
+    odm(dir.path()).args(["store", "init"]).assert().success();
+    let store = dir.path().join(".worktrees").join("odm");
+
+    // Make odm produce both kinds of derived state, then ask git what it sees.
+    odm(dir.path()).args(["new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["check"]).assert().success();
+    assert!(store.join(".odm").is_dir(), "the run produced derived state to ignore");
+
+    let untracked = git(&store, &["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        !untracked.contains(".odm/"),
+        "`.odm/` is derived — an index that rebuilds and one operator's current \
+         selection — and must not be offered for commit on a shared branch; got:\n{untracked}"
+    );
+    // The other half: the sources it protects are still very much there.
+    assert!(untracked.contains("nodes/"), "nodes are still tracked; got:\n{untracked}");
+    assert!(untracked.contains("config.toml"), "the config is still tracked; got:\n{untracked}");
+}
+
 // ----- L-6/L-7/L-8/L-9: bootstrap stands the home up ------------------------
 
 #[test]

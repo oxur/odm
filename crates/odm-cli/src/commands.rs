@@ -904,7 +904,6 @@ pub fn decomposed(
 /// `use [project|arc] X` — sets the current context slot to node X.
 pub fn use_context(
     store: &Store,
-    root: &Path,
     kind: UseKind,
     reference: &str,
     err: &mut dyn Write,
@@ -920,19 +919,19 @@ pub fn use_context(
             kind.label()
         );
     }
-    let mut ctx = Context::load(root)?;
+    let mut ctx = Context::load(store)?;
     match kind {
         UseKind::Project => ctx.project = Some(fm.id()),
         UseKind::Arc => ctx.arc = Some(fm.id()),
     }
-    ctx.save(root)?;
+    ctx.save(store)?;
     term::success(err, &format!("context: {} = {} ({})", kind.label(), fm.name(), fm.id()))?;
     Ok(())
 }
 
 /// `context` — shows the current project/arc selection. Data → `out`.
-pub fn context(store: &Store, root: &Path, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
-    let ctx = Context::load(root)?;
+pub fn context(store: &Store, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+    let ctx = Context::load(store)?;
     let project = ctx.project.and_then(|id| store.load(id).ok());
     let arc = ctx.arc.and_then(|id| store.load(id).ok());
 

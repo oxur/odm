@@ -12,7 +12,8 @@
 //! 2. `[store]` written to the code-branch `odm.toml` — after which slice 01's
 //!    resolution redirects every command into the new home
 //! 3. the store scaffolded *inside* the worktree: `config.toml` + empty `nodes/`
-//! 4. `/.worktrees/` git-ignored on the code branch
+//! 4. `.gitignore` in the store, keeping derived `.odm/` state out of its history
+//! 5. `/.worktrees/` git-ignored on the code branch
 //!
 //! Ordering matters: the locator is written only once the worktree exists, so a
 //! failed `init` never leaves an `odm.toml` pointing at nothing.
@@ -24,6 +25,18 @@ use crate::home::{
     DEFAULT_STORE_NAME, DEFAULT_WORKTREE_BASE, LOCATOR_FILE, OPERATIONAL_FILE, StoreLocation,
 };
 use crate::worktree::{self, GitVersion};
+
+/// The store's own `.gitignore`, scaffolded at bootstrap.
+///
+/// `.odm/` is derived state: the index is a stat-cache that rebuilds from the
+/// nodes, and `context.json` records one operator's current focus. Tracking
+/// either would make every `odm` invocation dirty the store branch and turn a
+/// shared history into a merge-conflict generator.
+pub const STORE_GITIGNORE: &str = "\
+# Derived state: the index rebuilds from `nodes/`, and `context.json` is one
+# operator's current selection. The store's history holds sources only.
+/.odm/
+";
 
 /// The operational config a fresh store is scaffolded with — the gate-sets
 /// ODD-0013 §5.1 defines, plus the display default.
@@ -288,7 +301,15 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
     let nodes = store_root.join(crate::layout::NODES_DIR);
     std::fs::create_dir_all(&nodes).map_err(|e| StoreError::io(&nodes, e))?;
 
-    // 4. Keep the worktree off the code branch.
+    // 4. Keep derived state out of the store's history. `.odm/` holds the index
+    //    (a rebuildable stat-cache) and `context.json` (one user's current
+    //    selection) — neither is source, and both change on almost every
+    //    command, so committing them would put a conflict-generating cache on a
+    //    branch whose entire purpose is to be shared.
+    let ignore = store_root.join(".gitignore");
+    std::fs::write(&ignore, STORE_GITIGNORE).map_err(|e| StoreError::io(&ignore, e))?;
+
+    // 5. Keep the worktree off the code branch.
     ensure_gitignored(&plan.repo_root)?;
 
     Ok(Bootstrapped {

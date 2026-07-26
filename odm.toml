@@ -1,44 +1,12 @@
-# ODM Configuration for the odm repository
-# odm dogfoods itself to manage its own design documents.
+# odm locator for the odm repository (ODD-0022 §4.2).
+#
+# This file says *where the store is*, and nothing else. The operational half —
+# gate-sets, display, docs_directory, author — lives in `config.toml` **inside**
+# the store, so it is versioned with the data it governs and cannot drift from
+# it. Both halves were in this file until the RH C-5 cutover; the store's
+# `config.toml` records where each key went.
 
-# Documentation directory
-docs_directory = "./docs/design"
-
-# Development documents directory
-dev_directory = "./docs/dev"
-
-# Preserve state directory structure in dustbin
-preserve_dustbin_structure = true
-
-# Automatically stage changes with git
-auto_stage_git = true
-
-# Per-type gate-sets (ODD-0013 §5.1). Added in arc06 slice04 (self-host cutover):
-# odm now manages its own plan as work nodes under `nodes/`, so `rollup`/`orient`/
-# `check` need the work-node gate-sets to render/validate status. The sequences are
-# the canonical ODD-0013 §5.1 sets; the self-host importer stamps status against
-# the same sequences.
-[gates.project]
-sequence = ["planned", "in-progress", "complete", "verified"]
-
-[gates.arc]
-sequence = ["planned", "in-progress", "complete", "verified"]
-
-[gates.slice]
-sequence = ["planned", "built", "tested"]
-
-# Document gate-sets (RH C-2). `[gates.odd]` was renamed to `[gates.design]`
-# with its sequence unchanged; `[gates.research]` mirrors it (operator decision,
-# 2026-07-26 — see ODD-0013 §5.1), so a research doc in any state directory maps
-# onto a gate reach with no special-casing in the importer.
-[gates.design]
-sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
-
-[gates.research]
-sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
-
-# Display preferences (RH C-3). `max_width` bounds the NAME column in
-# `odm list`; anything longer is elided with a trailing ` ...`. The `--width`
-# flag overrides it per-run; with neither set, `list` falls back to 64.
-[display]
-max_width = 64
+[store]
+worktree_base = ".worktrees"
+worktree_name = "odm"
+branch_name = "odm"

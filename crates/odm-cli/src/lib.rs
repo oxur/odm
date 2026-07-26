@@ -654,11 +654,13 @@ pub fn dispatch(
         }
         // The context names node ids, so it belongs with the nodes: it resolves
         // under the store root, as the `.odm/` index already does (slice-01
-        // carried item #1).
+        // carried item #1). The path comes off the `Store` handle, so no caller
+        // can hand it the invocation root instead — which is what left `orient`
+        // blind to a selection `use` had just written (RH C-5).
         Command::Use { kind, reference } => {
-            commands::use_context(&store, &home.store_root, kind.into(), &reference, err)?;
+            commands::use_context(&store, kind.into(), &reference, err)?;
         }
-        Command::Context { json } => commands::context(&store, &home.store_root, json, out)?,
+        Command::Context { json } => commands::context(&store, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
         // `reconcile` likewise returns its own exit code (0 clean / 1 drift).
