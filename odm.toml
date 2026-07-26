@@ -27,5 +27,12 @@ sequence = ["planned", "in-progress", "complete", "verified"]
 [gates.slice]
 sequence = ["planned", "built", "tested"]
 
-[gates.odd]
+# Document gate-sets (RH C-2). `[gates.odd]` was renamed to `[gates.design]`
+# with its sequence unchanged; `[gates.research]` mirrors it (operator decision,
+# 2026-07-26 — see ODD-0013 §5.1), so a research doc in any state directory maps
+# onto a gate reach with no special-casing in the importer.
+[gates.design]
+sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
+
+[gates.research]
 sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]

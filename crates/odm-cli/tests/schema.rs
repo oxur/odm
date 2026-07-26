@@ -31,7 +31,7 @@ fn new_node_stamps_schema_v1() {
     let store = Store::open(dir.path());
 
     // Create one node of a few representative types; each must carry <type>/v1.0.
-    for (ty, name) in [("project", "Proj"), ("odd", "Doc"), ("slice", "Work")] {
+    for (ty, name) in [("project", "Proj"), ("design", "Doc"), ("slice", "Work")] {
         let (code, _o, _e) = run_code(dir.path(), &["new", ty, name]);
         assert_eq!(code, Some(0), "`odm new {ty}` dispatches");
     }
@@ -44,10 +44,10 @@ fn new_node_stamps_schema_v1() {
         .collect();
 
     assert_eq!(by_type[&NodeType::Project], SchemaMarker::current(NodeType::Project));
-    assert_eq!(by_type[&NodeType::Odd], SchemaMarker::current(NodeType::Odd));
+    assert_eq!(by_type[&NodeType::Design], SchemaMarker::current(NodeType::Design));
     assert_eq!(by_type[&NodeType::Slice], SchemaMarker::current(NodeType::Slice));
     // "v1.0" is the current version.
-    assert_eq!(by_type[&NodeType::Odd].version, SchemaVersion::CURRENT);
+    assert_eq!(by_type[&NodeType::Design].version, SchemaVersion::CURRENT);
 }
 
 // ----- V-3: a wrong-type field is a `check` Error ----------------------------
@@ -58,7 +58,7 @@ fn check_wrong_type_field_is_error() {
     let store = Store::open(dir.path());
     let day = NaiveDate::from_ymd_opt(2026, 7, 6).unwrap();
 
-    // An `odd` node carrying `desired_facts` (a work-only field) — a per-type
+    // A `design` node carrying `desired_facts` (a work-only field) — a per-type
     // contract violation. Persist it directly (the CLI would never create this).
     let fact = DesiredFact {
         id: "up".to_string(),
@@ -69,9 +69,9 @@ fn check_wrong_type_field_is_error() {
             expect: ShellExpect { exit: 0, stdout_contains: None },
         },
     };
-    let fm = Frontmatter::new(Id::new(), 1, NodeType::Odd, "Bad", day, day, Origin::Planned)
+    let fm = Frontmatter::new(Id::new(), 1, NodeType::Design, "Bad", day, day, Origin::Planned)
         .with_desired_facts(vec![fact])
-        .with_schema(SchemaMarker::current(NodeType::Odd));
+        .with_schema(SchemaMarker::current(NodeType::Design));
     store.persist(&Document::new(fm, "body\n")).unwrap();
 
     // `odm check` is an Error (exit 1), and names the wrong-type-field finding.
@@ -106,10 +106,10 @@ fn check_green_when_fields_valid_for_type() {
     // (valid on work) — both stamped v1.0. No field-validity findings.
     let a = Id::new();
     let b = Id::new();
-    let odd = Frontmatter::new(a, 1, NodeType::Odd, "Doc", day, day, Origin::Planned)
-        .with_schema(SchemaMarker::current(NodeType::Odd));
-    let mut newer = Frontmatter::new(b, 2, NodeType::Odd, "Newer", day, day, Origin::Planned)
-        .with_schema(SchemaMarker::current(NodeType::Odd));
+    let odd = Frontmatter::new(a, 1, NodeType::Design, "Doc", day, day, Origin::Planned)
+        .with_schema(SchemaMarker::current(NodeType::Design));
+    let mut newer = Frontmatter::new(b, 2, NodeType::Design, "Newer", day, day, Origin::Planned)
+        .with_schema(SchemaMarker::current(NodeType::Design));
     newer.edges_mut().supersedes = Some(odm_core::frontmatter::Supersedes {
         node: a,
         kind: odm_core::frontmatter::SupersedeKind::Obsoletes,

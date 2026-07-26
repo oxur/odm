@@ -154,7 +154,7 @@ impl From<EvidenceArg> for Evidence {
 enum Command {
     /// Create a node (idempotent: re-running describes rather than duplicating).
     New {
-        /// Node type: project|arc|slice|odd|adr|note.
+        /// Node type: project|arc|slice|design|research|adr|note.
         node_type: String,
         /// Human-readable name.
         name: String,

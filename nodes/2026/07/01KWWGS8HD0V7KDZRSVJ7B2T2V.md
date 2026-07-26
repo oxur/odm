@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HD0V7KDZRSVJ7B2T2V
 number: 9
-type: odd
-schema: odd/v1.0
+type: design
+schema: design/v1.0
 name: Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8)
 created: 2025-12-27
 updated: 2025-12-27

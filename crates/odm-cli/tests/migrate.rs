@@ -89,7 +89,7 @@ fn migrate_command_reports_empty_corpus() {
 fn check_green_on_migrated_odm_docs() {
     // Import odm's real `docs/design` into a fresh store (migrate never mutates
     // the legacy tree — proven in odm-migrate's never-delete test), then assert
-    // `odm check` is green (exit 0) on the imported `odd` graph.
+    // `odm check` is green (exit 0) on the imported document graph.
     let store_dir = TempDir::new().unwrap();
     let (ok, _out, err) = run(store_dir.path(), &["migrate", real_docs().to_str().unwrap()]);
     assert!(ok, "migrate real docs dispatches cleanly:\n{err}");

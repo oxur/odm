@@ -6,7 +6,8 @@
 //! - [`Id`] — a node's stable, never-reused [ULID](https://github.com/ulid/spec)
 //!   identity.
 //! - [`NodeType`] — the closed set of node types (`project`/`arc`/`slice` work
-//!   nodes; `odd`/`adr`/`note` document nodes) — no node smaller than a slice.
+//!   nodes; `design`/`research`/`adr`/`note` document nodes) — no node smaller
+//!   than a slice.
 //! - [`Origin`] — how a node arose (`planned`/`discovered`/`amendment`).
 //! - [`Node`] — a minimal skeleton tying the above together with a human
 //!   `number`, `name`, and `reserved` flag.

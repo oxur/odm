@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [architecture, design, node-graph, dag, reconciliation]
 created: 2026-06-20
-updated: 2026-06-26
+updated: 2026-07-26
 state: Draft
 supersedes: null
 superseded-by: null
-version: 1.9
+version: 2.0
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -70,8 +70,13 @@ Two families, one substrate:
   node/document; the urge to drill into steps is funnelled into *breadth* (more
   slices/arcs), not depth. (Supersedes the parenthetical leaf-`step` note in
   0025-§4a.)
-- **Document nodes:** `odd` (design doc), `adr`/`rfc` (decision record), `note`.
+- **Document nodes:** `design` (a design document — formerly `odd`), `research`
+  (a research / literature-survey / investigation doc that *informs* decisions
+  but does not govern like a design doc), `adr`/`rfc` (decision record), `note`.
   Long-form content; same id/edge/gate machinery; supersede-don't-delete.
+  A document node is **`research` iff its source frontmatter `tags` include
+  `research`**, else `design` — self-documenting, and robust where a
+  title-prefix or filename rule would not be (v2.0).
 
 `type` is fixed at creation. New types are config + a gate-set; the engine is
 type-agnostic. (Open Q-1: is `type` ever mutable? Current answer: no — model a
@@ -240,13 +245,24 @@ sequence = ["planned","built","tested","deployed","verified-live","operator-conf
 [gates.arc]
 sequence = ["planned","in-progress","complete","verified"]
 
-[gates.odd]
+[gates.design]
+sequence = ["draft","under-review","revised","accepted","active","final"]
+
+[gates.research]
 sequence = ["draft","under-review","revised","accepted","active","final"]
 ```
 
+`research` **mirrors `design`** initially (operator decision, 2026-07-26). The
+migrate importer maps a source doc's state directory (`01-draft`…`06-final`)
+onto a gate reach, so a shared full sequence means research docs in any state
+dir map with zero special-casing. A semantically tighter research lifecycle
+(research docs don't really go "active") is defensible, but it would also
+require constraining which state dirs research docs may occupy — tighten later
+if research proves it needs its own lifecycle.
+
 A node records which gates it has reached (with date + actor); gates are ordered
 so "terminal gate" and "advance/regress" are well-defined. The old single
-`DocState` becomes simply the `odd` gate-set — *one* configuration, not a
+`DocState` becomes simply the `design` gate-set — *one* configuration, not a
 privileged concept. Binary done/open is gone: "done at its layer" vs "verified
 live" are now distinct gates, which is precisely the distinction that hid the
 prod-DB failure.
@@ -394,11 +410,11 @@ Map the legacy model onto the new one:
 | Legacy | New |
 |---|---|
 | `number` (identity, reusable) | fresh **ULID** id; legacy number preserved as `number` metadata |
-| `DocState` scalar | `odd` gate-set position |
+| `DocState` scalar | `design` gate-set position |
 | state directory (`05-active/…`) | dropped (was redundant truth); state → gate |
 | `supersedes`/`superseded_by` | `supersedes` edge (reverse derived) |
 | dustbin / Removed / Overwritten | supersede-don't-delete + git history |
-| flat doc | `odd`/`adr` document node |
+| flat doc | `design`/`research`/`adr` document node |
 
 The importer is **idempotent** and `--dry-run`-able; it never deletes legacy
 files (git preserves history). Once it can import odm's own `docs/`, `odm`
@@ -474,3 +490,19 @@ Two workstreams ride alongside the engine:
 **Next SDLC step:** the arc/slice breakdown (its own ODD). MVP = Arcs A1–A3
 (substrate + DAG/gates + rollup/orient). Build each slice with a ledger; self-host
 once A1–A3 land.
+
+## Version History
+
+### v2.0 — 2026-07-26
+Node-type taxonomy: renamed document node `odd` → `design` (§2.2); added a
+`research` document type for investigation / literature-survey docs. Gate-sets
+(§5.1): `[gates.odd]` → `[gates.design]` (unchanged sequence); added
+`[gates.research]`, mirroring `design` initially (operator decision — see the
+rationale in §5.1). Classification: a document node is `research` iff its source
+`tags` include `research`, else `design`. Migration table (§9) updated for both.
+Surfaced by: RH UAT **F-2** (`odd`→`design`) + **F-3** (add `research`).
+Realized in RH chunk **C-2**; amendment stub `C-2-amendment-ODD-0013.md`.
+
+### v1.9 and earlier — 2026-06-20 … 2026-06-26
+Authored and revised during the v-major rebuild's SDLC step 3 (no version-history
+section existed before v2.0; earlier revisions are in git history).

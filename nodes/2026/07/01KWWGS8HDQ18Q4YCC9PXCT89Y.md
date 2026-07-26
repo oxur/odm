@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HDQ18Q4YCC9PXCT89Y
 number: 13
-type: odd
-schema: odd/v1.0
+type: design
+schema: design/v1.0
 name: odm — Architecture & Design (v-major rebuild)
 created: 2026-06-20
 updated: 2026-06-26

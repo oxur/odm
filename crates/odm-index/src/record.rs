@@ -77,7 +77,7 @@ pub struct IndexRecord {
     /// provenance view (slice06). Reuses `odm_core::Origin` (string-serialized,
     /// no `skip_serializing_if`, so postcard-safe).
     pub origin: Origin,
-    /// The node type (`project`/`arc`/`slice`/`odd`/…).
+    /// The node type (`project`/`arc`/`slice`/`design`/…).
     pub node_type: NodeType,
     /// The node's state in the gate model: each reached gate with its evidence
     /// level, gate-name sorted. odm has no single lifecycle `state` — status is a

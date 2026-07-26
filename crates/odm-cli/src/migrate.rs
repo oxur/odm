@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use odm_core::NodeType;
-use odm_migrate::mapping::canonical_odd_gates;
+use odm_migrate::mapping::{DocGates, canonical_design_gates, canonical_research_gates};
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::Store;
 
@@ -34,12 +34,20 @@ pub(crate) fn migrate(
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let legacy = resolve(root, legacy_path);
-    // Prefer a repo-configured `[gates.odd]`; fall back to the canonical set.
     let (gates, _) = commands::load_gate_config(root)?;
-    let odd = gates.for_type(NodeType::Odd).cloned().unwrap_or_else(canonical_odd_gates);
+    // A repo may configure either document gate-set; each falls back to its
+    // canonical sequence independently (C-2: `research` mirrors `design` today,
+    // but nothing here assumes it always will).
+    let doc_gates = DocGates {
+        design: gates.for_type(NodeType::Design).cloned().unwrap_or_else(canonical_design_gates),
+        research: gates
+            .for_type(NodeType::Research)
+            .cloned()
+            .unwrap_or_else(canonical_research_gates),
+    };
 
     let mode = Mode::from_dry_run(dry_run);
-    let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &odd)
+    let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &doc_gates)
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
@@ -189,7 +197,9 @@ fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The "note" cell for a created row: its identity, plus a retirement flag.
+/// The "note" cell for a created row: its type and identity, plus a retirement
+/// flag.
 fn created_note(c: &Created) -> String {
-    if c.retired { format!("odd {} (retired)", c.id) } else { format!("odd {}", c.id) }
+    let what = format!("{} {}", c.node_type.as_str(), c.id);
+    if c.retired { format!("{what} (retired)") } else { what }
 }

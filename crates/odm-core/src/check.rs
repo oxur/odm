@@ -120,7 +120,7 @@ pub enum Violation {
     },
     /// A field is present that is **not valid for the node's type** (arc06 slice03,
     /// ODD-0020 §2): the per-type schema contract is violated — e.g. `desired_facts`
-    /// on an `odd`, or `supersedes` on a `slice`. A structural contract violation,
+    /// on a `design`, or `supersedes` on a `slice`. A structural contract violation,
     /// so it is an Error (see [`content_validity`]).
     FieldNotValidForType {
         /// The offending field name (e.g. `"desired_facts"`).
@@ -129,11 +129,11 @@ pub enum Violation {
         node_type: crate::NodeType,
     },
     /// A node is stamped with a schema **newer** than this binary supports (arc06
-    /// slice03, ODD-0020 §5): e.g. an `odd/v1.1` node read by a `v1.0` binary. A
+    /// slice03, ODD-0020 §5): e.g. a `design/v1.1` node read by a `v1.0` binary. A
     /// reported condition — the reader cannot fully understand it — never a silent
     /// misparse.
     UnsupportedSchema {
-        /// The offending schema marker (e.g. `"odd/v1.1"`).
+        /// The offending schema marker (e.g. `"design/v1.1"`).
         schema: String,
     },
 }

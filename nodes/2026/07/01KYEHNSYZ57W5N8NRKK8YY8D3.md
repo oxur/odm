@@ -1,15 +1,29 @@
 ---
+id: 01KYEHNSYZ57W5N8NRKK8YY8D3
 number: 21
-title: "Research — Information-Theoretic Complexity of Text (Code and Prose)"
-author: "the evidence"
-component: All
-tags: [research, information-theory, complexity, entropy, text, code, estimation]
+type: research
+schema: research/v1.0
+name: Research — Information-Theoretic Complexity of Text (Code and Prose)
 created: 2026-07-25
 updated: 2026-07-25
-state: Draft
-supersedes: null
-superseded-by: null
-version: 1.1
+tags:
+- research
+- information-theory
+- complexity
+- entropy
+- text
+- code
+- estimation
+component: All
+origin: planned
+reserved: false
+status:
+  draft:
+    reached: 2026-07-25
+    evidence: asserted
+    evidence_dates:
+      asserted: 2026-07-25
+author: the evidence
 ---
 
 # Research — Information-Theoretic Complexity of Text (Code and Prose)

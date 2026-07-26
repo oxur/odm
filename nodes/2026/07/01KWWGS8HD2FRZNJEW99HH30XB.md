@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HD2FRZNJEW99HH30XB
 number: 10
-type: odd
-schema: odd/v1.0
+type: design
+schema: design/v1.0
 name: Oxur Design Documentation CLI - Phases 9-10 Build Plan
 created: 2025-12-27
 updated: 2025-12-27

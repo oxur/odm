@@ -3,7 +3,7 @@ number: 11
 title: "Research: A markdown/git-native, dependency-ordered planning system"
 author: "opaque IDs"
 component: All
-tags: [change-me]
+tags: [research, planning, dag, markdown, git-native, dependency-order, prior-art]
 created: 2026-06-20
 updated: 2026-06-20
 state: Final

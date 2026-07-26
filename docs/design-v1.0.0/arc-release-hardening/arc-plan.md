@@ -41,7 +41,7 @@ cc-prompts, re-validated by re-running `odm self-host`.
 | Chunk | Scope | Kind | Covers (F-rows) | Depends on |
 |-------|-------|------|-----------------|------------|
 | **C-1 — Adopt Oxur table styling/theming** | Colours + the warm-orange Oxur theme for all output. **Route DECIDED — B** (ADR `adr-c1-oxur-table-re-extraction.md` §0; see F-1): re-extracted upstream as **`oxur-term`** (table + terminal helpers); odm depends on it alone (`oxur-cli` shed). Routes weighed were **(A)** `oxur-cli` lib-only vs **(B, chosen)** a standalone crate — see the record below. | model/arch (ADR) | F-1 | — (foundational) |
-| **C-2 — Type taxonomy** | `odd` → `design`; add `research` type; re-stamp the 13 migrated nodes; reclassify research docs; gate-sets + schema markers + migrate mapping. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
+| **C-2 — Type taxonomy** **DONE 2026-07-26** | `odd` → `design`; added `research`; ODD-0013 v2.0 + ODD-0020 v1.1 amended first; re-stamped the corpus in place (**9 `design` + 5 `research`**, identities preserved) via a new `odm-migrate::restamp` pass; `[gates.design]` + `[gates.research]` (mirrored). `check` green at 60 nodes, no `odd` left. See `c2-closing-report.md`. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
 | **C-3 — `odm list` overhaul** | Drop the number column; date-first + `--date=updated`; status column after type; branch-and-leaf tree (drop name-prefixing); max-width config+flag with ` ...` elision; names lose number-refs. | surface | F-4, F-5, F-6, F-7, F-8, F-9 | C-1, C-2 |
 | **C-4 — Command surface cleanup** | `context`→`project` (+`--name`, current default); `path`→`chain`; `new` warns-not-displays on re-run; `rollup` help + md/json output + `--out`/format name (defaults `md`/`ROLLUP`). | surface | F-10, F-11, F-12, F-13 | (light) C-1 |
 | **C-5 — Fold `self-host` into `migrate`** | Consolidate: `self-host` becomes a case of `migrate` (e.g. `migrate --plan` / autodetect); one verb. | surface/medium | F-14 | — |
@@ -70,7 +70,7 @@ uses) → C-3 → C-4 / C-5 slottable anytime. More batches → more chunks.
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | RH-1 | C-1 (shared styling/table crate) closed | ptr: `C-1-cdc-verification.md` | serious | arc-plan | **attested** | CDC structural verify (`C-1-cdc-verification.md`): `oxur-term` is odm's sole oxur dep (`oxur-cli` dropped), no raw `tabled` table-building remains, rendering routes through `odm-cli/src/table.rs` (`TableStyleConfig::default().apply_to_table`) + status via `term.rs`/`oxur_term::common::output`; **themed `odm list` reproduced visually** (2026-07-26 capture, 59 nodes, warm-orange). | Flips `reproduced`/`done` on: commit of the staged diff + CC cargo/clippy/fmt green (local 1.85+) + `odm check` green + CI. Foundational — all output renders through it. Disclosed deviation (not a defect): impl uses the lower-level `Builder`+`apply_to_table` (the `oxur-odm` path), not high-level `OxurTable`, because `OxurTable` lacks theme-injection + a text footer — upstream follow-up noted in `table.rs`. |
-| RH-2 | C-2 (type taxonomy: `odd`→`design` + `research`) closed | ptr: C-2 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Needs ODD-0013 + ODD-0020 amendment first. |
+| RH-2 | C-2 (type taxonomy: `odd`→`design` + `research`) closed | ptr: `c2-closing-report.md` | serious | arc-plan | **attested** | `c2-closing-report.md` (2026-07-26): ODD-0013 v2.0 + ODD-0020 v1.1 landed **before** the code; workspace build/test/clippy/fmt green; corpus re-stamped in place — 60 nodes, type/schema pairing consistent for all, **zero `odd` in any frontmatter**; the 4 pre-existing research nodes kept their ULIDs; `odm check` green; capture in `c2-capture-odm-list.ansi` | attested-by-CC → **reproduced** when CI runs the cargo rows. Model-first rule honoured. Decisions recorded: `research` mirrors `design`; no legacy `odd` read-alias; node #21 imported (see change-log v1.5). |
 | RH-3 | C-3 (`odm list` overhaul) closed | ptr: C-3 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Depends on RH-1 + RH-2. |
 | RH-4 | C-4 (command surface cleanup) closed | ptr: C-4 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | RH-5 | C-5 (fold `self-host` into `migrate`) closed | ptr: C-5 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
@@ -95,8 +95,8 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 | ID | Finding | Triage | Chunk | Disposition | Status |
 |----|---------|--------|-------|-------------|--------|
 | F-1 | Output is plain (no colours); adopt the `oxur-cli` table styling/theming (an established pattern) — **very important for v1**; OK to split the table/terminal code out of `oxur-cli` | **model/arch** | C-1 | **DECIDED: Route B — `oxur-term` extracted** (table **+** terminal helpers; ADR `adr-c1-oxur-table-re-extraction.md` §0). odm depends on `oxur-term` alone (`oxur-cli` shed). C-1 wires odm's tables + status lines through it; themed `list` reproduced. | **dispositioned** (RH-1 attested-on-close) |
-| F-2 | Don't surface `odd` as a type in the UI → use **`design`** | **model** | C-2 | Rename `NodeType::Odd`→`Design`; schema marker `odd/v1.0`→`design/v1.0`; gate-set `[gates.odd]`→`[gates.design]`; re-stamp the 13 nodes → ODD-0013/0020 amendment | open |
-| F-3 | Add a **`research`** type; reclassify research docs from `odd`/`design` → `research` | **model** | C-2 | New `NodeType::Research` + gate-set + schema marker; reclassify the relevant migrated nodes | open |
+| F-2 | Don't surface `odd` as a type in the UI → use **`design`** | **model** | C-2 | **Shipped.** `NodeType::Odd`→`Design`; `odd/v1.0`→`design/v1.0`; `[gates.odd]`→`[gates.design]`; corpus re-stamped in place (ids preserved). `odm list` shows `design`, never `odd`. | **done** — 2026-07-26 |
+| F-3 | Add a **`research`** type; reclassify research docs from `odd`/`design` → `research` | **model** | C-2 | **Shipped.** `NodeType::Research` + `[gates.research]` (mirrors `design`) + `research/v1.0`; classification is **tag-based** (`research` in `tags`), so it survives renames. 5 research nodes: #11, #14, #16, #18, #21. | **done** — 2026-07-26 |
 | F-4 | Remove the **number column** from `odm list` | surface | C-3 | Drop the column (the `number` field stays as metadata; ULID is identity) | open |
 | F-5 | First column = **date (creation)**; flag `--date=updated` switches to the updated date | surface | C-3 | Date-first column + `--date={created\|updated}` flag (default created) | open |
 | F-6 | Remove **number-references from titles** (confusing as time moves on) | surface / naming | C-3 | De-number names on display + a naming convention "names don't embed numbers"; re-self-host regenerates | open |
@@ -181,6 +181,22 @@ five-iteration cap. Chunk closes bubble up to this arc-plan; the arc closes with
 the settled surface.
 
 ## Version History
+
+### v1.5 — 2026-07-26
+**C-2 closed (RH-2 attested); F-2/F-3 dispositioned.** Model-first honoured: **ODD-0013 v2.0**
+(node types `odd`→`design`, added `research`, tag-based classification, gate-sets) and
+**ODD-0020 v1.1** (marker set, re-stamp-on-re-run, no read-alias) landed *before* the code.
+Three decisions taken and recorded: (1) **`research` mirrors `design`** — operator call, zero
+migration churn, and `RESEARCH_GATES` is a named constant so tightening it later is one line;
+(2) **no legacy `odd` read-alias** — hard re-stamp, `check` proves nothing is left; (3) **node
+#21 imported** — `docs/design` held **14** documents against the corpus's 13 (`0021-research-…`
+was authored after the last migrate), so a re-run also mints it. That met the `CLAUDE.md` G-1
+minting freeze, so it was raised rather than resolved silently; the operator chose to import.
+Corpus is now **60 nodes: 9 `design` + 5 `research`** + 46 work nodes, `check` green, ids
+preserved. Implementation note: the no-alias decision forced a new `odm-migrate::restamp` pass
+— once `"odd"` is gone from the enum the old nodes no longer *parse*, so the migration could
+not read its own input; the pass rewrites the two dead-type frontmatter lines and hands off to
+the typed path. Evidence: `c2-closing-report.md`. Surfaced by: C-2 implementation (CC).
 
 ### v1.4 — 2026-07-26
 **Reconciled two internal inconsistencies CC flagged at v1.3.** The **C-1 chunk row** still read "Route OPEN" against F-1's "DECIDED — Route B", and the **base-branch bullet** still read "Open item for C-1's cc-prompt" though C-1 had already branched (`rh-c1-adopt-oxur-term`, off `release/1.0.x`). Both updated to the settled state — CDC text, reconciled by CDC; no finding or ledger change. Surfaced by: CC's v1.2/v1.3 close notes.

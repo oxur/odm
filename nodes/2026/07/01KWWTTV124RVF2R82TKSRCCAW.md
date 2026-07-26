@@ -1,13 +1,17 @@
 ---
 id: 01KWWTTV124RVF2R82TKSRCCAW
 number: 20
-type: odd
-schema: odd/v1.0
+type: design
+schema: design/v1.0
 name: Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
 created: 2026-07-06
 updated: 2026-07-06
 tags:
-- change-me
+- schema
+- versioning
+- frontmatter
+- migrate
+- metadata
 component: All
 origin: planned
 reserved: false

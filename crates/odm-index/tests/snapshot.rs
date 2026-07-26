@@ -147,7 +147,7 @@ fn arb_node_type() -> impl Strategy<Value = NodeType> {
         Just(NodeType::Project),
         Just(NodeType::Arc),
         Just(NodeType::Slice),
-        Just(NodeType::Odd),
+        Just(NodeType::Design),
         Just(NodeType::Adr),
         Just(NodeType::Note),
     ]

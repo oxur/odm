@@ -39,7 +39,7 @@ fn maps_legacy_fields_to_node() {
     // #5 "The new approach": Final, supersedes 4, carries metadata.
     let five = &nodes[&5];
     let fm = five.frontmatter();
-    assert_eq!(fm.node_type(), NodeType::Odd, "type = odd");
+    assert_eq!(fm.node_type(), NodeType::Design, "type = odd");
     assert_eq!(fm.number(), 5, "legacy number preserved");
     assert_eq!(fm.name(), "The new approach", "title → name");
     assert_eq!(fm.component(), Some("engine"), "component carried");
@@ -203,7 +203,7 @@ fn migrate_malformed_frontmatter_is_a_reported_skip() {
     );
 }
 
-// ----- V-4: migrate stamps imported nodes `odd/v1.0` ------------------------
+// ----- V-4: migrate stamps imported nodes `design/v1.0` ---------------------
 
 #[test]
 fn migrate_stamps_schema_v1() {
@@ -217,14 +217,14 @@ fn migrate_stamps_schema_v1() {
     let store = Store::open(store_dir.path());
     migrate(&store, legacy_dir.path(), Mode::Commit).expect("migrate");
 
-    // Every imported node is stamped `odd/v1.0` (the v0.1 → v1.0 upgrade path).
+    // Every imported node is stamped `design/v1.0` (the v0.1 → v1.0 upgrade path).
     let nodes = store.load_all().unwrap();
     assert!(!nodes.is_empty());
     for doc in &nodes {
         assert_eq!(
             doc.frontmatter().schema(),
-            Some(SchemaMarker::current(NodeType::Odd)),
-            "#{} stamped odd/v1.0",
+            Some(SchemaMarker::current(NodeType::Design)),
+            "#{} stamped design/v1.0",
             doc.frontmatter().number()
         );
         assert_eq!(doc.frontmatter().schema_version(), SchemaVersion::CURRENT);
@@ -249,7 +249,7 @@ fn backfill_stamps_unversioned_nodes() {
     let fm = odm_core::frontmatter::Frontmatter::new(
         Id::new(),
         7,
-        NodeType::Odd,
+        NodeType::Design,
         "Unversioned",
         day,
         day,
@@ -258,14 +258,14 @@ fn backfill_stamps_unversioned_nodes() {
     assert!(fm.schema().is_none(), "sanity: starts unversioned");
     store.persist(&Document::new(fm, "body\n")).unwrap();
 
-    // Backfill stamps it `odd/v1.0`.
+    // Backfill stamps it `design/v1.0`.
     let upgraded = odm_migrate::backfill_schema(&store, Mode::Commit).expect("backfill");
     assert_eq!(upgraded.len(), 1, "one node stamped");
-    assert_eq!(upgraded[0].schema, "odd/v1.0");
+    assert_eq!(upgraded[0].schema, "design/v1.0");
     assert_eq!(
         store.load_all().unwrap()[0].frontmatter().schema(),
-        Some(SchemaMarker::current(NodeType::Odd)),
-        "node now carries odd/v1.0"
+        Some(SchemaMarker::current(NodeType::Design)),
+        "node now carries design/v1.0"
     );
 
     // Idempotent: a second backfill stamps nothing.
@@ -278,7 +278,7 @@ fn backfill_stamps_unversioned_nodes() {
     let fm2 = odm_core::frontmatter::Frontmatter::new(
         Id::new(),
         8,
-        NodeType::Odd,
+        NodeType::Design,
         "Unversioned2",
         day,
         day,
@@ -306,7 +306,7 @@ fn migrate_folds_in_the_backfill() {
     let fm = odm_core::frontmatter::Frontmatter::new(
         Id::new(),
         9,
-        NodeType::Odd,
+        NodeType::Design,
         "Old",
         day,
         day,

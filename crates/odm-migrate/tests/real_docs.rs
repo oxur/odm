@@ -54,11 +54,38 @@ fn migrate_real_docs_all_accounted() {
     assert_eq!(report.skipped_count(), 0, "no ODD skipped: {:?}", report.skipped);
     assert_eq!(report.created_count(), discovered.len(), "all ODDs imported");
 
-    // Every imported node is an `odd` with its number preserved.
+    // Every imported node is a document node with its number preserved, and the
+    // C-2 taxonomy is applied: `research` iff the source tags say so, else
+    // `design` (never the pre-C-2 `odd`, which no longer exists).
     let nodes = store.load_all().unwrap();
-    assert!(nodes.iter().all(|d| d.frontmatter().node_type() == NodeType::Odd), "all type=odd");
+    assert!(
+        nodes
+            .iter()
+            .all(|d| matches!(d.frontmatter().node_type(), NodeType::Design | NodeType::Research)),
+        "every imported node is design or research"
+    );
     assert!(nodes.iter().any(|d| d.frontmatter().number() == 13), "ODD-0013 imported");
     assert!(nodes.iter().any(|d| d.frontmatter().number() == 19), "ODD-0019 imported");
+
+    // Classification tracks the source tags, not the title: every node tagged
+    // `research` is a `research` node, and every other one is `design`.
+    for node in &nodes {
+        let fm = node.frontmatter();
+        let tagged_research = fm.tags().iter().any(|t| t.eq_ignore_ascii_case("research"));
+        let expected = if tagged_research { NodeType::Research } else { NodeType::Design };
+        assert_eq!(
+            fm.node_type(),
+            expected,
+            "#{} {:?} (tags {:?}) classified wrong",
+            fm.number(),
+            fm.name(),
+            fm.tags()
+        );
+    }
+    assert!(
+        nodes.iter().any(|d| d.frontmatter().node_type() == NodeType::Research),
+        "the real corpus contains at least one research doc"
+    );
 
     // Never-delete: the legacy corpus is byte-for-byte intact after migration.
     assert_eq!(before, snapshot_bytes(legacy_dir.path()), "no legacy file removed or mutated");

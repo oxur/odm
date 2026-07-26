@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HDGYH8Q733ZH7QC8SM
 number: 19
-type: odd
-schema: odd/v1.0
+type: design
+schema: design/v1.0
 name: Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
 created: 2026-07-01
 updated: 2026-07-01

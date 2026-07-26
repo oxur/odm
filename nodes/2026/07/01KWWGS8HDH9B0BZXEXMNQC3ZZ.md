@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HDH9B0BZXEXMNQC3ZZ
 number: 18
-type: odd
-schema: odd/v1.0
+type: research
+schema: research/v1.0
 name: Research — Forecasting under small, bursty, DAG-structured work
 created: 2026-06-24
 updated: 2026-06-24

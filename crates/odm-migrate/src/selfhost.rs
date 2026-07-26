@@ -34,7 +34,7 @@ use crate::{Created, MigrateError, Mode, SkipReason, Skipped};
 /// the post-MVP horizon and are not imported.
 const MAX_MVP_ARC: u32 = 6;
 
-/// The project (root) node's number — a high, fixed value disjoint from the `odd`
+/// The project (root) node's number — a high, fixed value disjoint from the document
 /// numbering space (legacy ODDs are `2`, `9`–`20`) and from the arc/slice ranges.
 const PROJECT_NUMBER: u32 = 1000;
 
@@ -191,6 +191,7 @@ pub fn self_host(
             number: fm.number(),
             id: fm.id(),
             name: fm.name().to_string(),
+            node_type: fm.node_type(),
             retired: false,
         });
         if !mode.is_dry_run() {

@@ -15,18 +15,19 @@
 //! | Legacy | → | New |
 //! |---|---|---|
 //! | `number` | → | fresh ULID id; `number` preserved (idempotence key) |
-//! | `state` (progression) | → | cumulative `odd` gate reach |
+//! | `state` (progression) | → | cumulative `design`/`research` gate reach |
 //! | `state` (deferred/rejected/withdrawn/superseded) | → | retirement marker |
 //! | `supersedes`/`superseded-by` | → | a `supersedes` edge on the superseding node |
 //! | title/author/created/updated/tags/component | → | carried (author → `extra`) |
-//! | node type | → | `NodeType::Odd` |
+//! | node type | → | `NodeType::Research` iff `tags` include `research`, else `NodeType::Design` |
 //!
 //! ## Numbering space (slice02, settled against the real corpus)
 //!
-//! `odd` numbers are a **distinct numbering space** from work-node
+//! Document numbers are a **distinct numbering space** from work-node
 //! (`project`/`arc`/`slice`) numbers: the idempotence check keys on
-//! `(type == odd, number)` — `existing_odd_numbers` filters to `odd` nodes — so
-//! a legacy ODD `#13` never collides with a work node `#13`. Confirmed on odm's
+//! `(is a document node, number)` — `existing_doc_numbers` filters to
+//! `design`/`research` nodes — so a legacy ODD `#13` never collides with a work
+//! node `#13`. Confirmed on odm's
 //! own `docs/design` (ODD numbers `2`, `9`–`19`, no collisions).
 //!
 //! ## Supersession value shape (slice02)
@@ -41,6 +42,7 @@
 
 pub mod legacy;
 pub mod mapping;
+pub mod restamp;
 pub mod selfhost;
 
 pub use selfhost::SelfHostReport;
@@ -49,12 +51,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use odm_core::frontmatter::{Document, Edges, SupersedeKind, Supersedes};
-use odm_core::gates::GateSet;
 use odm_core::{Id, NodeType};
 use odm_store::{Store, StoreError};
 
 use crate::legacy::{LegacyDoc, LegacyError};
-use crate::mapping::{MapError, Prepared, build_node, canonical_odd_gates, prepare};
+use crate::mapping::{DocGates, MapError, Prepared, build_node, prepare};
+use crate::restamp::{SourceTags, restamp_taxonomy};
 
 /// Whether a migration writes or only previews.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,7 +92,7 @@ pub struct Upgraded {
     pub id: Id,
     /// The node's name.
     pub name: String,
-    /// The schema marker stamped (e.g. `"odd/v1.0"`).
+    /// The schema marker stamped (e.g. `"design/v1.0"`).
     pub schema: String,
 }
 
@@ -103,6 +105,8 @@ pub struct Created {
     pub id: Id,
     /// The node name (from the legacy title).
     pub name: String,
+    /// The document type it classified as (`design` or `research`, C-2).
+    pub node_type: NodeType,
     /// Whether it imported as a retired node (dustbin/parked state).
     pub retired: bool,
 }
@@ -110,7 +114,7 @@ pub struct Created {
 /// Why a legacy doc was skipped — never a silent drop (M-6).
 #[derive(Debug, Clone)]
 pub enum SkipReason {
-    /// A node with this legacy `number` already exists as an `odd` node
+    /// A node with this legacy `number` already exists as a document node
     /// (idempotence — M-3), or a duplicate `number` appeared earlier in the run.
     AlreadyExists,
     /// The file could not be read or its frontmatter was invalid.
@@ -197,7 +201,7 @@ pub enum MigrateError {
 }
 
 /// Migrates the legacy ODD corpus rooted at `legacy_path` into `store`, using the
-/// canonical `odd` gate-set (ODD-0013 §5.1).
+/// canonical `design`/`research` gate-sets (ODD-0013 §5.1).
 ///
 /// # Errors
 ///
@@ -209,11 +213,12 @@ pub fn migrate(
     legacy_path: &Path,
     mode: Mode,
 ) -> Result<MigrationReport, MigrateError> {
-    migrate_with_gates(store, legacy_path, mode, &canonical_odd_gates())
+    migrate_with_gates(store, legacy_path, mode, &DocGates::canonical())
 }
 
-/// Like [`migrate`], but with an explicit `odd` gate-set (e.g. a repo's
-/// configured `[gates.odd]`), for when it diverges from the canonical default.
+/// Like [`migrate`], but with explicit document gate-sets (e.g. a repo's
+/// configured `[gates.design]` / `[gates.research]`), for when they diverge from
+/// the canonical defaults.
 ///
 /// # Errors
 ///
@@ -222,7 +227,7 @@ pub fn migrate_with_gates(
     store: &Store,
     legacy_path: &Path,
     mode: Mode,
-    odd_gates: &GateSet,
+    gates: &DocGates,
 ) -> Result<MigrationReport, MigrateError> {
     let mut report = MigrationReport {
         created: Vec::new(),
@@ -232,11 +237,26 @@ pub fn migrate_with_gates(
         dry_run: mode.is_dry_run(),
     };
 
+    // Taxonomy re-stamp (RH C-2) FIRST: a node still carrying the pre-C-2
+    // `type: odd` does not parse at all, so nothing below — not the backfill,
+    // not the idempotence scan — can read the corpus until it is rewritten.
+    // Classification needs the source docs' tags, hence the collect here.
+    let sources = SourceTags::collect(legacy_path);
+    let restamp = restamp_taxonomy(store, &sources, mode)?;
+    report.upgraded = restamp.upgraded;
+
+    // Under `--dry-run` nothing was written, so the files still carry the dead
+    // type and will not parse. Read the corpus through the re-stamp's rewritten
+    // documents so the preview reports what *would* happen rather than failing
+    // on the state it is proposing to fix.
+    let corpus = corpus_after_restamp(store, &restamp.rewritten)?;
+
     // Schema backfill (ODD-0020 V-5): stamp any existing unversioned `nodes/` file
     // to `<type>/v1.0` before importing — folds the backfill into migrate as the
     // single schema-upgrade entry point (idempotent once stamped). Newly-created
     // nodes below are stamped at build time, so they are never seen here.
-    report.upgraded = backfill_schema(store, mode)?;
+    report.upgraded.extend(backfill_documents(store, corpus.clone(), mode)?);
+    report.upgraded.sort_by_key(|u| u.number);
 
     // Read every legacy doc; a read/parse failure is a reported skip, not fatal.
     let mut docs: Vec<LegacyDoc> = Vec::new();
@@ -251,8 +271,8 @@ pub fn migrate_with_gates(
         }
     }
 
-    // The idempotence set: legacy numbers already present as `odd` nodes.
-    let existing = existing_odd_numbers(store)?;
+    // The idempotence set: legacy numbers already present as document nodes.
+    let existing = existing_doc_numbers(&corpus);
 
     // Pass 1 — decide create vs skip, minting an id per creation. `planned` maps
     // every legacy number that will exist (already-present ∪ minted-this-run), so
@@ -288,12 +308,13 @@ pub fn migrate_with_gates(
     // + (unless dry-run) persist each node with its edge attached.
     let edges = resolve_supersedes(&to_create, &planned, &mut report.warnings);
     for (doc, prep, id) in &to_create {
-        let fm = build_node(*id, &doc.front, prep, odd_gates);
+        let fm = build_node(*id, &doc.front, prep, gates);
         let fm = attach_supersedes(fm, edges.get(&prep.number).copied());
         let created = Created {
             number: prep.number,
             id: *id,
             name: fm.name().to_string(),
+            node_type: fm.node_type(),
             retired: fm.retired().is_some(),
         };
         if !mode.is_dry_run() {
@@ -311,7 +332,7 @@ pub fn migrate_with_gates(
 }
 
 /// Stamps `<type>/v1.0` on every node in the store that lacks a schema marker
-/// (ODD-0020 V-5) — the slice02 `odd` nodes predate the field. Idempotent (a
+/// (ODD-0020 V-5) — the slice02 document nodes predate the field. Idempotent (a
 /// stamped node is skipped), and never deletes. Under [`Mode::DryRun`] it reports
 /// what it *would* stamp without writing.
 ///
@@ -323,6 +344,17 @@ pub fn migrate_with_gates(
 /// [`MigrateError`] on a store load/persist failure.
 pub fn backfill_schema(store: &Store, mode: Mode) -> Result<Vec<Upgraded>, MigrateError> {
     let documents = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    backfill_documents(store, documents, mode)
+}
+
+/// [`backfill_schema`] over an already-loaded corpus — the form `migrate` uses,
+/// so the dry-run overlay (documents that exist only in memory until the
+/// re-stamp is committed) is stamped alongside the ones read from disk.
+fn backfill_documents(
+    store: &Store,
+    documents: Vec<Document>,
+    mode: Mode,
+) -> Result<Vec<Upgraded>, MigrateError> {
     let mut upgraded = Vec::new();
     for mut document in documents {
         if document.frontmatter().schema().is_some() {
@@ -343,16 +375,47 @@ pub fn backfill_schema(store: &Store, mode: Mode) -> Result<Vec<Upgraded>, Migra
     Ok(upgraded)
 }
 
-/// The legacy `number`s already present as `odd` nodes in the store (the
+/// The legacy `number`s already present as document nodes in `corpus` (the
 /// idempotence key set — M-3).
-fn existing_odd_numbers(store: &Store) -> Result<HashMap<u32, Id>, MigrateError> {
-    let docs = store.load_all().map_err(MigrateError::LoadCorpus)?;
-    Ok(docs
-        .into_iter()
-        .map(|d| d.frontmatter().clone())
-        .filter(|fm| fm.node_type() == NodeType::Odd)
+fn existing_doc_numbers(corpus: &[Document]) -> HashMap<u32, Id> {
+    corpus
+        .iter()
+        .map(|d| d.frontmatter())
+        .filter(|fm| matches!(fm.node_type(), NodeType::Design | NodeType::Research))
         .map(|fm| (fm.number(), fm.id()))
-        .collect())
+        .collect()
+}
+
+/// The corpus as it stands **after** the taxonomy re-stamp: the rewritten
+/// documents for the nodes it touched, and the on-disk parse for everything
+/// else.
+///
+/// With nothing rewritten (the ordinary case, and every run after the first)
+/// this is exactly `store.load_all()`.
+fn corpus_after_restamp(
+    store: &Store,
+    rewritten: &HashMap<PathBuf, Document>,
+) -> Result<Vec<Document>, MigrateError> {
+    if rewritten.is_empty() {
+        return store.load_all().map_err(MigrateError::LoadCorpus);
+    }
+    let mut docs = Vec::new();
+    for path in store.node_paths().map_err(MigrateError::LoadCorpus)? {
+        if let Some(document) = rewritten.get(&path) {
+            docs.push(document.clone());
+            continue;
+        }
+        // Not re-stamped, so it parses: load it through the store (whose
+        // id-derived path is the file name) rather than re-implementing the
+        // read. A stem that is not an id cannot be a node odm wrote.
+        let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse().ok())
+        else {
+            continue;
+        };
+        docs.push(store.load(id).map_err(MigrateError::LoadCorpus)?);
+    }
+    docs.sort_by_key(|d| d.frontmatter().id());
+    Ok(docs)
 }
 
 /// Resolves supersession relations from both `supersedes` (forward) and

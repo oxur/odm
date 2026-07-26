@@ -2,7 +2,7 @@
 //!
 //! Each node's frontmatter carries `schema: <type>/vMAJOR.MINOR` — the on-disk
 //! contract for that node *type*, versioned independently (so a change to
-//! `slice`'s fields bumps `slice/v1.0 → slice/v1.1` without touching `odd`). This
+//! `slice`'s fields bumps `slice/v1.0 → slice/v1.1` without touching `design`). This
 //! is the **file-metadata** version axis — a sibling of the output-projection
 //! markers (`check/v1` …) and the binary formats (`FORMAT_VERSION`,
 //! `SNAPSHOT_VERSION`), not a replacement for any of them (ODD-0020 §3).
@@ -12,7 +12,7 @@
 //! - **Absent** `schema:` ⇒ [`SchemaVersion::LEGACY`] (`v0.1`), a *computed*
 //!   default on read — in practice only the legacy `docs/design` ODDs (migrate
 //!   never mutates them).
-//! - A node stamped with an **unknown newer** schema (e.g. `odd/v1.1` read by a
+//! - A node stamped with an **unknown newer** schema (e.g. `design/v1.1` read by a
 //!   `v1.0` binary) is a **reported** condition ([`SchemaVersion::is_newer_than_current`]),
 //!   never a silent misparse.
 
@@ -70,7 +70,7 @@ impl FromStr for SchemaVersion {
 }
 
 /// The per-type schema marker: a node type plus its schema version, serialized as
-/// `<type>/vMAJOR.MINOR` (e.g. `odd/v1.0`).
+/// `<type>/vMAJOR.MINOR` (e.g. `design/v1.0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchemaMarker {
     /// The node type the schema contract is for.
@@ -97,7 +97,7 @@ impl fmt::Display for SchemaMarker {
 impl FromStr for SchemaMarker {
     type Err = SchemaParseError;
 
-    /// Parses `<type>/vMAJOR.MINOR` (e.g. `odd/v1.0`).
+    /// Parses `<type>/vMAJOR.MINOR` (e.g. `design/v1.0`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (ty, ver) = s.split_once('/').ok_or_else(|| SchemaParseError(s.to_string()))?;
         let node_type = ty.parse::<NodeType>().map_err(|_| SchemaParseError(s.to_string()))?;
@@ -121,7 +121,7 @@ impl<'de> Deserialize<'de> for SchemaMarker {
 
 /// The error returned when a schema marker or version string is malformed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("invalid schema marker {0:?}; expected `<type>/vMAJOR.MINOR` (e.g. `odd/v1.0`)")]
+#[error("invalid schema marker {0:?}; expected `<type>/vMAJOR.MINOR` (e.g. `design/v1.0`)")]
 pub struct SchemaParseError(pub String);
 
 #[cfg(test)]
@@ -139,9 +139,9 @@ mod tests {
 
     #[test]
     fn marker_round_trips_through_string() {
-        let m = SchemaMarker::current(NodeType::Odd);
-        assert_eq!(m.to_string(), "odd/v1.0");
-        assert_eq!("odd/v1.0".parse::<SchemaMarker>().unwrap(), m);
+        let m = SchemaMarker::current(NodeType::Design);
+        assert_eq!(m.to_string(), "design/v1.0");
+        assert_eq!("design/v1.0".parse::<SchemaMarker>().unwrap(), m);
         assert_eq!(
             "slice/v1.1".parse::<SchemaMarker>().unwrap().version,
             SchemaVersion { major: 1, minor: 1 }
@@ -150,9 +150,9 @@ mod tests {
 
     #[test]
     fn marker_rejects_malformed() {
-        assert!("odd".parse::<SchemaMarker>().is_err()); // no version
-        assert!("odd/1.0".parse::<SchemaMarker>().is_err()); // no `v`
+        assert!("design".parse::<SchemaMarker>().is_err()); // no version
+        assert!("design/1.0".parse::<SchemaMarker>().is_err()); // no `v`
         assert!("bogus/v1.0".parse::<SchemaMarker>().is_err()); // unknown type
-        assert!("odd/v1".parse::<SchemaMarker>().is_err()); // no minor
+        assert!("design/v1".parse::<SchemaMarker>().is_err()); // no minor
     }
 }

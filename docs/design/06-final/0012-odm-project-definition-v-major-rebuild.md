@@ -3,7 +3,7 @@ number: 12
 title: "odm — Project Definition (v-major rebuild)"
 author: "topological sort"
 component: All
-tags: [change-me]
+tags: [project-definition, scope, requirements, rebuild, odm]
 created: 2026-06-20
 updated: 2026-06-20
 state: Final

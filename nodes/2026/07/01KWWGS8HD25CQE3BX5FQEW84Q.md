@@ -1,13 +1,19 @@
 ---
 id: 01KWWGS8HD25CQE3BX5FQEW84Q
 number: 11
-type: odd
-schema: odd/v1.0
+type: research
+schema: research/v1.0
 name: 'Research: A markdown/git-native, dependency-ordered planning system'
 created: 2026-06-20
 updated: 2026-06-20
 tags:
-- change-me
+- research
+- planning
+- dag
+- markdown
+- git-native
+- dependency-order
+- prior-art
 component: All
 origin: planned
 reserved: false

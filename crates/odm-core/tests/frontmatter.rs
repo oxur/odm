@@ -69,7 +69,7 @@ fn schema_core_fields_parse() {
         "---\n\
          id: {SAMPLE_ULID}\n\
          number: 42\n\
-         type: odd\n\
+         type: design\n\
          name: Architecture\n\
          created: 2026-06-20\n\
          updated: 2026-06-22\n\
@@ -82,7 +82,7 @@ fn schema_core_fields_parse() {
     let fm = Document::parse(&text).expect("valid").frontmatter().clone();
     assert_eq!(fm.id(), Id::from_str(SAMPLE_ULID).unwrap());
     assert_eq!(fm.number(), 42);
-    assert_eq!(fm.node_type(), NodeType::Odd);
+    assert_eq!(fm.node_type(), NodeType::Design);
     assert_eq!(fm.name(), "Architecture");
     assert_eq!(fm.created(), day(2026, 6, 20));
     assert_eq!(fm.updated(), day(2026, 6, 22));
@@ -251,7 +251,7 @@ fn insert_extra_carries_an_unmodeled_key_through_roundtrip() {
     let mut fm = Frontmatter::new(
         id,
         1,
-        NodeType::Odd,
+        NodeType::Design,
         "Doc",
         day(2026, 6, 20),
         day(2026, 6, 20),
@@ -278,19 +278,19 @@ fn schema_marker_round_trip() {
     let mut fm = Frontmatter::new(
         id,
         1,
-        NodeType::Odd,
+        NodeType::Design,
         "Doc",
         day(2026, 7, 6),
         day(2026, 7, 6),
         Origin::Planned,
     );
     fm.stamp_schema();
-    assert_eq!(fm.schema(), Some(SchemaMarker::current(NodeType::Odd)));
+    assert_eq!(fm.schema(), Some(SchemaMarker::current(NodeType::Design)));
     assert_eq!(fm.schema_version(), SchemaVersion::CURRENT);
 
     let doc = Document::new(fm, "body\n");
     let emitted = doc.emit().unwrap();
-    assert!(emitted.contains("schema: odd/v1.0"), "schema marker emitted:\n{emitted}");
+    assert!(emitted.contains("schema: design/v1.0"), "schema marker emitted:\n{emitted}");
     // Additive round-trip: parse ∘ emit is identity.
     assert_eq!(Document::parse(&emitted).unwrap(), doc);
 }
@@ -304,7 +304,7 @@ fn schema_absent_is_v0_1() {
         "---\n\
          id: {SAMPLE_ULID}\n\
          number: 3\n\
-         type: odd\n\
+         type: design\n\
          name: Legacy\n\
          created: 2026-06-20\n\
          updated: 2026-06-20\n\
@@ -413,7 +413,7 @@ fn arb_node_type() -> impl Strategy<Value = NodeType> {
         Just(NodeType::Project),
         Just(NodeType::Arc),
         Just(NodeType::Slice),
-        Just(NodeType::Odd),
+        Just(NodeType::Design),
         Just(NodeType::Adr),
         Just(NodeType::Note),
     ]

@@ -41,7 +41,7 @@ pub struct LegacyFrontmatter {
     /// Last-updated date → the node `updated` + gate/retire date.
     #[serde(default)]
     pub updated: Option<NaiveDate>,
-    /// The legacy `DocState` scalar → the `odd` gate position or a retirement.
+    /// The legacy `DocState` scalar → the document gate position or a retirement.
     #[serde(default)]
     pub state: Option<String>,
     /// The legacy number this doc supersedes → a `supersedes` edge on this node.

@@ -281,7 +281,7 @@ mod content {
     use odm_core::schema::{SchemaMarker, SchemaVersion};
 
     fn odd(id_s: &str, number: u32, name: &str) -> Frontmatter {
-        Frontmatter::new(id(id_s), number, NodeType::Odd, name, day(), day(), Origin::Planned)
+        Frontmatter::new(id(id_s), number, NodeType::Design, name, day(), day(), Origin::Planned)
     }
 
     fn slice(id_s: &str, number: u32, name: &str) -> Frontmatter {
@@ -310,7 +310,7 @@ mod content {
                 &f.violation,
                 Violation::FieldNotValidForType {
                     field: "desired_facts",
-                    node_type: NodeType::Odd
+                    node_type: NodeType::Design
                 }
             )),
             "desired_facts on odd flagged: {findings:?}"
@@ -350,19 +350,19 @@ mod content {
     fn unknown_newer_schema_is_reported_error() {
         // A node stamped with a newer schema than this binary supports → reported.
         let newer = odd(A, 1, "Doc").with_schema(SchemaMarker {
-            node_type: NodeType::Odd,
+            node_type: NodeType::Design,
             version: SchemaVersion { major: 1, minor: 1 },
         });
         let findings = content_validity(&[newer]);
         assert!(
             findings
                 .iter()
-                .any(|f| matches!(&f.violation, Violation::UnsupportedSchema { schema } if schema == "odd/v1.1")),
+                .any(|f| matches!(&f.violation, Violation::UnsupportedSchema { schema } if schema == "design/v1.1")),
             "newer schema reported: {findings:?}"
         );
 
         // The current schema (v1.0) and an unversioned (v0.1) node are fine.
-        let current = odd(B, 2, "Now").with_schema(SchemaMarker::current(NodeType::Odd));
+        let current = odd(B, 2, "Now").with_schema(SchemaMarker::current(NodeType::Design));
         let legacy = odd(C, 3, "Old"); // no schema ⇒ v0.1
         assert!(
             content_validity(&[current, legacy])

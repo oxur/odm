@@ -3,13 +3,13 @@ number: 20
 title: "Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0"
 author: "Duncan McGreggor"
 component: All
-tags: [change-me]
+tags: [schema, versioning, frontmatter, migrate, metadata]
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-07-26
 state: Accepted
 supersedes: null
 superseded-by: null
-version: 1.0
+version: 1.1
 ---
 
 # Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
@@ -39,11 +39,15 @@ change can't be distinguished from a breaking one. The migrate boundary (A6 slic
 **Stamp each node's frontmatter with a per-type, versioned schema marker:**
 
 ```yaml
-schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, odd/v1.0, adr/v1.0, note/v1.0
+schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, design/v1.0, research/v1.0, adr/v1.0, note/v1.0
 ```
 
+(`design/v1.0` was `odd/v1.0` before v1.1 — same contract, renamed with the node
+type. `research/v1.0` is a **distinct marker sharing the design contract**
+initially, so the two can version independently later.)
+
 - **Per-type, independently versioned.** Each node type carries its own schema contract, so a
-  change to `slice`'s fields bumps `slice/v1.0 → slice/v1.1` without touching `project`/`odd`.
+  change to `slice`'s fields bumps `slice/v1.0 → slice/v1.1` without touching `project`/`design`.
   This **reuses the `check/v1` marker idiom** already in the codebase — one convention across
   output projections *and* file metadata.
 - **The current schema is `v1.0`.** New odm-created nodes are stamped `<type>/v1.0`.
@@ -54,7 +58,7 @@ schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, odd/v1.0,
   fields (id, number, title, type, created, updated, gates, `part_of`/edges) stay one
   shared representation; the type-specific fields (`desired_facts`/`deferred` for work nodes,
   `supersedes` for docs, `affects` for decisions) are validated **per type** — a
-  wrong-type field is a `check` finding ("`desired_facts` is not valid on an `odd`"). Split
+  wrong-type field is a `check` finding ("`desired_facts` is not valid on a `design`"). Split
   into separate structs only if the divergence grows to warrant it.
 - **`saga` gets no schema yet** — PROJECT-MANAGEMENT names it as a slot with "no operational
   weight"; add `saga/v1.0` if/when saga becomes a real node type.
@@ -79,9 +83,22 @@ The new field is `schema:` (a per-type marker), deliberately **not** overloading
 
 This makes **migrate the schema-upgrade path**, which is exactly what A6 already is:
 
-- **Read:** a legacy ODD with no `schema:` field is `odd/v0.1`.
-- **Write:** the imported node is stamped `odd/v1.0` (and every new odm-created node stamps
-  `<type>/v1.0`).
+- **Read:** a legacy ODD with no `schema:` field is `design/v0.1` (`odd/v0.1` before v1.1).
+- **Write:** the imported node is stamped `design/v1.0` — or `research/v1.0` when the source
+  `tags` include `research` (the ODD-0013 §2.2 classification rule) — and every new
+  odm-created node stamps `<type>/v1.0`.
+- **Re-stamp on re-run (v1.1).** `odm migrate` is idempotent *and* upgrading: re-running it
+  over an already-imported corpus rewrites each doc node's `type` and `schema` to the current
+  taxonomy (`odd`/`odd/v1.0` → `design`/`design/v1.0` or `research`/`research/v1.0`), leaving
+  id, number, gates and edges untouched. The rename is therefore migrated by the same
+  mechanism as every other schema change — no bespoke one-shot script.
+- **No legacy read-alias (decision, 2026-07-26).** After the rename an on-disk `type: odd` no
+  longer parses: the enum variant is gone and `"odd"` returns the ordinary parse error. odm
+  self-hosts — we own every node — so the corpus is **hard re-stamped in the same change** and
+  `check` proves zero `odd` markers remain, rather than carrying a read-time alias that would
+  have to be found and removed later. (The alternative, accepting `odd` for one migration
+  cycle, was weighed and rejected; it is available if a non-self-hosted consumer ever needs a
+  grace window.)
 - The self-hosted plan-set (A6 self-host slice) is stamped `project/v1.0`, `arc/v1.0`,
   `slice/v1.0` as it enters `nodes/`.
 
@@ -140,3 +157,18 @@ lands **before** the self-host cutover, so the plan-set is self-hosted already a
 - `docs/design-v1.0.0/arc06-migrate-self-host/arc-plan.md` (the slice that realizes this).
 - A5 slice02/04/06 — the additive-evolution discipline (`skip_serializing_if`, no schema bump
   for additive fields) this ODD generalizes into an explicit version marker.
+
+## Version History
+
+### v1.1 — 2026-07-26
+Marker set updated for the node-type rename (ODD-0013 v2.0): removed `odd/v1.0`; added
+`design/v1.0` (renamed, same contract) and `research/v1.0` (distinct marker, shared contract
+initially). §4 now states the **re-stamp-on-re-run** rule — `odm migrate` rewrites an already
+imported doc node's `type`/`schema` to the current taxonomy — and records the decision to
+**hard re-stamp with no legacy `odd` read-alias**. Frontmatter `tags` corrected from the
+`change-me` placeholder. Surfaced by: RH UAT **F-2**/**F-3**. Realized in RH chunk **C-2**;
+amendment stub `C-2-amendment-ODD-0020.md`.
+
+### v1.0 — 2026-07-06
+Authored and accepted (per-type schema markers, v0.1 → v1.0 upgrade path); realized in A6
+slice03.

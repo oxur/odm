@@ -13,7 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///
 /// - **Work nodes** — [`Project`](NodeType::Project), [`Arc`](NodeType::Arc),
 ///   [`Slice`](NodeType::Slice): scope decomposition via the containment tree.
-/// - **Document nodes** — [`Odd`](NodeType::Odd) (design doc),
+/// - **Document nodes** — [`Design`](NodeType::Design) (design doc),
+///   [`Research`](NodeType::Research) (investigation / literature survey),
 ///   [`Adr`](NodeType::Adr) (decision record), [`Note`](NodeType::Note).
 ///
 /// There is deliberately **no node smaller than a slice**: a single operation
@@ -27,8 +28,11 @@ pub enum NodeType {
     Arc,
     /// The smallest unit of independently shippable work.
     Slice,
-    /// A design document (ODD).
-    Odd,
+    /// A design document (an ODD, in the pre-1.0 vocabulary).
+    Design,
+    /// A research / literature-survey / investigation document: it *informs*
+    /// decisions but does not govern like a design document.
+    Research,
     /// A decision record (ADR/RFC).
     Adr,
     /// A free-form note.
@@ -44,7 +48,8 @@ impl NodeType {
             NodeType::Project => "project",
             NodeType::Arc => "arc",
             NodeType::Slice => "slice",
-            NodeType::Odd => "odd",
+            NodeType::Design => "design",
+            NodeType::Research => "research",
             NodeType::Adr => "adr",
             NodeType::Note => "note",
         }
@@ -56,10 +61,10 @@ impl NodeType {
         matches!(self, NodeType::Project | NodeType::Arc | NodeType::Slice)
     }
 
-    /// Returns `true` for document nodes (`odd`/`adr`/`note`).
+    /// Returns `true` for document nodes (`design`/`research`/`adr`/`note`).
     #[must_use]
     pub fn is_document(self) -> bool {
-        matches!(self, NodeType::Odd | NodeType::Adr | NodeType::Note)
+        matches!(self, NodeType::Design | NodeType::Research | NodeType::Adr | NodeType::Note)
     }
 
     /// Returns the node types allowed as containment children of `self` in the
@@ -74,7 +79,11 @@ impl NodeType {
         match self {
             NodeType::Project => &[NodeType::Arc],
             NodeType::Arc => &[NodeType::Slice],
-            NodeType::Slice | NodeType::Odd | NodeType::Adr | NodeType::Note => &[],
+            NodeType::Slice
+            | NodeType::Design
+            | NodeType::Research
+            | NodeType::Adr
+            | NodeType::Note => &[],
         }
     }
 }
@@ -92,14 +101,17 @@ impl FromStr for NodeType {
     ///
     /// # Errors
     ///
-    /// Returns [`ParseNodeTypeError`] if `s` is not one of the six known type
-    /// names.
+    /// Returns [`ParseNodeTypeError`] if `s` is not one of the seven known type
+    /// names. Note that the pre-C-2 `"odd"` is **not** accepted: the corpus was
+    /// hard re-stamped to `design`/`research` (ODD-0020 §4), so an `odd` on disk
+    /// is a genuine error rather than something to silently accept.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "project" => Ok(NodeType::Project),
             "arc" => Ok(NodeType::Arc),
             "slice" => Ok(NodeType::Slice),
-            "odd" => Ok(NodeType::Odd),
+            "design" => Ok(NodeType::Design),
+            "research" => Ok(NodeType::Research),
             "adr" => Ok(NodeType::Adr),
             "note" => Ok(NodeType::Note),
             _ => Err(ParseNodeTypeError(s.to_owned())),
@@ -107,7 +119,7 @@ impl FromStr for NodeType {
     }
 }
 
-// Serializes as the canonical lowercase name (`"slice"`, `"odd"`, …).
+// Serializes as the canonical lowercase name (`"slice"`, `"design"`, …).
 impl Serialize for NodeType {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())

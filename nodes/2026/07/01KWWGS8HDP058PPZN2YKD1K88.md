@@ -1,8 +1,8 @@
 ---
 id: 01KWWGS8HDP058PPZN2YKD1K88
 number: 14
-type: odd
-schema: odd/v1.0
+type: research
+schema: research/v1.0
 name: 'Research — odm-index: incremental indexing & caching (no DB, no FTS)'
 created: 2026-06-20
 updated: 2026-06-20

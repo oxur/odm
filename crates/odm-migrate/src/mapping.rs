@@ -1,13 +1,19 @@
 //! The legacy → new **mapping** (ODD-0013 §9): how a legacy `DocState` scalar,
 //! `number`, `supersedes` pair, and metadata become a node in the new model.
 //!
-//! The crux is `state → odd gate-set position`. The `odd` gate-set is canonical
-//! (ODD-0013 §5.1): `draft → under-review → revised → accepted → active → final`.
+//! The crux is `state → document gate-set position`. The `design` gate-set is
+//! canonical (ODD-0013 §5.1): `draft → under-review → revised → accepted →
+//! active → final`, and `research` mirrors it (C-2 operator decision), so a
+//! source doc in any state directory maps with no special-casing.
 //! A **progression** state maps to a *cumulative* reach up to and including its
 //! gate (a `Final` doc has passed every earlier gate); a **retired** state
-//! (`deferred`/`rejected`/`withdrawn`/`superseded`) has no `odd` gate — it maps
-//! to a retirement marker (supersede-not-delete, git preserves history). An
+//! (`deferred`/`rejected`/`withdrawn`/`superseded`) has no document gate — it
+//! maps to a retirement marker (supersede-not-delete, git preserves history). An
 //! unrecognized state is neither: the caller reports it and skips (M-6).
+//!
+//! **Which document type** a legacy doc becomes is decided by
+//! [`classify_type`]: `research` iff its `tags` include `research`, else
+//! `design` (ODD-0013 §2.2 v2.0).
 
 use chrono::NaiveDate;
 use odm_core::frontmatter::Frontmatter;
@@ -17,28 +23,94 @@ use odm_core::{Id, NodeType, Origin};
 
 use crate::legacy::LegacyFrontmatter;
 
-/// The canonical `odd` gate sequence (ODD-0013 §5.1). The migration mapping is
-/// pinned against this; a repo that customizes `[gates.odd]` can pass its own
-/// [`GateSet`] to [`crate::migrate`], which overrides this default.
-pub const ODD_GATES: [&str; 6] =
+/// The canonical `design` gate sequence (ODD-0013 §5.1). The migration mapping
+/// is pinned against this; a repo that customizes `[gates.design]` can pass its
+/// own [`GateSet`] to [`crate::migrate`], which overrides this default.
+pub const DESIGN_GATES: [&str; 6] =
     ["draft", "under-review", "revised", "accepted", "active", "final"];
 
-/// The canonical `odd` [`GateSet`] (ODD-0013 §5.1) — the mapping default when a
-/// repo does not configure `[gates.odd]`.
+/// The canonical `research` gate sequence. It **mirrors [`DESIGN_GATES`]**
+/// (ODD-0013 §5.1 v2.0, operator decision 2026-07-26): the importer maps a
+/// source doc's state directory onto a gate reach, so a shared sequence lets a
+/// research doc sit in any state directory with no bespoke mapping. Named
+/// separately so a tighter research lifecycle stays a one-line change.
+pub const RESEARCH_GATES: [&str; 6] = DESIGN_GATES;
+
+/// The canonical `design` [`GateSet`] (ODD-0013 §5.1) — the mapping default when
+/// a repo does not configure `[gates.design]`.
 #[must_use]
-pub fn canonical_odd_gates() -> GateSet {
-    GateSet::new(ODD_GATES.iter().map(|s| (*s).to_string()).collect())
+pub fn canonical_design_gates() -> GateSet {
+    GateSet::new(DESIGN_GATES.iter().map(|s| (*s).to_string()).collect())
+}
+
+/// The canonical `research` [`GateSet`] — the mapping default when a repo does
+/// not configure `[gates.research]`.
+#[must_use]
+pub fn canonical_research_gates() -> GateSet {
+    GateSet::new(RESEARCH_GATES.iter().map(|s| (*s).to_string()).collect())
+}
+
+/// The gate-sets the importer validates a document node's reach against — one
+/// per document type it can produce.
+///
+/// Carrying both (rather than the single set the pre-C-2 importer took) is what
+/// lets `research` diverge from `design` later without touching call sites: the
+/// two sequences are identical today, and [`Self::for_type`] is the one place
+/// that would notice if they stopped being.
+#[derive(Debug, Clone)]
+pub struct DocGates {
+    /// The `design` gate-set.
+    pub design: GateSet,
+    /// The `research` gate-set.
+    pub research: GateSet,
+}
+
+impl DocGates {
+    /// The canonical pair (ODD-0013 §5.1) — the default when a repo configures
+    /// neither `[gates.design]` nor `[gates.research]`.
+    #[must_use]
+    pub fn canonical() -> Self {
+        Self { design: canonical_design_gates(), research: canonical_research_gates() }
+    }
+
+    /// The gate-set governing `node_type`.
+    ///
+    /// Any non-document type falls back to `design`; the importer only ever
+    /// builds `design`/`research` nodes ([`classify_type`]), so this is a
+    /// defensive default rather than a reachable branch.
+    #[must_use]
+    pub fn for_type(&self, node_type: NodeType) -> &GateSet {
+        match node_type {
+            NodeType::Research => &self.research,
+            _ => &self.design,
+        }
+    }
+}
+
+/// Classifies a legacy doc's **document type** from its `tags`: `research` iff
+/// the tags include `research` (case-insensitive), else `design`.
+///
+/// Tag-based rather than title- or filename-based (ODD-0013 §2.2 v2.0): the tag
+/// is a deliberate authoring act that survives renames and re-titling, where a
+/// `Research —` title prefix is a convention a doc can silently drift out of.
+#[must_use]
+pub fn classify_type(tags: &[String]) -> NodeType {
+    if tags.iter().any(|t| t.trim().eq_ignore_ascii_case("research")) {
+        NodeType::Research
+    } else {
+        NodeType::Design
+    }
 }
 
 /// How a legacy `state` scalar maps into the new model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StateClass {
-    /// A progression state → reach `odd` gates cumulatively up to `gate`.
+    /// A progression state → reach document gates cumulatively up to `gate`.
     Progression {
         /// The terminal gate reached (all earlier gates are reached too).
         gate: &'static str,
     },
-    /// A non-progression state → retire the node with this reason (the `odd`
+    /// A non-progression state → retire the node with this reason (the document
     /// gate-set has no post-`final`/off-path gate; the reason preserves *which*
     /// dustbin/parked state it was).
     Retired {
@@ -116,24 +188,28 @@ pub fn prepare(front: &LegacyFrontmatter) -> Result<Prepared, MapError> {
 /// any) is attached by the caller after ids are resolved; a retirement or the
 /// cumulative gate reach is applied here from the classified state.
 ///
+/// The node's type is [`classify_type`]'s verdict over the source `tags`
+/// (`research` or `design`), and its gate reach is validated against the
+/// matching set from `gates`.
+///
 /// The `id` is reserved by the caller (pass 1) so the resolved supersession
-/// edges point at the right node; `odd_gates` is the gate-set the reach is
-/// validated against (a mis-set gate is a bug, not a user error — the reach only
-/// ever uses [`ODD_GATES`] names).
+/// edges point at the right node; a mis-set gate is a bug, not a user error —
+/// the reach only ever uses [`DESIGN_GATES`]/[`RESEARCH_GATES`] names.
 #[must_use]
 pub fn build_node(
     id: Id,
     front: &LegacyFrontmatter,
     prep: &Prepared,
-    odd_gates: &GateSet,
+    gates: &DocGates,
 ) -> Frontmatter {
+    let node_type = classify_type(&front.tags);
     let created = front.created.or(front.updated).unwrap_or_else(today);
     let name = front.title.clone().unwrap_or_else(|| format!("ODD-{:04}", prep.number));
 
     let mut fm = Frontmatter::new(
         id,
         prep.number,
-        NodeType::Odd,
+        node_type,
         name,
         created,
         prep.updated,
@@ -156,26 +232,27 @@ pub fn build_node(
 
     match &prep.class {
         StateClass::Progression { gate } => {
-            reach_cumulative(&mut fm, odd_gates, gate, prep.updated);
+            reach_cumulative(&mut fm, gates.for_type(node_type), gate, prep.updated);
         }
         StateClass::Retired { reason } => {
             fm.retire(*reason, prep.updated);
         }
     }
-    // Every imported node is stamped the current schema (`odd/v1.0`, ODD-0020 V-4):
-    // the legacy source (no `schema:`) is understood as v0.1; the new node is v1.0.
+    // Every imported node is stamped the current schema (`design/v1.0` or
+    // `research/v1.0`, ODD-0020 V-4): the legacy source (no `schema:`) is
+    // understood as v0.1; the new node is v1.0.
     fm.stamp_schema();
     fm
 }
 
-/// Records the `odd` gates from the start of the sequence up to and including
+/// Records the document gates from the start of the sequence up to and including
 /// `terminal`, each at [`Evidence::Asserted`] (the honest level for a historical
 /// migration — claimed from the legacy record, not independently reproduced) on
 /// `on`. A `Final` doc thus shows the full passed sequence, not a lone gate.
-fn reach_cumulative(fm: &mut Frontmatter, odd_gates: &GateSet, terminal: &str, on: NaiveDate) {
-    for gate in odd_gates.sequence() {
-        // set_gate validates against the set; every ODD_GATES name is in it.
-        let _ = fm.status_mut().set_gate(odd_gates, gate, None, Evidence::Asserted, on);
+fn reach_cumulative(fm: &mut Frontmatter, doc_gates: &GateSet, terminal: &str, on: NaiveDate) {
+    for gate in doc_gates.sequence() {
+        // set_gate validates against the set; every canonical gate name is in it.
+        let _ = fm.status_mut().set_gate(doc_gates, gate, None, Evidence::Asserted, on);
         if gate == terminal {
             break;
         }
@@ -203,7 +280,7 @@ mod tests {
 
     #[test]
     fn reach_cumulative_reaches_all_gates_up_to_terminal() {
-        let gates = canonical_odd_gates();
+        let gates = DocGates::canonical();
         let front = LegacyFrontmatter {
             number: Some(5),
             title: Some("X".into()),

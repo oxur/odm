@@ -158,7 +158,7 @@ fn rename_keeps_id_and_path() {
 #[test]
 fn retire_preserves_file_not_deleted() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "odd", "Old design"]);
+    run(dir.path(), &["new", "design", "Old design"]);
     let path = md_paths(dir.path())[0].clone();
 
     let r = run(dir.path(), &["retire", "1", "--because", "superseded by 0013"]);
@@ -175,8 +175,8 @@ fn retire_preserves_file_not_deleted() {
 #[test]
 fn supersede_with_kind_records_edge() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "odd", "Old"]);
-    run(dir.path(), &["new", "odd", "New"]);
+    run(dir.path(), &["new", "design", "Old"]);
+    run(dir.path(), &["new", "design", "New"]);
 
     let r = run(dir.path(), &["supersede", "1", "--with", "2", "--kind", "obsoletes"]);
     assert!(r.ok && r.err.contains("#2 supersedes #1"));
@@ -218,8 +218,8 @@ fn dry_run_and_yes() {
     assert_eq!(md_paths(dir.path()).len(), 1);
 
     // Dry-run mutators on existing nodes also write nothing.
-    run(dir.path(), &["new", "odd", "A"]);
-    run(dir.path(), &["new", "odd", "B"]);
+    run(dir.path(), &["new", "design", "A"]);
+    run(dir.path(), &["new", "design", "B"]);
     assert!(run(dir.path(), &["retire", "2", "--because", "x", "--dry-run"]).ok);
     assert!(
         run(dir.path(), &["supersede", "2", "--with", "3", "--kind", "updates", "--dry-run"]).ok
@@ -300,7 +300,7 @@ fn rename_and_retire_missing_reference_fail() {
 #[test]
 fn supersede_self_is_rejected() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "odd", "Doc"]);
+    run(dir.path(), &["new", "design", "Doc"]);
     let r = run(dir.path(), &["supersede", "1", "--with", "1", "--kind", "updates"]);
     assert!(!r.ok && r.err.contains("cannot supersede itself"));
 }
@@ -373,7 +373,7 @@ fn show_renders_all_fields_and_children() {
 #[test]
 fn retired_node_renders_in_show_text() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "odd", "Old"]);
+    run(dir.path(), &["new", "design", "Old"]);
     run(dir.path(), &["retire", "1", "--because", "done"]);
     let r = run(dir.path(), &["show", "1"]);
     assert!(r.out.contains("retired:") && r.out.contains("done"));
@@ -471,7 +471,8 @@ fn check_supersession_chain_is_flagged() {
     let dir = TempDir::new().unwrap();
     // Self-supersede: edges.supersedes points at the node's own id.
     seed(dir.path(), |id| {
-        let mut fm = Frontmatter::new(id, 1, NodeType::Odd, "Loop", day(), day(), Origin::Planned);
+        let mut fm =
+            Frontmatter::new(id, 1, NodeType::Design, "Loop", day(), day(), Origin::Planned);
         fm.edges_mut().supersedes = Some(Supersedes { node: id, kind: SupersedeKind::Updates });
         Document::new(fm, "body\n")
     });
@@ -1211,8 +1212,8 @@ fn link_edge_kinds() {
         (2, "slice", "Dep"),
         (3, "slice", "Block"),
         (4, "slice", "Out"),
-        (5, "odd", "Doc"),
-        (6, "odd", "Affected"),
+        (5, "design", "Doc"),
+        (6, "design", "Affected"),
         (7, "arc", "Parent"),
     ] {
         let _ = n;

@@ -26,7 +26,9 @@ sequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]
 sequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]
 [gates.slice]
 sequence = [\"planned\", \"built\", \"tested\"]
-[gates.odd]
+[gates.design]
+sequence = [\"draft\", \"under-review\", \"revised\", \"accepted\", \"active\", \"final\"]
+[gates.research]
 sequence = [\"draft\", \"under-review\", \"revised\", \"accepted\", \"active\", \"final\"]
 ";
 
@@ -40,7 +42,7 @@ fn run(root: &Path, args: &[&str]) -> (Option<u8>, String, String) {
 }
 
 /// Sets up a self-hosted temp store: writes the gate config, imports the real
-/// `docs/design` ODDs, and self-hosts the real `design-v1.0.0` plan set. Returns
+/// `docs/design` documents, and self-hosts the real `design-v1.0.0` plan set. Returns
 /// the TempDir (kept alive by the caller).
 fn self_hosted_store(with_gates: bool) -> TempDir {
     let dir = TempDir::new().unwrap();
@@ -50,7 +52,7 @@ fn self_hosted_store(with_gates: bool) -> TempDir {
     let docs = repo().join("docs/design");
     let plan = repo().join("docs/design-v1.0.0");
     let (m, _o, _e) = run(dir.path(), &["migrate", docs.to_str().unwrap()]);
-    assert_eq!(m, Some(0), "migrate odd corpus");
+    assert_eq!(m, Some(0), "migrate the document corpus");
     let (s, _o, _e) = run(dir.path(), &["self-host", plan.to_str().unwrap()]);
     assert_eq!(s, Some(0), "self-host plan set");
     dir

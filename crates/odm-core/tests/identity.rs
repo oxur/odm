@@ -92,7 +92,7 @@ const ALL_NODE_TYPES: [NodeType; 6] = [
     NodeType::Project,
     NodeType::Arc,
     NodeType::Slice,
-    NodeType::Odd,
+    NodeType::Design,
     NodeType::Adr,
     NodeType::Note,
 ];
@@ -120,7 +120,7 @@ fn nodetype_classification() {
         assert!(ty.is_work(), "{ty} should be a work node");
         assert!(!ty.is_document(), "{ty} should not be a document node");
     }
-    for ty in [NodeType::Odd, NodeType::Adr, NodeType::Note] {
+    for ty in [NodeType::Design, NodeType::Adr, NodeType::Note] {
         assert!(ty.is_document(), "{ty} should be a document node");
         assert!(!ty.is_work(), "{ty} should not be a work node");
     }
@@ -135,7 +135,7 @@ fn valid_child_types() {
     // A slice is a leaf in the work-decomposition tree.
     assert!(NodeType::Slice.valid_child_types().is_empty());
     // Document nodes have no work children.
-    for ty in [NodeType::Odd, NodeType::Adr, NodeType::Note] {
+    for ty in [NodeType::Design, NodeType::Adr, NodeType::Note] {
         assert!(ty.valid_child_types().is_empty(), "{ty} should have no work children");
     }
 }
@@ -156,7 +156,7 @@ fn origin_roundtrip() {
 
 #[test]
 fn node_identity_stable() {
-    let mut node = Node::new(1, NodeType::Odd, "Original", Origin::Planned, false);
+    let mut node = Node::new(1, NodeType::Design, "Original", Origin::Planned, false);
     let id = node.id();
 
     node.set_name("Renamed");
@@ -166,7 +166,7 @@ fn node_identity_stable() {
     assert_eq!(node.name(), "Renamed");
     assert_eq!(node.number(), 42);
     // The other fields are untouched by the edits.
-    assert_eq!(node.node_type(), NodeType::Odd);
+    assert_eq!(node.node_type(), NodeType::Design);
     assert_eq!(node.origin(), Origin::Planned);
     assert!(!node.reserved());
 }
@@ -183,7 +183,7 @@ fn id_default_mints_fresh() {
 fn display_forms_render_canonically() {
     // `Display` agrees with `as_str` for the enums.
     assert_eq!(NodeType::Slice.to_string(), "slice");
-    assert_eq!(NodeType::Odd.to_string(), "odd");
+    assert_eq!(NodeType::Design.to_string(), "design");
     assert_eq!(Origin::Discovered.to_string(), "discovered");
 }
 
