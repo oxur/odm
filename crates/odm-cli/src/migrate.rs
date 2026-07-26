@@ -10,7 +10,7 @@ use anyhow::Context as _;
 use odm_core::NodeType;
 use odm_migrate::mapping::{DocGates, canonical_design_gates, canonical_research_gates};
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
-use odm_store::Store;
+use odm_store::{Store, StoreHome};
 
 use crate::commands;
 use crate::table::Themed;
@@ -25,15 +25,37 @@ use crate::term;
 /// Returns an error (exit code `2`) if the gate config cannot be loaded or the
 /// migration hits a store I/O failure. Per-document problems are reported in the
 /// table, not raised.
+pub(crate) struct Options {
+    /// Force a derivation instead of detecting it (F-14).
+    pub forced: Option<odm_migrate::Corpus>,
+    /// Re-derive the existing plan nodes in place (C-5).
+    pub replan: bool,
+    /// Report and write nothing.
+    pub dry_run: bool,
+}
+
 pub(crate) fn migrate(
     store: &Store,
     root: &Path,
     legacy_path: &str,
-    dry_run: bool,
+    options: Options,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let dry_run = options.dry_run;
     let legacy = resolve(root, legacy_path);
+
+    // The re-stamp is a different operation from an import: it rewrites nodes
+    // that already exist rather than creating any, so it short-circuits here.
+    if options.replan {
+        return replan(store, root, &legacy, dry_run, out, err);
+    }
+
+    // One verb, two derivations — the shape decides unless told otherwise.
+    let corpus = options.forced.unwrap_or_else(|| odm_migrate::detect_corpus(&legacy));
+    if corpus == odm_migrate::Corpus::Plan {
+        return self_host_inner(store, &legacy, dry_run, out, err);
+    }
     let (gates, _) = commands::load_gate_config(root)?;
     // A repo may configure either document gate-set; each falls back to its
     // canonical sequence independently (C-2: `research` mirrors `design` today,
@@ -85,6 +107,19 @@ pub(crate) fn self_host(
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let plan_root = resolve(root, plan_path);
+    self_host_inner(store, &plan_root, dry_run, out, err)
+}
+
+/// The plan-set derivation, shared by `migrate` (folded, F-14) and the retained
+/// `self-host` spelling.
+fn self_host_inner(
+    store: &Store,
+    plan_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let plan_root = plan_root.to_path_buf();
     let mode = Mode::from_dry_run(dry_run);
     let report = odm_migrate::selfhost::self_host(store, &plan_root, mode)
         .with_context(|| format!("self-hosting the plan set at {}", plan_root.display()))?;
@@ -202,4 +237,82 @@ fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
 fn created_note(c: &Created) -> String {
     let what = format!("{} {}", c.node_type.as_str(), c.id);
     if c.retired { format!("{what} (retired)") } else { what }
+}
+
+/// The `migrate --replan` arm: re-derive the existing plan nodes in place.
+///
+/// This is how a *derivation fix* reaches a corpus that was already minted.
+/// Ordinary import cannot: it is idempotent on `(type, number)`, so it skips
+/// every node that exists. Deriving into an empty store would apply the new
+/// logic but mint fresh ULIDs, breaking every edge — so the corpus is rewritten
+/// in place, ids untouched.
+fn replan(
+    store: &Store,
+    root: &Path,
+    plan_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let derived = odm_migrate::replan::derive_plan(&home.repo_root, plan_root)
+        .with_context(|| format!("deriving the plan at {}", plan_root.display()))?;
+    let vision = odm_migrate::replan::vision_from_plan(plan_root);
+
+    let mode = Mode::from_dry_run(dry_run);
+    let changes = odm_migrate::replan::restamp(store, &derived, vision.as_deref(), mode)
+        .context("re-stamping the plan nodes")?;
+
+    render_replan(&changes, dry_run, out)?;
+
+    let summary = odm_migrate::replan::summarize(&changes);
+    let line = format!(
+        "{}: {} node(s) re-derived — {summary}{}",
+        if dry_run { "replan (dry-run)" } else { "replan" },
+        changes.len(),
+        if dry_run { " — nothing written" } else { "" },
+    );
+    if dry_run {
+        term::info(err, &line)?
+    } else {
+        term::success(err, &line)?
+    }
+    Ok(())
+}
+
+/// The `--replan` table's columns.
+const REPLAN_COLUMNS: [&str; 4] = ["#", "NAME", "CREATED", "NOTE"];
+
+/// Renders what the re-stamp changed, node by node — the diff an operator
+/// should read before letting it touch the live corpus.
+fn render_replan(
+    changes: &[odm_migrate::replan::Restamped],
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if changes.is_empty() {
+        writeln!(out, "replan: every node already matches the plan.")?;
+        return Ok(());
+    }
+    let title = if dry_run { "REPLAN (DRY RUN)" } else { "REPLAN" };
+    let mut table = Themed::new(title, &REPLAN_COLUMNS);
+    for change in changes {
+        let name = change
+            .name
+            .as_ref()
+            .map_or_else(|| "—".to_string(), |(old, new)| format!("{old} → {new}"));
+        let created =
+            change.created.map_or_else(|| "—".to_string(), |(old, new)| format!("{old} → {new}"));
+        let mut notes = Vec::new();
+        if change.moved {
+            notes.push("relocated");
+        }
+        if change.vision {
+            notes.push("vision");
+        }
+        table.row([change.number.to_string(), name, created, notes.join(", ")]);
+    }
+    table.summary(format!("Total: {} node(s) re-derived", changes.len()));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
 }

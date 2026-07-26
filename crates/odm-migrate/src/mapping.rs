@@ -304,3 +304,176 @@ mod tests {
         assert!(fm.retired().is_none());
     }
 }
+
+/// The document-role suffixes a derived name may carry, and which are stripped
+/// (ODD-0013 §2.1 v2.3).
+///
+/// A closed list on purpose. The rule prohibits *metadata*, not *qualifiers*,
+/// and only a fixed set of labels is mechanically known to be the former —
+/// `"(v-major rebuild)"` is part of a name's meaning, `"(plan-of-record)"` is
+/// the role of the document the name was copied from.
+const ROLE_SUFFIXES: [&str; 2] = ["(plan-of-record)", "(build plan)"];
+
+/// The type words a derived name may be prefixed with.
+const TYPE_PREFIXES: [&str; 4] = ["slice", "arc", "phase", "step"];
+
+/// Strips positional and role metadata from a derived name (ODD-0013 §2.1
+/// v2.3, F-18).
+///
+/// Enforcement lives here, at mint time, rather than in the display layer: a
+/// name copied verbatim from a plan document's heading carries that document's
+/// coordinates (`"Slice 01 (Arc 02) — …"`) and role (`"… (plan-of-record)"`),
+/// both of which `number`, the `part_of` tree and `type` already record, and
+/// both of which go stale on any renumber or re-role.
+///
+/// Deliberately conservative — it removes **one** leading positional prefix and
+/// the known role suffixes, and nothing else. A name that would be emptied is
+/// left alone, because an unhelpful name beats no name.
+#[must_use]
+pub fn normalize_name(name: &str) -> String {
+    let stripped = strip_role_suffix(strip_positional_prefix(name.trim()));
+    let stripped = stripped.trim();
+    if stripped.is_empty() { name.trim().to_string() } else { stripped.to_string() }
+}
+
+/// Removes a leading `"<Type> NN[.M] [(Arc NN)] —|:"`, if present.
+///
+/// Only the *first* separator is consumed: `"Slice 05 (Arc 06): UAT — CLI
+/// feedback"` must become `"UAT — CLI feedback"`, not `"CLI feedback"` — the
+/// second dash belongs to the name.
+fn strip_positional_prefix(name: &str) -> &str {
+    let lower = name.to_ascii_lowercase();
+    let Some(kind) = TYPE_PREFIXES.iter().find(|p| lower.starts_with(&format!("{p} "))) else {
+        return name;
+    };
+    let rest = name[kind.len() + 1..].trim_start();
+
+    // The number, possibly dotted (`05.1`).
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    if digits.is_empty() || !digits.starts_with(|c: char| c.is_ascii_digit()) {
+        return name;
+    }
+    let rest = rest[digits.len()..].trim_start();
+
+    // An optional parenthesised coordinate: `(Arc 06)`.
+    let rest = match rest.strip_prefix('(') {
+        Some(after) => match after.split_once(')') {
+            Some((inside, tail)) if is_coordinate(inside) => tail.trim_start(),
+            _ => return name,
+        },
+        None => rest,
+    };
+
+    // The separator that ends the prefix — and only that one.
+    for sep in ["—", "–", ":", "-"] {
+        if let Some(tail) = rest.strip_prefix(sep) {
+            return tail.trim_start();
+        }
+    }
+    name
+}
+
+/// Whether a parenthesised fragment is a positional coordinate (`Arc 06`)
+/// rather than a descriptive qualifier (`v-major rebuild`).
+fn is_coordinate(inside: &str) -> bool {
+    let lower = inside.trim().to_ascii_lowercase();
+    TYPE_PREFIXES.iter().any(|p| {
+        lower
+            .strip_prefix(&format!("{p} "))
+            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == '.'))
+    })
+}
+
+/// Removes a trailing role suffix from [`ROLE_SUFFIXES`], if present.
+fn strip_role_suffix(name: &str) -> &str {
+    let trimmed = name.trim_end();
+    for suffix in ROLE_SUFFIXES {
+        if let Some(head) = trimmed.strip_suffix(suffix) {
+            return head.trim_end();
+        }
+    }
+    trimmed
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::normalize_name;
+
+    /// Every shape the real corpus carries (F-18), verified case by case.
+    #[test]
+    fn test_positional_prefixes_and_role_suffixes_are_stripped() {
+        for (raw, want) in [
+            ("Arc 01 — Substrate & node CRUD (plan-of-record)", "Substrate & node CRUD"),
+            ("Slice 01 — Workspace scaffolding (plan-of-record)", "Workspace scaffolding"),
+            (
+                "Slice 01 (Arc 02) — Graph construction + reverse edges (plan-of-record)",
+                "Graph construction + reverse edges",
+            ),
+            (
+                "Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe",
+                "`desired_facts` schema + `Probe` trait + shell probe",
+            ),
+            (
+                "Slice 05.1 (Arc 02) — Evidence-transition dates (plan-of-record)",
+                "Evidence-transition dates",
+            ),
+            ("Slice 03 (Arc 06): schema versioning (ODD-0020)", "schema versioning (ODD-0020)"),
+        ] {
+            assert_eq!(normalize_name(raw), want, "normalizing {raw:?}");
+        }
+    }
+
+    #[test]
+    fn test_only_the_prefix_separator_is_consumed() {
+        // The second dash belongs to the name, not to the coordinate.
+        assert_eq!(normalize_name("Slice 05 (Arc 06): UAT — CLI feedback"), "UAT — CLI feedback");
+    }
+
+    #[test]
+    fn test_descriptive_parentheticals_survive() {
+        // The rule prohibits metadata, not qualifiers.
+        for name in [
+            "odm — Architecture & Design (v-major rebuild)",
+            "odm — Project Definition (v-major rebuild)",
+            "Research — odm-index: incremental indexing & caching (no DB, no FTS)",
+        ] {
+            assert_eq!(normalize_name(name), name, "{name:?} must be left alone");
+        }
+    }
+
+    #[test]
+    fn test_names_without_metadata_are_untouched() {
+        for name in ["Workspace scaffolding", "Rollup & orient", "odm v1.0.0 — Project Plan"] {
+            assert_eq!(normalize_name(name), name);
+        }
+    }
+
+    #[test]
+    fn test_a_coordinate_is_distinguished_from_a_qualifier() {
+        // `(Arc 06)` is a coordinate and goes; `(draft)` is not a coordinate,
+        // so the prefix is not recognised and the name is left whole.
+        assert_eq!(
+            normalize_name("Slice 02 (Arc 06): migrate odm's own docs"),
+            "migrate odm's own docs"
+        );
+        assert_eq!(normalize_name("Slice 02 (draft) — something"), "Slice 02 (draft) — something");
+    }
+
+    #[test]
+    fn test_normalizing_never_empties_a_name() {
+        for name in ["Slice 05 —", "Arc 01 (plan-of-record)", "(plan-of-record)"] {
+            assert!(!normalize_name(name).is_empty(), "{name:?} kept something");
+        }
+    }
+
+    #[test]
+    fn test_normalization_is_idempotent() {
+        for raw in [
+            "Arc 01 — Substrate & node CRUD (plan-of-record)",
+            "Slice 05 (Arc 06): UAT — CLI feedback",
+        ] {
+            let once = normalize_name(raw);
+            assert_eq!(normalize_name(&once), once, "re-running changes nothing");
+        }
+    }
+}

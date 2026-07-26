@@ -81,6 +81,16 @@ impl Document {
         &mut self.frontmatter
     }
 
+    /// Replaces the markdown body.
+    ///
+    /// The body is the node's human content, normally edited by a person in the
+    /// file itself. The one programmatic writer is the plan re-derivation, which
+    /// writes the project's `# Vision` section from the plan document it was
+    /// derived from (RH L-3a).
+    pub fn set_body(&mut self, body: impl Into<String>) {
+        self.body = body.into();
+    }
+
     /// Parses a node file into typed frontmatter plus its body.
     ///
     /// The text must begin with a `---` line, contain a closing `---` line, and
@@ -422,6 +432,18 @@ impl Frontmatter {
     /// Changes the human label. Does not touch `id` or the on-disk path.
     pub fn set_name(&mut self, name: impl Into<String>) {
         self.name = name.into();
+    }
+
+    /// Corrects the creation date.
+    ///
+    /// Ordinarily `created` is written once, at mint time, and never touched —
+    /// it is a fact about the node's origin, not a mutable field. The exception
+    /// is a **derivation fix**: when the importer recorded the date it *ran*
+    /// rather than the date the work began, correcting it is restoring the
+    /// fact, not changing it (RH F-20). Note that `created` decides the node's
+    /// month shard, so a caller that changes it must relocate the file.
+    pub fn set_created(&mut self, created: NaiveDate) {
+        self.created = created;
     }
 
     /// Sets the last-updated date (bumped by edits).

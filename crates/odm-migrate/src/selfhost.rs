@@ -118,13 +118,16 @@ enum WorkStatus {
 
 /// A discovered plan node, before id assignment.
 #[derive(Debug, Clone)]
-struct PlanNode {
-    node_type: NodeType,
-    number: u32,
-    name: String,
+pub(crate) struct PlanNode {
+    pub(crate) node_type: NodeType,
+    pub(crate) number: u32,
+    pub(crate) name: String,
     /// The `(type, number)` of its containment parent (`None` for the project).
     parent_key: Option<(NodeType, u32)>,
     status: WorkStatus,
+    /// The plan directory (or file) this node derives from — the path whose git
+    /// history supplies its real `created`/`updated` (RH F-20).
+    pub(crate) source: std::path::PathBuf,
 }
 
 /// Runs the self-host cutover over the `design-v1.0.0` plan set rooted at
@@ -300,6 +303,13 @@ fn existing_work_keys(store: &Store) -> Result<HashMap<(NodeType, u32), Id>, Mig
         .collect())
 }
 
+/// The plan nodes under `plan_root`, for a caller that wants the *derived
+/// facts* rather than an import — the C-5 re-stamp joins these to the existing
+/// corpus by `(type, number)`.
+pub(crate) fn plan_nodes(plan_root: &Path) -> Vec<PlanNode> {
+    discover(plan_root)
+}
+
 /// Discovers the in-scope plan nodes under `plan_root`: the project root, the
 /// A1–A6 arcs, and their slices. Deterministic (sorted).
 fn discover(plan_root: &Path) -> Vec<PlanNode> {
@@ -314,6 +324,7 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
         parent_key: None,
         // The project is active while any arc is open (A6 open).
         status: WorkStatus::Active,
+        source: plan_root.join("project-plan.md"),
     });
 
     let mut arc_dirs: Vec<(u32, std::path::PathBuf)> = Vec::new();
@@ -341,6 +352,7 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
             name: h1_or_slug(&arc_dir.join("arc-plan.md"), &format!("arc{arc_major}")),
             parent_key: Some((NodeType::Project, PROJECT_NUMBER)),
             status: if closed { WorkStatus::Closed } else { WorkStatus::Active },
+            source: arc_dir.clone(),
         });
 
         let mut slice_dirs: Vec<(u32, Option<u32>, std::path::PathBuf)> = Vec::new();
@@ -366,6 +378,7 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
                 name: slice_name(slice_dir, *slice_major, *slice_minor),
                 parent_key: Some((NodeType::Arc, arc_number(*arc_major))),
                 status: if complete { WorkStatus::Closed } else { WorkStatus::Planned },
+                source: slice_dir.clone(),
             });
         }
     }

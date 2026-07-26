@@ -380,6 +380,50 @@ pub fn is_published(repo_root: &Path, branch: &str) -> Result<bool> {
     Ok(text.lines().any(|r| r.trim().ends_with(&format!("/{branch}"))))
 }
 
+/// The date a path first appeared in history — its real creation date.
+///
+/// `--diff-filter=A --reverse` walks to the commit that *added* the path, which
+/// is what a node's `created` should reflect. Returns `None` for a path git
+/// does not track, so the caller can disclose the fallback rather than
+/// inventing a date (RH F-20).
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn first_commit_date(repo_root: &Path, path: &Path) -> Result<Option<String>> {
+    let out = capture(
+        repo_root,
+        &[
+            "log".into(),
+            "--diff-filter=A".into(),
+            "--reverse".into(),
+            "--format=%as".into(),
+            "--".into(),
+            path.to_string_lossy().into_owned(),
+        ],
+    )?;
+    Ok(out.and_then(|t| t.lines().next().map(str::to_string)).filter(|d| !d.is_empty()))
+}
+
+/// The date a path was last touched — its real `updated`.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn last_commit_date(repo_root: &Path, path: &Path) -> Result<Option<String>> {
+    let out = capture(
+        repo_root,
+        &[
+            "log".into(),
+            "-1".into(),
+            "--format=%as".into(),
+            "--".into(),
+            path.to_string_lossy().into_owned(),
+        ],
+    )?;
+    Ok(out.map(|t| t.trim().to_string()).filter(|d| !d.is_empty()))
+}
+
 /// Runs `git`, returning its stdout, or `None` when it exits non-zero.
 ///
 /// Used for the queries whose "failure" is a legitimate answer — an absent ref,

@@ -42,6 +42,7 @@
 
 pub mod legacy;
 pub mod mapping;
+pub mod replan;
 pub mod restamp;
 pub mod selfhost;
 
@@ -57,6 +58,40 @@ use odm_store::{Store, StoreError};
 use crate::legacy::{LegacyDoc, LegacyError};
 use crate::mapping::{DocGates, MapError, Prepared, build_node, prepare};
 use crate::restamp::{SourceTags, restamp_taxonomy};
+
+/// Which derivation a path calls for (RH F-14).
+///
+/// `self-host` used to be a separate verb for the plan-set case. It is the same
+/// operation — read a tree of documents, derive nodes — differing only in the
+/// tree's shape, so it folds into `migrate` and the shape is detected rather
+/// than declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corpus {
+    /// A plan set: `project-plan.md` plus `arcNN-*/` directories → work nodes.
+    Plan,
+    /// A legacy state-directory corpus: `NN-state/` dirs → document nodes.
+    Legacy,
+}
+
+/// Classifies the tree at `path`.
+///
+/// A plan set is recognised by its **structure** — arc directories, or a
+/// `project-plan.md` — because that is what actually distinguishes the two
+/// derivations. Anything else is treated as legacy, which is the older and more
+/// forgiving path.
+#[must_use]
+pub fn detect_corpus(path: &Path) -> Corpus {
+    if path.join("project-plan.md").is_file() {
+        return Corpus::Plan;
+    }
+    let has_arc_dirs = std::fs::read_dir(path).ok().is_some_and(|entries| {
+        entries.flatten().any(|e| {
+            e.path().is_dir()
+                && e.file_name().to_string_lossy().to_ascii_lowercase().starts_with("arc")
+        })
+    });
+    if has_arc_dirs { Corpus::Plan } else { Corpus::Legacy }
+}
 
 /// Whether a migration writes or only previews.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -584,5 +619,41 @@ mod tests {
         let edges = resolve_supersedes(&to_create, &ids, &mut warnings);
         assert!(edges.is_empty());
         assert!(warnings.iter().any(|w| w.contains("not being created")), "warns: {warnings:?}");
+    }
+}
+
+#[cfg(test)]
+mod corpus_tests {
+    use super::{Corpus, detect_corpus};
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_a_plan_set_is_detected_by_its_project_plan() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("project-plan.md"), "# Plan\n").unwrap();
+        assert_eq!(detect_corpus(dir.path()), Corpus::Plan);
+    }
+
+    #[test]
+    fn test_a_plan_set_is_detected_by_its_arc_directories() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("arc01-substrate")).unwrap();
+        assert_eq!(detect_corpus(dir.path()), Corpus::Plan);
+    }
+
+    #[test]
+    fn test_a_state_directory_corpus_is_legacy() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("01-draft")).unwrap();
+        fs::create_dir(dir.path().join("06-final")).unwrap();
+        assert_eq!(detect_corpus(dir.path()), Corpus::Legacy);
+    }
+
+    #[test]
+    fn test_an_unrecognised_tree_falls_back_to_legacy() {
+        // Legacy is the older, more forgiving path, so it is the safer default.
+        let dir = TempDir::new().unwrap();
+        assert_eq!(detect_corpus(dir.path()), Corpus::Legacy);
     }
 }

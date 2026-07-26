@@ -517,13 +517,32 @@ enum Command {
         #[command(subcommand)]
         command: StoreCommand,
     },
-    /// Import a legacy number-/state-directory ODD corpus into the node model.
+    /// Import a document corpus or a plan set into the node model.
     ///
-    /// Idempotent (re-running is a no-op, keyed on the preserved legacy number),
-    /// `--dry-run`-able, and never deletes or mutates a legacy file.
+    /// The tree's shape decides which derivation runs — a plan set (arcs and
+    /// slices) yields work nodes, a legacy state-directory corpus yields
+    /// document nodes — and `--plan`/`--legacy` force it either way.
+    ///
+    /// Idempotent (re-running is a no-op, keyed on the preserved number),
+    /// `--dry-run`-able, and never deletes or mutates a source file.
     Migrate {
-        /// Path to the legacy corpus (e.g. a `docs/design` with `NN-state/` dirs).
+        /// Path to the corpus (a `docs/design` with `NN-state/` dirs, or a plan
+        /// set with `arcNN-*/` directories).
         legacy_path: String,
+        /// Treat the path as a plan set, whatever its shape looks like.
+        #[arg(long, conflicts_with = "legacy")]
+        plan: bool,
+        /// Treat the path as a legacy state-directory corpus.
+        #[arg(long)]
+        legacy: bool,
+        /// Re-derive the **existing** plan nodes in place: normalized names,
+        /// git-derived dates, and the project's vision body.
+        ///
+        /// Ordinary import skips nodes that already exist, so this is how a
+        /// derivation fix reaches a corpus already minted. Ids, numbers, gates
+        /// and edges are never touched.
+        #[arg(long)]
+        replan: bool,
         /// Report the plan and write nothing.
         #[arg(long)]
         dry_run: bool,
@@ -708,8 +727,22 @@ pub fn dispatch(
                 )?;
             }
         },
-        Command::Migrate { legacy_path, dry_run } => {
-            migrate::migrate(&store, root, &legacy_path, dry_run, out, err)?;
+        Command::Migrate { legacy_path, plan, legacy, replan, dry_run } => {
+            let forced = if plan {
+                Some(odm_migrate::Corpus::Plan)
+            } else if legacy {
+                Some(odm_migrate::Corpus::Legacy)
+            } else {
+                None
+            };
+            migrate::migrate(
+                &store,
+                root,
+                &legacy_path,
+                migrate::Options { forced, replan, dry_run },
+                out,
+                err,
+            )?;
         }
         Command::SelfHost { plan_path, dry_run } => {
             migrate::self_host(&store, root, &plan_path, dry_run, out, err)?;
