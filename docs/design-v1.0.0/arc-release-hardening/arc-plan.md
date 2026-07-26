@@ -76,7 +76,7 @@ uses) → C-3 → C-4 / C-5 slottable anytime. More batches → more chunks.
 | RH-5 | C-5 (fold `self-host` into `migrate`) closed | ptr: C-5 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | RH-6 | **Compose:** the self-hosted CLI is coherent + themed + UAT-validated end-to-end | arc-scale demo: run `odm list`/`orient`/`project`/`chain` on the real corpus — coloured, tree-structured, renamed, de-numbered | serious | arc-plan / UAT | open | | reproduce at arc scale. |
 | RH-7 | **Compose:** re-running `odm self-host` after the type/name changes yields a `check`-green corpus with `design`/`research` types + de-numbered names | arc-scale demo: re-self-host → `odm check` green; nodes carry `design/v1.0` etc. | serious | arc-plan / ODD-0013/0020 | open | | reproduce at arc scale. The reflexive validation loop. |
-| RH-8 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as chunks close. **C-1 (v1.2):** F-1 dispositioned (Route B / `oxur-term`); F-15 surfaced while validating C-1's themed `list` (routed to C-3, not a C-1 defect) — logged, not dropped. |
+| RH-8 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as chunks close. **C-1 (v1.2):** F-1 dispositioned (Route B / `oxur-term`); F-15 surfaced while validating C-1's themed `list` (routed to C-3, not a C-1 defect) — logged, not dropped. **v1.3:** F-16 (unconditional table ANSI) re-seated from a simultaneous-write id collision — logged, unassigned. |
 
 Closes in `arc-release-hardening/closing-report.md`: per-chunk walk + composition verdict,
 independently gated. A failed compose row spawns a remediation chunk, not a re-pass.
@@ -109,13 +109,19 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 | F-13 | `odm rollup` help hardcodes `ROLLUP.md` → it supports md **and** json + an optional output name (defaults `md` / `ROLLUP`) | surface | C-4 | Fix help; `--format={md\|json}` + `--out <name>` (defaults `md` / `ROLLUP`) | open |
 | F-14 | `odm self-host` is a special case of `odm migrate` → **combine**; support the self-host case within `migrate` | surface/medium | C-5 | Fold `self-host` into `migrate` (autodetect plan-set vs legacy, or `--plan`); one verb | open |
 
-### Batch 2 — 2026-07-26 (surfaced while validating C-1's themed `list`)
+### Batch 2 — 2026-07-26 (surfaced during C-1 — implementation and validation)
 
 | ID | Finding | Triage | Chunk | Disposition | Status |
 |----|---------|--------|-------|-------------|--------|
 | F-15 | **`odm list` shows retired/superseded nodes with no distinction.** Node **1605** (`Slice 05 (Arc 06): UAT — CLI feedback`) carries a `retired:` frontmatter block (retired 2026-07-25 — the **L-2** stale-slice-list tombstone) yet renders identically to live work, reading as A6's "slice 05" — the exact "trust the filesystem over the plan-of-record" hazard the node was created to document. Now the tool itself surfaces the tombstone as live work. | surface | C-3 | `odm list` **default-excludes** retired/superseded nodes; `--all` / `--include-retired` opts them back in; when shown, a `retired`/`superseded` value in C-3's **status column (F-7)** + a dimmed style. The *default-visibility* call is the new decision (F-7 already covers "make it distinct"). **Audit** whether other superseded nodes leak — a coarse scan flagged ~5 migrated ODDs matching the same pattern (only 1605 confirmed structurally). | open |
+| F-16 | **Themed tables emit ANSI unconditionally**, so `odm list > file` / `\| less` carries escape sequences. The table theme rides on `tabled::settings::Color`, which writes escapes regardless of the sink; the status lines *do* degrade to plain text off a terminal (`colored` honours TTY-detection + `NO_COLOR`). The two halves of odm's output therefore disagree about when colour is appropriate. | surface / question | (unassigned) | Raised by C-1 and deliberately **not** absorbed into it — a TTY guard is a behaviour change, not the rendering swap C-1 was scoped to. A `NO_COLOR`/TTY guard is best landed **upstream in `oxur-term`** (around `apply_to_table`) so odm and oxur agree rather than each growing a local rule. Weigh against the pass-2 LLM findings on machine consumption; `--json` is the machine path today, so this is not release-blocking. | open — decide |
 
-Cross-ref: `uat-report-llm-pass-batch2.md` **L-2**; node `01KYDAHHHZAHNMQY47A4VBSHJD` (#1605). Not a C-1 defect — C-1 is rendering-only and this predates it; surfaced *because* the themed `list` made the corpus legible.
+Cross-ref (F-15): `uat-report-llm-pass-batch2.md` **L-2**; node `01KYDAHHHZAHNMQY47A4VBSHJD` (#1605). Not a C-1 defect — C-1 is rendering-only and this predates it; surfaced *because* the themed `list` made the corpus legible.
+
+Cross-ref (F-16): `c1-closing-report.md` §"Consequences worth the operator's attention" #1.
+Logged by CC during C-1 implementation. It first landed under the `F-15` id in a simultaneous
+write with the CDC's Batch-2 entry; the CDC entry keeps `F-15` (ids are stable once published)
+and this finding was re-seated at **F-16**. Same finding, new number — nothing was dropped.
 
 ## Amendments raised
 
@@ -176,6 +182,15 @@ five-iteration cap. Chunk closes bubble up to this arc-plan; the arc closes with
 the settled surface.
 
 ## Version History
+
+### v1.3 — 2026-07-26
+**F-16 seated (id-collision repair).** CC and CDC wrote the Batch-2 table simultaneously and
+both claimed **F-15**. The CDC's entry (retired/superseded nodes undifferentiated → C-3) keeps
+the id — ids are stable once published — and CC's finding, *themed tables emit ANSI
+unconditionally while status lines degrade off a TTY*, is re-seated as **F-16** (unassigned;
+the fix belongs upstream in `oxur-term`). Both findings are live; neither was dropped. The
+evidence for F-16 was never lost — it has been in `c1-closing-report.md` §Consequences #1
+since the chunk closed. Surfaced by: the operator noticing the collision.
 
 ### v1.2 — 2026-07-26
 **C-1 close started (RH-1 attested); F-1 dispositioned Route B; F-15 logged.** The styling-crate

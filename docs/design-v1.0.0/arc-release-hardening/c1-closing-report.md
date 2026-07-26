@@ -182,7 +182,8 @@ That is `TableStyleConfig::default()` — the Oxur warm-orange theme, unmodified
 
 ## Consequences worth the operator's attention
 
-1. **Tables always emit ANSI; status lines do not.** `colored` suppresses colour when the
+1. **Tables always emit ANSI; status lines do not** — logged as **`F-16`** (arc-plan Batch 2;
+   see the note there on the id collision that first filed it as `F-15`). `colored` suppresses colour when the
    process's stdout is not a terminal (and honours `NO_COLOR`), so the `✓`/`→` prefixes are
    plain text when piped — but the table theme rides on `tabled::settings::Color`, which
    writes escapes unconditionally. `odm list > file` therefore contains escape sequences.
@@ -210,4 +211,6 @@ That is `TableStyleConfig::default()` — the Oxur warm-orange theme, unmodified
 - **`F-1`** — dispositioned: **shipped** (Route B, via `oxur-term`).
 - Bubble-up to `arc-plan.md`: C-1 route settled (B); base-branch open item settled
   (`release/1.0.x` already carried the A6 tip); the piping/ANSI question in §1 above is raised
-  as a new finding for triage rather than silently absorbed.
+  as **`F-16`** for triage rather than silently absorbed.
+- Independently verified by the CDC in `C-1-cdc-verification.md` (RH-1 → `attested`; the
+  `Builder` + `apply_to_table` path disclosed as a deviation, not a defect).

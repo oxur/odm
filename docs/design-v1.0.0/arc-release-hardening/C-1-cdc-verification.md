@@ -11,7 +11,8 @@
 
 **C-1 delivered, RH-1 `attested`.** The themed-output capability is in place and reproduced
 visually; the remaining gap to `reproduced`/`done` is mechanical (commit + toolchain/CI green),
-not design. One disclosed deviation, no defects, one new finding bubbled up (F-15).
+not design. One disclosed deviation, no defects, and two new findings bubbled up — **F-15**
+(CDC) and **F-16** (CC; seated after this verdict was written — see Bubble-up).
 
 ## Per-criterion walk (against `cc-prompt-c1-adopt-oxur-term.md`)
 
@@ -44,6 +45,13 @@ enhancement ticket**, not a C-1 blocker.
   (default-exclude + `--all`; status marker via F-7). It is *not* a C-1 defect — C-1 is
   rendering-only and this predates it; the themed `list` merely made the corpus legible enough
   to notice.
+- **F-16 seated (added 2026-07-26, after this verification was written):** CC had logged a
+  second Batch-2 finding — *themed tables emit ANSI unconditionally (`tabled::settings::Color`
+  ignores the sink) while status lines degrade to plain off a TTY* — under the same `F-15` id,
+  in a simultaneous write with the entry above. The CDC's F-15 keeps the id; CC's finding is
+  re-seated as **F-16** (unassigned; fix belongs upstream in `oxur-term`, around
+  `apply_to_table`). Evidence: `c1-closing-report.md` §Consequences #1. Not a C-1 defect
+  either — C-1 was scoped to a rendering swap, and a TTY guard is a behaviour change.
 - **Silent-drop diff (C-1 scope):** none. Delivered = themed rendering + terminal helpers + deps
   hygiene; explicitly out (C-2/C-3/C-4/C-5) untouched, as scoped.
 
