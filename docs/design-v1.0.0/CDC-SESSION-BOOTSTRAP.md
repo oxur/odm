@@ -2,10 +2,55 @@
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-07-25** (§0; the §§1–7 body below it still reflects 2026-07-07 and reads as history). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-07-26** (§0; the §§1–7 body below it still reflects 2026-07-07 and reads as history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
+
+---
+
+## 0a. Resume update — 2026-07-26 (RH C-5: the cutover — read this first)
+
+**⚠ The corpus moved. `nodes/` is not in the working tree any more.** odm now
+dogfoods the store home its own arc built: the 60 nodes live on the orphan
+**`odm` branch**, checked out at **`.worktrees/odm/`**. `odm.toml` at the repo
+root is a **locator only**; the operational config (gate-sets, display,
+`docs_directory`) is `.worktrees/odm/config.toml`, versioned with the data it
+governs. Run `odm` from the repo root exactly as before — resolution follows the
+locator — but read node files under `.worktrees/odm/nodes/`, and **commit corpus
+changes on the `odm` branch** (`git -C .worktrees/odm …`), which is a separate
+history from the code. `/.worktrees/` is gitignored on the code branch on purpose.
+
+**`odm orient` now tells the truth on odm's own repo.** It used to print "no
+vision text yet" and "(no current arc)". The project node carries a `# Vision`
+body from project-plan §1, and the current focus (arc #1600) is committed *with*
+the store, so a fresh session gets both — which is the project's stated success
+test.
+
+**Names and dates are real now.** Work-node names dropped their coordinates and
+role suffixes (44 of 45 changed): `"Slice 01 (Arc 02) — Foo (plan-of-record)"` is
+just `"Foo"`. `created` is the earliest git add-date of each node's own plan
+directory, so the dates span **2026-06-20 → 2026-07-25** across 13 days instead
+of reading 45× `2026-07-07`. If you have older notes quoting a node name or date,
+they are stale — re-query.
+
+**G-1 is untouched and still in force.** The cutover **preserved every ULID** —
+it relocated and re-stamped existing files, and minted nothing. **Do not mint new
+nodes before the G-1 decision.**
+
+**What this cost, worth knowing:** the dogfood found three defects that four
+green slices had not, all of the same shape — a path that could not be exercised
+where it was written, or success and failure looking identical. The sharpest:
+`odm use arc X` would print `✓` and `odm orient` would still say "(no current
+arc)", because `use` wrote the store root and `orient` read the invocation root —
+indistinguishable until odm's own store moved out of the invocation root. Full
+account: `arc-release-hardening/c5-closing-report.md`. Lesson recorded on the
+arc: **an opt-in feature nobody has opted into is not verified.**
+
+**Next actions:** (1) CDC verifies C-5 (`cdc-verification.md`) — including an
+independent `orient`/`check` **in the relocated home**; (2) G-1 ODD, still the
+gate on everything that mints; (3) the remaining RH chunks — C-4, C-6, C-8 — and
+F-21/F-16/F-17.
 
 ---
 

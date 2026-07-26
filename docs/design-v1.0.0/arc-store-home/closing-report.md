@@ -1,8 +1,8 @@
 # Arc closing report — Store Home & `init` (`arc-store-home`)
 
 > **Realizes:** ODD-0022 · **Slices:** 01–04, all closed · **Date:** 2026-07-26
-> **Written by:** CC · **Status:** **code-complete and compose-verified**, with **SH-6 (dogfood
-> cutover) explicitly open, pending RH C-5**.
+> **Written by:** CC · **Status:** **complete.** Code-complete and compose-verified at first
+> writing, with SH-6 open pending RH C-5; **SH-6 landed the same day** — see the postscript.
 
 ## What the arc set out to do
 
@@ -76,26 +76,58 @@ test that checked only the positive half.
 | `cargo clippy --all-targets --workspace -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `unsafe` | none added across the arc |
-| odm's own corpus | `check` green at 60 nodes, **unchanged** — the arc is opt-in until SH-6 |
+| odm's own corpus | `check` green at 60 nodes — **now in the store home**, all 60 ULIDs preserved (SH-6) |
 
 CI runs the store suite on **both git arms** (a `>= 2.42` gate on `test`, plus a `test-old-git`
 job), which is the standing guard against the two arms diverging again.
 
-## SH-6 — open, and why
+## SH-6 — closed (postscript, same day)
 
-**odm does not yet live in its own store.** Its corpus is still `nodes/` on the working branch,
-resolved by the no-`[store]` back-compat path. The cutover — moving odm's own nodes onto the
-orphan branch and splitting `odm.toml` into locator + `config.toml` — is **RH C-5's** work, and
-it is sequenced there deliberately: C-5 already rewrites `migrate`/`self-host`, and F-20 (the
-creation-date data loss) has to be fixed in the same pass, so the corpus is rewritten **once**
-rather than twice.
+At first writing this section read *"odm does not yet live in its own store"* — the corpus was
+still `nodes/` on the working branch, resolved by the no-`[store]` back-compat path, and the
+cutover was sequenced into **RH C-5** so the corpus would be rewritten once rather than twice.
 
-Recorded, not dropped: **SH-6 stays open on this arc's ledger** until that lands.
+**It landed.** odm's 60 nodes now live on the orphan `odm` branch at `.worktrees/odm`; `check` is
+green at 60 *in the home*; `odm.toml` is a locator and the operational half moved to the store's
+`config.toml`. Every ULID was preserved — a relocation and in-place re-stamp, not a re-derivation,
+which would have minted ids and broken every edge. Full account:
+`arc-release-hardening/c5-closing-report.md`.
+
+### What the dogfood found — and why it belongs in *this* report
+
+The arc shipped four slices without odm ever running on its own store. The moment it did, three
+defects appeared, and every one of them is a fourth instance of the pattern this report already
+named:
+
+5. **`orient` was blind to a selection `use` had just written.** Slice 01 moved the CLI context
+   under the store root "as the `.odm/` index already does" and updated `use` and `context` — the
+   two obvious consumers. `orient` is the third, and it kept reading the *invocation* root. That is
+   indistinguishable in any repository where the store is the invocation root, which was every
+   repository and every test this arc wrote. The symptom, once the two parted: `use` prints
+   `✓ context: arc = …`, writes the file, and `orient` reports `(no current arc)`.
+6. **`init` scaffolded no `.gitignore` for the store**, so the first `git add -A` on a store branch
+   sweeps in the derived index — a conflict generator on a branch whose entire purpose is sharing.
+7. **The first fix for (6) was ignoring all of `.odm/`** — which would have withheld
+   `context.json`, the current focus, from every fresh clone. The store would carry the plan but
+   not the place in it, defeating the project's own success test that a fresh session orients from
+   `odm orient` alone.
+
+The through-line the report drew from the first three — **assert both halves** — extends cleanly.
+(5) is *"not just that `use` wrote it, but that `orient` can read it"*; (7) is *"not just that the
+cache is ignored, but that the declaration is not"*. The regression tests for (5) run against a
+**redirected** store on purpose: in an un-redirected one they pass either way, which is precisely
+how the bug survived four slices of green suites.
+
+The honest lesson for the arc: **an opt-in feature nobody has opted into is not verified.** Slices
+01–04 were green, and the composition (SH-5) was reproduced against synthetic repositories — but
+until odm itself moved in, the arm where the store root and the invocation root differ had never
+been exercised by a real command against a real corpus. That is the same shape as the git-2.39
+bug in slice 02, one level up.
 
 ## Bubble-up
 
-- **`arc-plan.md`** v1.5: SH-1…SH-4 closed, SH-5 reproduced, SH-6 open pending RH C-5.
-- **`project-plan.md`** (P-14): the arc is code-complete; the dogfood cutover rides RH C-5.
+- **`arc-plan.md`** v1.6: SH-1…SH-4 closed, SH-5 reproduced, **SH-6 attested** (RH C-5 cutover).
+- **`project-plan.md`** (P-14): the arc is complete, dogfood included.
 - Carried for whoever picks up the `store` group: `--yes` is accepted and unused on every
   subcommand; `sync` assumes the upstream remote is `origin`; `--json`'s `worktree` duplicates
   `store_root`; `worktree_base` is not renameable.

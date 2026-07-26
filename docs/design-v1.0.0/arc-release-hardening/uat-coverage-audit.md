@@ -16,10 +16,10 @@
 | F-4…F-9 (`list`: number col, date, status col, tree, de-number, width) | C-3 | **done** |
 | F-15 (retired nodes shown in `list`) | C-3 | **done** |
 | F-10…F-13 (`new` warn, `context`→`project`, `path`→`chain`, `rollup` md/json) | **C-4** | open |
-| F-14 (`self-host`→`migrate`) | **C-5** | open |
-| F-18 (names embed metadata) | **C-5** (was C-7) | open |
+| F-14 (`self-host`→`migrate`) | **C-5** | **done** (2026-07-26) |
+| F-18 (names embed metadata) | **C-5** (was C-7) | **done** (2026-07-26) — 44/45 work names normalized; one document-title parenthetical stays by design |
 | F-19 (normalized status) | **C-8** | open |
-| F-20 (work-node dates) | **C-5** | open |
+| F-20 (work-node dates) | **C-5** | **done** (2026-07-26) — dates span 2026-06-20 → 2026-07-25, 13 distinct days |
 | F-16 (unconditional table ANSI) | upstream `oxur-term` (unassigned) | open — decide |
 | F-17 (body-snapshot drift) | migrate/self-host (unassigned) | open — decide |
 | F-21 (`--json` omits dates) | **LLM-command-surface arc** | open |
@@ -146,7 +146,7 @@ as an **explicit decision + verification**, not a loose "overlaps":
 
 | Item | Disposition | Home | Ship-blocking? |
 |------|-------------|------|----------------|
-| L-3a (vision not carried) | route | **RH C-5** re-self-host (SH-6 cutover) + author `# Vision` source | rides the cutover |
+| L-3a (vision not carried) | route | **RH C-5** re-self-host (SH-6 cutover) + author `# Vision` source | **done** (2026-07-26) — project body carries `# Vision` from project-plan §1; focus set via `odm use arc 1600` and committed with the store, so a fresh session gets both from `orient` |
 | L-3b (check: no-vision finding) | route | **RH C-6** check-hardening (with G-2, G-3) | no (fast-follow within RH) |
 | L-6 (prebuilt binaries) | route, reclassified | **release-eng** follow-up (ODD-0017 adoption) | **no** (post-1.0 default) |
 | L-8b (reconcile 4 ODDs) | **do now** | **RH release-gate checklist** | **yes — before ship** |
