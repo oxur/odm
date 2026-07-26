@@ -118,3 +118,35 @@ slice-02 diff) and fail only because **this container runs as root** (euid 0), w
   planned.
 - **Next:** CC applies the one-line `-b` fix (+ the unit-test assertion), re-runs `store_init` on git
   ≥ 2.42 to reproduce all 8 green, closes SH-2. Then slice 03 (attach + ff-sync).
+
+---
+
+## Amendment sign-off — `e6d24bb` (2026-07-26, CDC)
+
+**Verified. SH-2 clears to `attested` (amended); `reproduced` flips when CI runs both git jobs green.**
+
+Re-pulled the branch at `e6d24bb` into the container clone and re-ran on **git 2.43**:
+
+- **The `-b` fix matches the verified patch** — `plan()` now emits `worktree add --orphan -b <branch>
+  <dir>`, with an inline comment explaining why the branch is never a bare positional. The unit test
+  asserts the corrected argv (it previously pinned the broken one — a test that reads as coverage
+  while locking in the bug).
+- **`cargo test -p oxur-odm --test store_init` → 8 passed, 0 failed** on CC's committed tree. The
+  modern arm is now reproduced on real git ≥ 2.42, not just argv-checked.
+- **The CI guard is sound, and it is the part that matters.** Two jobs, each asserting its own git
+  version: `test` fails fast below 2.42 (so the modern `--orphan` arm is always the one under test),
+  and `test-old-git` pins `debian:bullseye` (git 2.30) and *confirms* it is pre-2.42 before running
+  `store_init` on the fallback arm. The version parse (`major`/`minor` off `git --version`) is correct
+  across 2.39/2.42/2.43/3.0; the backtick command-substitution bug CC caught in its own guard is gone.
+  This makes both arms load-bearing — which is the right fix, since bug 2 proved they can diverge.
+
+**Endorsed, without reservation.** CC corroborated the `-b` requirement independently from the git
+synopsis rather than only taking the reproduction; kept the original "⚠ git version" caveat standing
+with a note that its predicted gap is where the defect lived (prediction + outcome together beat a
+tidied account); and was explicit that local green still only covers the fallback, so the modern arm's
+evidence is CDC's 2.43 run plus the CI job. That is exactly the honesty the ledger wants.
+
+**The one thing neither of us can close from here:** the CI jobs have not *run* — the branch is
+unpushed (origin is SSH; the device bridge can't reach github:22). Both arms are independently green
+(CC's local 2.39.5 fallback + CDC's 2.43 modern), so the evidence exists; CI is what will keep it
+true. `reproduced` is earned when the branch pushes and both jobs pass.
