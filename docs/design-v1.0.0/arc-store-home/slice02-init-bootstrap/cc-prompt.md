@@ -1,0 +1,103 @@
+# cc-prompt — arc-store-home slice 02: `git`-worktree plumbing + `odm store init` bootstrap
+
+> **Arc:** Store Home & `init` (`arc-store-home`) · **Slice:** 02 · **Feeds:** SH-2 · **Realizes:**
+> ODD-0022 §4.3 (bootstrap) + §5 (ratified `git` shell-out exception). **Builds on slice 01**
+> (`odm-store/src/home.rs`: `StoreHome::resolve`, `StoreLocation`). This is the **first and only**
+> place odm shells out to `git`.
+
+## Goal
+
+Implement **`odm store init`** in its **bootstrap** arm: from a repo with no `odm` branch, stand up
+the store home end-to-end — worktree + orphan branch + `[store]` locator + scaffolded store +
+gitignore — so that slice-01 resolution then redirects every command into the new home and `odm
+check` is green there. Bootstrap only; attach/ff-sync are slice 03, rename is slice 04, corpus
+migration is RH C-5.
+
+## Command placement — birth under `odm store`
+
+Add a **`store` subcommand group** with **`init`** as its first member (`odm store init`), per
+ODD-0023's three-tier surface and the operator's rewrite-first sequencing (born in its final home,
+never renamed). **Do not** implement the rest of the ODD-0023 reorg — no `node` group, no
+`context`→`project`/`path`→`chain` renames, no deprecation aliases (all RH C-4). Only `store` +
+`init` here. Keep the existing flat top-level commands exactly as they are.
+
+## Changes
+
+### 1. The `git` shell-out wrapper (new, isolated module — e.g. `odm-store/src/worktree.rs`)
+
+- The **only** module that runs the `git` binary. Document the ODD-0022 §5 exception at the module
+  head: *worktree/orphan creation is not in gix 0.66 (`git worktree add` unimplemented), so `init`/
+  rename setup shells out to `git`; all steady-state reads/writes stay on `gix`.*
+- Detect the `git` version once (`git --version`). **≥ 2.42:** `git worktree add --orphan <branch>
+  <dir>`. **< 2.42:** two-step fallback — `git worktree add --detach <dir>`, then in that worktree
+  `git checkout --orphan <branch>` (leaving it unborn/empty, ready for the first odm commit).
+- `git` absent or too old for the fallback ⇒ a clear `StoreError` naming the fix (install/upgrade
+  git), never a panic. Route git errors through the existing `StoreError::Git` flattening pattern.
+
+### 2. Bootstrap detection
+
+- A function that classifies the repo: **bootstrap** iff there is **no** `refs/heads/<branch_name>`
+  **and no** `refs/remotes/*/<branch_name>` (use `gix` to enumerate refs — this is a read, stays on
+  gix). Anything else (a local or remote `odm` branch exists) is **not** this slice — `init` prints a
+  clear message that attach/sync arrive in slice 03 and **stops without touching anything**.
+
+### 3. Bootstrap steps (ODD-0022 §4.3, in order)
+
+1. Create the worktree dir `<repo>/<worktree_base>/<worktree_name>` (defaults `.worktrees`/`odm`;
+   `--worktree`/`--branch` override) via the wrapper (§1).
+2. Create the orphan branch `<branch_name>` (default `odm`) in it (done by the wrapper's `--orphan`
+   / fallback).
+3. **Write `[store]` to the code-branch `odm.toml`** — `worktree_base`, `worktree_name`,
+   `branch_name` — appending the section (preserve any existing keys). After this, `StoreHome::resolve`
+   redirects to the worktree.
+4. Scaffold **inside the worktree**: `config.toml` with the operational defaults (gate-sets, display,
+   `docs_directory`, author — reuse odm's current default operational config), and an **empty**
+   `nodes/`. The code-branch `odm.toml` stays **locator-only** (do not duplicate operational keys
+   there).
+5. Ensure `/.worktrees/` is in the code-branch `.gitignore` (create the file or append; idempotent —
+   don't duplicate the line).
+
+### 4. `odm store init` CLI (odm-cli)
+
+- `store` group + `init`: flags `--dry-run` (print the plan — worktree path, branch, files — and
+  touch nothing), `--yes`, `--worktree <NAME>`, `--branch <NAME>`. `--json` emits the created home
+  (`mode: "bootstrap"`, store root, branch, worktree path).
+- Data → stdout, diagnostics → stderr; error-as-affordance on the existing-branch stop and on
+  missing git.
+
+### 5. Carried item #1 — `.odm/context.json` follows the store
+
+Route `.odm/context.json` through the **resolved store root** (like the `.odm/` index), not the
+invocation root, so context rides with the store. Small change; this slice owns the call (slice-01
+bubble-up + ODD-0022 §6).
+
+### 6. Carried item #2 — `ROLLUP.md` placement (decision only)
+
+Record in `closing-report.md`: `ROLLUP.md` stays at the **repo/invocation root** (a projection for
+the code-branch reader). **No code change** — `rollup` already writes there; do not move it.
+
+## Scope boundary (out)
+
+attach / ff-sync (slice 03); `rename` (slice 04); importing odm's corpus (RH C-5); the `node` group
+and top-level renames/aliases (RH C-4). **No** new `git` subprocess outside the worktree module —
+steady-state stays on `gix` (ledger **L-14**).
+
+## Acceptance / ledger (SH-2, `ledger.md` L-1…L-15)
+
+- `cargo build`/`test`/`clippy --all-targets -- -D warnings`/`fmt` green; no `unsafe`.
+- Unit: version→argv mapping (≥2.42 vs fallback), git-missing error, bootstrap-vs-existing detection.
+- Integration (`assert_cmd`, scratch repos): fresh repo → `odm store init` → worktree at
+  `.worktrees/odm`, branch `odm`, **orphan** (disjoint history / no shared merge-base), `[store]` in
+  `odm.toml`, `config.toml` + empty `nodes/` in the store, `/.worktrees/` gitignored; then `odm new`
+  + `odm check` green in the home; `--dry-run` touches nothing; second `init` stops (defers to 03).
+- `grep` confirms the `git` subprocess lives only in the worktree module (L-14); `.odm/context.json`
+  resolves under the store root (L-12).
+
+## Method
+
+One branch (`sh-slice02-init-bootstrap`, off the slice-01 tip / `release/1.0.x` — settle at start);
+one mergeable diff; five-iteration cap. CC implements on local 1.85+ **with a real `git` binary**
+(the shell-out needs it — note the CI `git` version in the closing report, since L-1/L-2 depend on
+it). CDC verifies (`cdc-verification.md`); cargo rows attested → CI. On close, bubble up to
+`arc-store-home/arc-plan.md` (SH-2; note anything the arc-plan didn't anticipate — CI git version,
+`--json` shape, the two carried dispositions; silent-drop diff).
