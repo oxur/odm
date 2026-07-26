@@ -193,19 +193,23 @@ fn json_reports_the_created_home() {
     assert!(v["git_version"].is_string(), "the git that ran is named: {v}");
 }
 
-// ----- L-5: an existing branch stops cleanly --------------------------------
+// ----- L-5: an existing branch is never clobbered ---------------------------
 
 #[test]
 fn an_existing_branch_stops_without_touching_anything() {
     let dir = repo();
-    // Someone else's store already exists on the branch.
+    // A branch exists but no worktree does. Slice 02 deferred this to "slice
+    // 03"; slice 03 classifies it precisely — a half-finished or removed
+    // worktree — and still refuses to act, pointing at the future `--force`.
+    // The safety claim is unchanged and is what this test pins: an existing
+    // branch is never re-orphaned or clobbered.
     git(dir.path(), &["branch", "odm"]);
 
     odm(dir.path())
         .args(["store", "init"])
         .assert()
         .success()
-        .stderr(predicates::str::contains("slice 03"));
+        .stderr(predicates::str::contains("--force"));
 
     assert!(!dir.path().join(".worktrees").exists(), "no worktree created");
     assert!(!dir.path().join("odm.toml").exists(), "no locator written");

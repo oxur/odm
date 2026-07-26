@@ -54,7 +54,7 @@ already-exists paths; 04 is small).
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | SH-1 | Slice 01 (resolution + two-config split) closed | ptr: `slice01…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice01-store-resolution/closing-report.md` (2026-07-26): build/test (**54 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green; `[store]` resolves to `<repo>/<base>/<name>`, absent ⇒ repo root; operational config from the store's `config.toml` with locator fallback; a hand-placed `.worktrees/odm/` store takes every node write while **nothing lands at the repo root**; back-compat reproduced on odm's own corpus (no `[store]` → `check` green at 60 nodes, `nodes/` unmoved). L-7 mechanically clean: no `git` subprocess, no worktree ops. | attested-by-CC → **reproduced** when CI runs the cargo rows. Foundational — slices 02–04 and RH C-5 build on this. Raised for later slices: `.odm/context.json` still keys off the invocation root while the index follows the store; `ROLLUP.md` likewise; `branch_name` parsed but unconsumed until slice 02. |
 | SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice02-init-bootstrap/closing-report.md` (2026-07-26): build/test (**55 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green. `odm store init` creates the worktree + **orphan** branch (proved by `git merge-base` *failing*), writes the `[store]` locator, scaffolds `config.toml` + empty `nodes/`, gitignores `/.worktrees/`; `odm new` + `check` then green in the home. L-14 holds: `Command::new` in src is `worktree.rs` ×2 + the pre-existing shell probe. | attested-by-CC **as amended**. Shipped at `6703394` with a **wrong modern-git argv** — CDC reproduced the failure on git 2.43 (6/8 integration tests) and verified the fix; corrected here, plus a CI guard that now *asserts* the git version (a `>= 2.42` gate on `test`, and a `test-old-git` job for the fallback arm). Three real bugs total: unborn-branch detection and fallback non-equivalence (found in-slice), and the modern argv (found by independent verification). **`reproduced` on CI once both git jobs run green.** |
-| SH-3 | Slice 03 (`init` attach + ff-sync) closed | ptr: `slice03…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
+| SH-3 | Slice 03 (`init` attach + ff-sync) closed | ptr: `slice03…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice03-init-attach-sync/closing-report.md` (2026-07-26): build/test (**56 binaries, 0 failed**, +19 new)/clippy `-D warnings`/fmt green. Attach checks out the existing branch — `merge-base odm origin/odm` **succeeds** (shared history, the mirror of slice 02's orphan check) — and scaffolds nothing, with a custom `config.toml` proven to survive. ff-sync fast-forwards, no-ops when current, reports local-ahead, and **stops on divergence with B's HEAD unmoved and A's work not merged in**. Decision table is a pure function, all five cases unit-tested. Bootstrap → attach → ff-sync reproduced by hand. | attested-by-CC → **reproduced** on CI (both git arms). Tested against a **local bare remote**, so fetch/ancestry/fast-forward are real. **§5 widened on the record** from *create* to *create + attach + ff-sync* — all `init`-time, one module; steady state still all `gix` (L-15 checked mechanically). **Deviation recorded:** a dry-run sync *fetches*, because without it the preview reported the wrong arm. L-13 (repair) stays **deferred** by design. |
 | SH-4 | Slice 04 (`rename`) closed | ptr: `slice04…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Slottable. |
 | SH-5 | **Compose:** `odm init` stands up a working home end-to-end — **bootstrap** on a fresh repo, **attach** on a clone (no fork), **ff-sync** freshens; divergence warns + stops | arc-scale demo: all three modes in scratch repos | serious | arc-plan | open | | reproduce at arc scale. |
 | SH-6 | **Compose (dogfood):** odm's own corpus lives on the orphan `odm` branch, `check` green there, and the working branch no longer carries `nodes/` | arc-scale demo: `init` + **RH C-5** re-self-host into the home → `check` green | serious | arc-plan / ODD-0022 | open | | **reproduced jointly with RH C-5** (the cutover). The dogfood proof; the payoff row. |
@@ -72,6 +72,38 @@ becomes the active work (plan-late, plan-deep). CC implements on local 1.85+; CD
 the arc closes with `closing-report.md` + the composition check + the project bubble-up.
 
 ## Version History
+
+### v1.4 — 2026-07-26
+**Slice 03 closed (SH-3 attested); `odm store init` is now all three arms.** Slice 02's two
+"defer to slice 03" stops are replaced: **attach** checks out an existing branch (never
+re-orphans, never re-scaffolds — the store rides in with the branch), and **ff-sync** fetches,
+classifies by ancestry, and fast-forwards or explains why it will not. The classification is a
+**pure function** — git measures ancestry, a five-case table decides — so every case is
+unit-tested without a repo, a remote or a network, and the integration tests then prove the
+measurement against a **local bare remote**.
+
+**The safety invariant is the point of the slice:** divergence is never resolved automatically.
+The store branch is shared by construction (§6), so merging or rebasing it would rewrite
+history other clones already hold. The test asserts that three ways rather than trusting the
+message — B's HEAD unmoved, B's work intact, and A's work *not* silently merged in.
+
+**§5 widened, deliberately and on the record**, from *create* to *create + attach + ff-sync*:
+`gix` 0.66 offers none of `worktree add`, `fetch` or `merge --ff-only` for worktrees. All of it
+stays in the one shell-out module, and the invariant that matters is unchanged — **`init`-time
+only, steady state on `gix`** (L-15, checked mechanically).
+
+**One deviation from the prompt, recorded not hidden:** a `--dry-run` sync *does* fetch. Built
+the other way, the preview compared against a stale upstream and reported `sync-up-to-date` for
+a store a real run would fast-forward — a dry run that can disagree with the run it previews is
+worse than none, because it is trusted. A fetch cannot touch the store (remote-tracking refs
+only), and the dry-run message says so outright.
+
+Also: one slice-02 test changed *meaning* rather than regressing — a branch with no worktree is
+now classified precisely as the repair case (still refused, now pointing at `--force`), so its
+assertion moved to the current message. **SH-5 is now reproducible**; the closing report's
+bootstrap → attach → ff-sync walk is that demo. Raised for later: `--yes` is still accepted and
+unused on every arm; `sync` assumes the upstream remote is `origin`; `--json`'s `worktree`
+still duplicates `store_root`. Silent-drop diff: none. Surfaced by: slice 03 implementation (CC).
 
 ### v1.3 — 2026-07-26
 **Slice 02 amended — the flagged risk was the defect.** The closing report warned that the

@@ -126,6 +126,72 @@ pub fn detect(repo_root: &Path, store_root: &Path, branch: &str) -> Mode {
     Mode::Bootstrap
 }
 
+/// How local and upstream stand relative to each other.
+///
+/// Separated from the git calls that measure it so the decision table below is
+/// a pure function: five cases, all testable without a repository, a remote, or
+/// a network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ancestry {
+    /// Local is an ancestor of upstream — upstream has moved on.
+    pub local_is_ancestor: bool,
+    /// Upstream is an ancestor of local — local has commits upstream lacks.
+    pub upstream_is_ancestor: bool,
+    /// How many commits local is ahead by.
+    pub local_ahead: usize,
+}
+
+/// What a sync should do — the whole decision table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyncAction {
+    /// Upstream is ahead: fast-forward to it.
+    FastForward,
+    /// Identical: nothing to do.
+    UpToDate,
+    /// Local has unpushed commits: report, change nothing.
+    LocalAhead(usize),
+    /// Histories have parted: stop, and let a human choose.
+    Diverged,
+    /// No upstream to compare against.
+    NoUpstream,
+}
+
+impl SyncAction {
+    /// The `--json` `mode` for this outcome.
+    #[must_use]
+    pub fn mode(&self) -> &'static str {
+        match self {
+            SyncAction::FastForward => "sync-fast-forwarded",
+            SyncAction::UpToDate => "sync-up-to-date",
+            SyncAction::LocalAhead(_) => "sync-local-ahead",
+            SyncAction::Diverged => "sync-diverged",
+            SyncAction::NoUpstream => "sync-no-upstream",
+        }
+    }
+}
+
+/// Chooses the sync action from the ancestry, or `None` when there is no
+/// upstream at all.
+///
+/// **Divergence is a stop, never a merge or a rebase.** The store branch is
+/// shared by construction — that is the point of ODD-0022 §6 — and rewriting or
+/// merging published history corrupts every clone that already has it. odm
+/// reports the situation and leaves the choice to a person; there is no
+/// automatic resolution that is safe to make on someone else's behalf.
+#[must_use]
+pub fn sync_action(ancestry: Option<Ancestry>) -> SyncAction {
+    let Some(a) = ancestry else {
+        return SyncAction::NoUpstream;
+    };
+    match (a.local_is_ancestor, a.upstream_is_ancestor) {
+        // Identical commit: each is an ancestor of the other.
+        (true, true) => SyncAction::UpToDate,
+        (true, false) => SyncAction::FastForward,
+        (false, true) => SyncAction::LocalAhead(a.local_ahead),
+        (false, false) => SyncAction::Diverged,
+    }
+}
+
 /// What a bootstrap did, or — under [`Plan::dry_run`] — would do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bootstrapped {
@@ -279,6 +345,142 @@ fn ensure_gitignored(repo_root: &Path) -> Result<()> {
     std::fs::write(&path, text).map_err(|e| StoreError::io(&path, e))
 }
 
+/// What an attach did, or would do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attached {
+    /// The store root the branch was checked out into.
+    pub store_root: PathBuf,
+    /// The branch attached to.
+    pub branch: String,
+    /// The remote it was fetched from, when it had to be fetched first.
+    pub fetched_from: Option<String>,
+}
+
+/// What a sync found, and did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Synced {
+    /// The store root.
+    pub store_root: PathBuf,
+    /// The branch.
+    pub branch: String,
+    /// The outcome.
+    pub action: SyncAction,
+    /// The upstream compared against, when there was one.
+    pub upstream: Option<String>,
+}
+
+/// The default remote to fetch from.
+pub const DEFAULT_REMOTE: &str = "origin";
+
+/// Attaches to an existing branch: check it out into the worktree.
+///
+/// **Never scaffolds and never orphans.** `config.toml` and `nodes/` arrive
+/// *with* the branch (ODD-0022 §4.3), so writing them here would overwrite a
+/// teammate's store with defaults. The only writes are the two idempotent
+/// top-ups a fresh clone might be missing: the `.gitignore` entry and the
+/// locator.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if the fetch or the worktree checkout fails.
+pub fn attach(plan: &Plan, remote_only: Option<&str>) -> Result<Attached> {
+    let store_root = plan.store_root();
+    let branch = plan.location.branch_name.clone();
+
+    if plan.dry_run {
+        return Ok(Attached { store_root, branch, fetched_from: remote_only.map(str::to_string) });
+    }
+
+    // A branch that exists only on a remote has to be fetched before it can be
+    // checked out; git then DWIMs a local tracking branch of the same name.
+    let fetched_from = match remote_only {
+        Some(_) => {
+            worktree::fetch(&plan.repo_root, DEFAULT_REMOTE)?;
+            Some(DEFAULT_REMOTE.to_string())
+        }
+        None => None,
+    };
+
+    worktree::attach(&plan.repo_root, &store_root, &branch)?;
+
+    // Top-ups only — both are normally already committed on the code branch.
+    if !plan.repo_root.join(LOCATOR_FILE).exists() {
+        write_locator(&plan.repo_root, &plan.location)?;
+    }
+    ensure_gitignored(&plan.repo_root)?;
+
+    Ok(Attached { store_root, branch, fetched_from })
+}
+
+/// Freshens an existing local store from its upstream, fast-forward only.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run, or the fast-forward fails.
+pub fn sync(plan: &Plan) -> Result<Synced> {
+    let store_root = plan.store_root();
+    let branch = plan.location.branch_name.clone();
+    let upstream_ref = format!("{DEFAULT_REMOTE}/{branch}");
+
+    // Fetch first, so the comparison is against a current upstream rather than
+    // a stale one — otherwise "up to date" could be a lie. A fetch failure (no
+    // remote, no network) is not fatal: it simply leaves no upstream to
+    // compare, which the table already handles.
+    //
+    // **This happens under `--dry-run` too**, deliberately. A dry run's whole
+    // job is to predict the real run, and without a fetch it compares against
+    // whatever the last fetch happened to leave behind — reporting
+    // "up to date" for a store that a real run would fast-forward. A preview
+    // that can differ from the thing it previews is worse than none. Fetching
+    // is the one git operation here that cannot touch the store: it updates
+    // remote-tracking refs only, moves no branch, and writes no file in the
+    // worktree. Recorded in the slice's closing report rather than done
+    // silently, since the prompt's wording was "touch nothing".
+    let _ = worktree::fetch(&plan.repo_root, DEFAULT_REMOTE);
+
+    let local = worktree::rev_parse(&plan.repo_root, &branch)?;
+    let upstream = worktree::rev_parse(&plan.repo_root, &upstream_ref)?;
+
+    let ancestry = match (&local, &upstream) {
+        (Some(local), Some(up)) => Some(Ancestry {
+            local_is_ancestor: worktree::is_ancestor(&plan.repo_root, local, up)?,
+            upstream_is_ancestor: worktree::is_ancestor(&plan.repo_root, up, local)?,
+            local_ahead: worktree::count_commits(&plan.repo_root, &format!("{up}..{local}"))?,
+        }),
+        _ => None,
+    };
+    let action = sync_action(ancestry);
+
+    // Only the fast-forward changes anything, and only outside a dry run.
+    if action == SyncAction::FastForward && !plan.dry_run {
+        worktree::merge_ff_only(&store_root)?;
+    }
+
+    Ok(Synced {
+        store_root,
+        branch,
+        action,
+        upstream: upstream.is_some().then(|| upstream_ref.clone()),
+    })
+}
+
+/// Whether the store branch exists but its worktree is gone — a half-finished
+/// or manually-deleted `init`.
+///
+/// Detected but **not repaired** (ODD-0022 §6): re-creating the worktree here
+/// could silently paper over a state a person deliberately made, so `init`
+/// reports it and points at the future `--force`.
+#[must_use]
+pub fn needs_repair(repo_root: &Path, store_root: &Path, branch: &str) -> bool {
+    if store_root.exists() {
+        return false;
+    }
+    let Ok(repo) = gix::open(repo_root) else {
+        return false;
+    };
+    repo.try_find_reference(&format!("refs/heads/{branch}")).ok().flatten().is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,6 +557,68 @@ mod tests {
             err.to_string().contains("already exists"),
             "it refuses rather than writing in: {err}"
         );
+    }
+
+    // ----- L-7: the ancestry decision table, without a repo or a network ----
+
+    /// The ancestry for a given pair of flags.
+    fn ancestry(local_is_ancestor: bool, upstream_is_ancestor: bool, ahead: usize) -> Ancestry {
+        Ancestry { local_is_ancestor, upstream_is_ancestor, local_ahead: ahead }
+    }
+
+    #[test]
+    fn test_sync_action_upstream_ahead_fast_forwards() {
+        // local is an ancestor of upstream, and not vice versa.
+        assert_eq!(sync_action(Some(ancestry(true, false, 0))), SyncAction::FastForward);
+    }
+
+    #[test]
+    fn test_sync_action_identical_is_up_to_date() {
+        // A commit is its own ancestor, so equality shows as both flags set.
+        assert_eq!(sync_action(Some(ancestry(true, true, 0))), SyncAction::UpToDate);
+    }
+
+    #[test]
+    fn test_sync_action_local_ahead_reports_the_count() {
+        assert_eq!(sync_action(Some(ancestry(false, true, 3))), SyncAction::LocalAhead(3));
+    }
+
+    #[test]
+    fn test_sync_action_neither_ancestor_is_diverged() {
+        // The case that must never be auto-resolved.
+        assert_eq!(sync_action(Some(ancestry(false, false, 2))), SyncAction::Diverged);
+    }
+
+    #[test]
+    fn test_sync_action_without_upstream_is_nothing_to_sync_from() {
+        assert_eq!(sync_action(None), SyncAction::NoUpstream);
+    }
+
+    #[test]
+    fn test_sync_action_modes_are_the_json_contract() {
+        assert_eq!(SyncAction::FastForward.mode(), "sync-fast-forwarded");
+        assert_eq!(SyncAction::UpToDate.mode(), "sync-up-to-date");
+        assert_eq!(SyncAction::LocalAhead(1).mode(), "sync-local-ahead");
+        assert_eq!(SyncAction::Diverged.mode(), "sync-diverged");
+        assert_eq!(SyncAction::NoUpstream.mode(), "sync-no-upstream");
+    }
+
+    // ----- L-13: repair is detected, not performed --------------------------
+
+    #[test]
+    fn test_needs_repair_is_false_when_the_store_is_present() {
+        let dir = TempDir::new().unwrap();
+        let store = dir.path().join(".worktrees").join("odm");
+        std::fs::create_dir_all(&store).unwrap();
+        assert!(!needs_repair(dir.path(), &store, "odm"));
+    }
+
+    #[test]
+    fn test_needs_repair_is_false_without_a_branch() {
+        // Store gone *and* no branch: that is a bootstrap, not a repair.
+        let dir = TempDir::new().unwrap();
+        let store = dir.path().join(".worktrees").join("odm");
+        assert!(!needs_repair(dir.path(), &store, "odm"));
     }
 
     #[test]

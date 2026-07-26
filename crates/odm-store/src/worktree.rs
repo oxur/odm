@@ -10,10 +10,17 @@
 //! unborn-HEAD dance ourselves — this one operation shells out to the `git`
 //! the user already has.
 //!
-//! The exception is deliberately narrow: **setup only**. Every steady-state
-//! read and write stays on `gix` (ledger L-14), so the subprocess dependency
+//! The exception is deliberately narrow: **`init`-time only**. Every
+//! steady-state read and write stays on `gix`, so the subprocess dependency
 //! exists at `init` and never during ordinary use. If `gix` grows worktree
 //! support, this module is the only thing to delete.
+//!
+//! **Scope widened once, deliberately (slice 03).** §5 originally ratified the
+//! exception for *creating* a worktree. Attach and ff-sync need three more
+//! operations — `worktree add <dir> <branch>` over an existing branch, `fetch`,
+//! and `merge --ff-only` — plus ancestry queries. They live here rather than
+//! anywhere else so the boundary stays one module wide, and the invariant that
+//! matters is unchanged: **`init`-time only, steady state on `gix`** (L-15).
 //!
 //! ## The two paths
 //!
@@ -190,6 +197,98 @@ pub fn create(repo_root: &Path, dir: &Path, branch: &str) -> Result<GitVersion> 
         }
     }
     Ok(version)
+}
+
+/// Adds `dir` as a worktree checking out an **existing** `branch`.
+///
+/// Deliberately *not* `--orphan`: the branch already carries someone's store,
+/// and re-orphaning it would discard that history. Not version-gated either —
+/// plain `worktree add` long predates 2.42.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git is absent or the command fails.
+pub fn attach(repo_root: &Path, dir: &Path, branch: &str) -> Result<()> {
+    run(
+        repo_root,
+        &["worktree".into(), "add".into(), dir.to_string_lossy().into_owned(), branch.into()],
+    )
+}
+
+/// Fetches `remote`, so ancestry is judged against a current upstream.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if the fetch fails (no network, no such remote).
+pub fn fetch(repo_root: &Path, remote: &str) -> Result<()> {
+    run(repo_root, &["fetch".into(), remote.into()])
+}
+
+/// Fast-forwards the branch checked out in `worktree_dir`.
+///
+/// `--ff-only` is the whole point: it fails rather than creating a merge
+/// commit, so a sync can never rewrite or merge a published branch.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if the merge is not a fast-forward, or git fails.
+pub fn merge_ff_only(worktree_dir: &Path) -> Result<()> {
+    run(worktree_dir, &["merge".into(), "--ff-only".into()])
+}
+
+/// Resolves `rev` to a commit id, or `None` when it does not exist.
+///
+/// A missing ref is a normal answer here — "there is no upstream" is a state to
+/// report, not a failure — so it is `None` rather than an error.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] only if git itself cannot be run.
+pub fn rev_parse(cwd: &Path, rev: &str) -> Result<Option<String>> {
+    let output =
+        capture(cwd, &["rev-parse".into(), "--verify".into(), "--quiet".into(), rev.into()])?;
+    Ok(output.map(|text| text.trim().to_string()).filter(|id| !id.is_empty()))
+}
+
+/// Whether `ancestor` is an ancestor of `descendant` (a commit is its own).
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run. A `false` answer is git's exit
+/// code 1, not an error.
+pub fn is_ancestor(cwd: &Path, ancestor: &str, descendant: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| StoreError::Git(format!("running `git merge-base`: {e}")))?;
+    Ok(output.status.success())
+}
+
+/// How many commits `range` (e.g. `upstream..local`) contains.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn count_commits(cwd: &Path, range: &str) -> Result<usize> {
+    let output = capture(cwd, &["rev-list".into(), "--count".into(), range.into()])?;
+    Ok(output.and_then(|t| t.trim().parse().ok()).unwrap_or(0))
+}
+
+/// Runs `git`, returning its stdout, or `None` when it exits non-zero.
+///
+/// Used for the queries whose "failure" is a legitimate answer — an absent ref,
+/// an empty range — where an error would force every caller to re-interpret it.
+fn capture(cwd: &Path, args: &[String]) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| StoreError::Git(format!("running `git {}`: {e}", args.join(" "))))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
 }
 
 /// Runs `git` with `args` in `cwd`, mapping a non-zero exit to an error that
