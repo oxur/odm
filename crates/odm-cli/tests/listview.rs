@@ -293,7 +293,7 @@ fn type_cells_carry_one_hue_per_node_type() {
     let row_for = |name: &str| {
         raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
     };
-    assert!(row_for("Root project").contains("\u{1b}[38;2;176;98;158m"), "project is dim magenta");
+    assert!(row_for("Root project").contains("\u{1b}[38;2;212;110;197m"), "project is dim magenta");
     assert!(row_for("First arc").contains("\u{1b}[38;2;167;139;250m"), "arc is violet");
     assert!(row_for("Alpha").contains("\u{1b}[38;2;122;162;247m"), "slice is blue");
     assert!(row_for("A design document").contains("\u{1b}[38;2;229;192;123m"), "design is yellow");

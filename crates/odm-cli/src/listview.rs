@@ -156,11 +156,11 @@ fn work_gate_color(label: &str) -> Option<TabledColor> {
 /// them, and inventing one here would be a decision made by omission.
 pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
     let (r, g, b) = match node_type {
-        NodeType::Project => (176, 98, 158),  // dim magenta
+        NodeType::Project => (212, 110, 197), // magenta
         NodeType::Arc => (167, 139, 250),     // violet
         NodeType::Slice => (122, 162, 247),   // blue
         NodeType::Design => (229, 192, 123),  // yellow
-        NodeType::Research => (245, 160, 90), // orange
+        NodeType::Research => (240, 128, 74), // red-orange
         NodeType::Adr | NodeType::Note => return None,
     };
     Some(TabledColor::rgb_fg(r, g, b))
