@@ -46,6 +46,24 @@ pub struct Cli {
     command: Option<Command>,
 }
 
+/// Which family of nodes `list` shows.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum GroupArg {
+    /// The plan: `project`/`arc`/`slice`.
+    Plan,
+    /// The reference material: `design`/`research`/`adr`/`note`.
+    Reference,
+}
+
+impl From<GroupArg> for crate::listview::Group {
+    fn from(value: GroupArg) -> Self {
+        match value {
+            GroupArg::Plan => crate::listview::Group::Plan,
+            GroupArg::Reference => crate::listview::Group::Reference,
+        }
+    }
+}
+
 /// Which date `list`'s leading column shows.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum DateArg {
@@ -208,6 +226,15 @@ enum Command {
         /// Defaults to `[display] max_width` in `odm.toml`.
         #[arg(long, value_name = "COLS")]
         width: Option<usize>,
+        /// Show only one family: the `plan` (project/arc/slice) or the
+        /// `reference` material (design/research/adr/note).
+        #[arg(long, value_name = "FAMILY")]
+        group: Option<GroupArg>,
+        /// Show only nodes whose STATUS is this value (e.g. `retired`,
+        /// `tested`). Implies `--all` when the value is a withdrawn one, so
+        /// `--status retired` shows exactly what a default listing withholds.
+        #[arg(long, value_name = "VALUE")]
+        status: Option<String>,
         /// Include retired and superseded nodes.
         #[arg(long, visible_alias = "include-retired")]
         all: bool,
@@ -510,14 +537,20 @@ pub fn dispatch(
         Command::New { node_type, name, parent, dry_run, yes: _ } => {
             commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
         }
-        Command::List { node_type, tag, component, date, width, all, json } => {
+        Command::List { node_type, tag, component, date, width, group, status, all, json } => {
+            // Asking for a withdrawn status is asking to see withheld rows.
+            let withdrawn_status = status.as_deref().is_some_and(|s| {
+                matches!(s.trim().to_ascii_lowercase().as_str(), "retired" | "superseded")
+            });
             let view = commands::ListView {
                 type_filter: node_type.as_deref(),
                 tag: tag.as_deref(),
                 component: component.as_deref(),
                 date: date.into(),
                 width,
-                include_withdrawn: all,
+                status: status.as_deref(),
+                group: group.map(Into::into),
+                include_withdrawn: all || withdrawn_status,
                 json,
             };
             commands::list(&store, root, view, out)?;

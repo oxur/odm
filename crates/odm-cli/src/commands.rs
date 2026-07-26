@@ -255,6 +255,9 @@ pub fn new(
 /// The `list` table's columns (RH C-3 / F-4: no NUMBER).
 const LIST_COLUMNS: [&str; 5] = ["DATE", "TYPE", "STATUS", "NAME", "ID"];
 
+/// The `STATUS` column's index, for the per-state colouring.
+const STATUS_COLUMN: usize = 2;
+
 /// The NAME column's default width bound when neither `--width` nor
 /// `[display] max_width` says otherwise (F-9).
 const DEFAULT_NAME_WIDTH: usize = 64;
@@ -272,6 +275,10 @@ pub struct ListView<'a> {
     pub(crate) date: listview::DateColumn,
     /// The NAME column's width bound; `None` defers to config, then the default.
     pub width: Option<usize>,
+    /// Show only nodes whose STATUS is this value.
+    pub status: Option<&'a str>,
+    /// Show only one family of nodes.
+    pub(crate) group: Option<listview::Group>,
     /// Whether to include retired/superseded nodes (F-15).
     pub include_withdrawn: bool,
     /// Emit JSON instead of the table.
@@ -341,10 +348,15 @@ pub fn list(
         &gates,
         view.date,
         view.include_withdrawn,
+        view.status,
+        view.group,
     );
 
     if rows.is_empty() {
-        writeln!(out, "(no nodes)")?;
+        match view.status {
+            Some(status) => writeln!(out, "(no nodes with status {status:?})")?,
+            None => writeln!(out, "(no nodes)")?,
+        }
         return Ok(());
     }
 
@@ -362,20 +374,24 @@ pub fn list(
                     listview::elide(&node.name, width),
                     node.id.to_string(),
                 ]);
-                // Present, but not live work (F-15).
                 if node.status.is_withdrawn() {
+                    // Present, but not live work (F-15). Dimming the whole row
+                    // is the stronger signal, so it wins over the status colour
+                    // below rather than fighting it cell by cell.
                     table.dim_last();
+                } else if let Some(fg) =
+                    oxur_term::table::helpers::state_to_fg_color(node.status.label())
+                {
+                    // The state palette `oxur-odm` shipped, reused rather than
+                    // restated: the same `oxur-term` helper, on the same STATUS
+                    // column, with the row's band behind it — colour only, no
+                    // weight, exactly as 0.3.5 rendered it. A gate the palette
+                    // does not know (the work-node sequences) stays uncoloured,
+                    // which is what the original did with an unknown state.
+                    table.color_last(STATUS_COLUMN, fg);
                 }
             }
-            listview::Row::Group(label) => {
-                table.row([
-                    "".to_string(),
-                    String::new(),
-                    String::new(),
-                    format!("── {label} ──"),
-                    String::new(),
-                ]);
-            }
+            listview::Row::Divider => table.divider(),
         }
     }
     // The count is of what is *shown*; say so when rows were withheld, so a

@@ -41,6 +41,12 @@ const INDENT: &str = " ";
 /// separator already spaces them.
 const TRAILER: &str = " ";
 
+/// The glyph a divider row is drawn with.
+const RULE: char = '─';
+
+/// The glyph where a divider row crosses a column separator.
+const RULE_JUNCTION: char = '┼';
+
 /// A table in the Oxur house shape: title bar, column names, indented data
 /// rows, summary bar.
 pub(crate) struct Themed {
@@ -48,12 +54,24 @@ pub(crate) struct Themed {
     title: String,
     /// The column names (row 1).
     headers: Vec<String>,
-    /// The data rows, each already stringified, one entry per column.
-    rows: Vec<Vec<String>>,
+    /// The rows, in render order.
+    rows: Vec<RowData>,
     /// The summary-bar text (last row), e.g. `Total: 59 nodes`.
     summary: String,
     /// Indices (into `rows`) of rows to render dimmed.
     dimmed: HashSet<usize>,
+    /// Per-cell foreground overrides: `(row index into `rows`, column, colour)`.
+    cell_colors: Vec<(usize, usize, TabledColor)>,
+}
+
+/// A row of the table body.
+enum RowData {
+    /// A data row: one already-stringified cell per column.
+    Cells(Vec<String>),
+    /// A horizontal rule across every column, separating groups of rows. It
+    /// keeps the ordinary cell dividers, so the columns read straight through
+    /// it, and leaves the leading and trailing space that every other row has.
+    Divider,
 }
 
 impl Themed {
@@ -65,6 +83,7 @@ impl Themed {
             rows: Vec::new(),
             summary: String::new(),
             dimmed: HashSet::new(),
+            cell_colors: Vec::new(),
         }
     }
 
@@ -74,7 +93,12 @@ impl Themed {
         let mut row: Vec<String> =
             cells.into_iter().take(self.headers.len()).map(Into::into).collect();
         row.resize(self.headers.len(), String::new());
-        self.rows.push(row);
+        self.rows.push(RowData::Cells(row));
+    }
+
+    /// Appends a horizontal rule separating the rows above from those below.
+    pub(crate) fn divider(&mut self) {
+        self.rows.push(RowData::Divider);
     }
 
     /// Renders the most recently pushed row dimmed — grey text over its band,
@@ -84,6 +108,37 @@ impl Themed {
         if let Some(last) = self.rows.len().checked_sub(1) {
             self.dimmed.insert(last);
         }
+    }
+
+    /// Colours one cell of the most recently pushed row, keeping its band
+    /// background so the stripe stays unbroken.
+    pub(crate) fn color_last(&mut self, col: usize, fg: TabledColor) {
+        if let Some(last) = self.rows.len().checked_sub(1) {
+            self.cell_colors.push((last, col, fg));
+        }
+    }
+
+    /// The rendered width of each column: the widest cell in it, header
+    /// included. The title and summary bars are excluded — they span every
+    /// column, so their length never widens one.
+    fn column_widths(&self) -> Vec<usize> {
+        let mut widths: Vec<usize> = self.headers.iter().map(|h| h.chars().count()).collect();
+        if let Some(last) = widths.last_mut() {
+            *last += TRAILER.chars().count();
+        }
+        for row in &self.rows {
+            let RowData::Cells(cells) = row else { continue };
+            for (i, cell) in cells.iter().enumerate() {
+                let mut width = cell.chars().count() + INDENT.chars().count();
+                if i + 1 == cells.len() {
+                    width += TRAILER.chars().count();
+                }
+                if width > widths[i] {
+                    widths[i] = width;
+                }
+            }
+        }
+        widths
     }
 
     /// Sets the summary-bar text (the last line of the table).
@@ -100,9 +155,21 @@ impl Themed {
         // below them is what carries the indent.
         builder.push_record(bar_row(&self.title, cols));
         builder.push_record(close_last(self.headers.clone()));
-        for row in &self.rows {
-            let cells = row.iter().map(|c| format!("{INDENT}{c}")).collect();
-            builder.push_record(close_last(cells));
+        let widths = self.column_widths();
+        let mut dividers = Vec::new();
+        for (i, row) in self.rows.iter().enumerate() {
+            match row {
+                RowData::Cells(cells) => {
+                    let cells = cells.iter().map(|c| format!("{INDENT}{c}")).collect();
+                    builder.push_record(close_last(cells));
+                }
+                RowData::Divider => {
+                    // A divider spans every column (see `divider_row`), so it is
+                    // recorded here and spanned below, next to the bars.
+                    dividers.push(i);
+                    builder.push_record(bar_cells(divider_row(&widths), cols));
+                }
+            }
         }
         // Last row: the summary bar.
         builder.push_record(bar_row(&self.summary, cols));
@@ -113,6 +180,11 @@ impl Themed {
         let last = self.rows.len() + 2;
         table.modify(Cell::new(0, 0), Span::column(cols));
         table.modify(Cell::new(last, 0), Span::column(cols));
+        // A divider draws its own junctions, so it spans the columns too —
+        // otherwise tabled would lay its `│` separator over the rule.
+        for &i in &dividers {
+            table.modify(Cell::new(i + 2, 0), Span::column(cols));
+        }
 
         // The theme is taken unmodified — the indent lives in the cell text
         // (see `INDENT`) so that the column names stay flush against the bars
@@ -121,6 +193,26 @@ impl Themed {
         // and the table it is handed); `String` satisfies the bound.
         let theme = TableStyleConfig::default();
         theme.apply_to_table::<String>(&mut table);
+
+        // A divider is a separator, not content: it takes the *separator*
+        // colour, so a rule and the verticals it crosses read as one grid.
+        if !dividers.is_empty() {
+            let bands = helpers::parse_row_bg_colors(&theme);
+            let rule = rule_color(&theme);
+            for &i in &dividers {
+                let bg = helpers::get_data_row_bg_color(i, &bands);
+                helpers::apply_cell_color(&mut table, i + 2, 0, rule.clone(), bg);
+            }
+        }
+
+        // Per-cell colours ride over the theme for the same reason as dimming.
+        if !self.cell_colors.is_empty() {
+            let bands = helpers::parse_row_bg_colors(&theme);
+            for (row, col, fg) in &self.cell_colors {
+                let bg = helpers::get_data_row_bg_color(*row, &bands);
+                helpers::apply_cell_color(&mut table, row + 2, *col, fg.clone(), bg);
+            }
+        }
 
         // Dimming rides *over* the theme, so it must be applied after it, and
         // per cell — the theme colours whole rows, and a later row-wide colour
@@ -149,6 +241,55 @@ impl Themed {
 /// applied in [`Themed::render`] stretches it across the table).
 fn bar_row(text: &str, cols: usize) -> Vec<String> {
     let mut row = vec![format!("{INDENT}{text}")];
+    row.resize(cols.max(1), String::new());
+    row
+}
+
+/// A rule across every column, at the table's own column widths, as one string.
+///
+/// It is drawn as a single spanned cell rather than one cell per column,
+/// because the column separator between cells is tabled's to draw and would put
+/// a `│` through the rule; owning the whole line lets the crossings be
+/// [`RULE_JUNCTION`] instead. The leading and trailing space of an ordinary row
+/// are preserved — the rule starts one character in and stops one short — so it
+/// lines up with the text above and below rather than running into the band
+/// edges.
+fn divider_row(widths: &[usize]) -> String {
+    let last = widths.len().saturating_sub(1);
+    let segments: Vec<String> = widths
+        .iter()
+        .enumerate()
+        .map(|(i, &width)| {
+            let (lead, trail) = (usize::from(i == 0), usize::from(i == last));
+            let rule: String =
+                std::iter::repeat_n(RULE, width.saturating_sub(lead + trail)).collect();
+            format!("{}{rule}{}", " ".repeat(lead), " ".repeat(trail))
+        })
+        .collect();
+    segments.join(&RULE_JUNCTION.to_string())
+}
+
+/// The separator colour the theme draws its verticals in — what a divider row
+/// is coloured with, so the rule and the verticals form one grid. Falls back to
+/// white if the theme names no vertical colour.
+fn rule_color(theme: &TableStyleConfig) -> TabledColor {
+    let Some(hex) = theme.style.vertical_fg_color.as_deref() else {
+        return TabledColor::FG_WHITE;
+    };
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return TabledColor::FG_WHITE;
+    }
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
+    match (channel(0..2), channel(2..4), channel(4..6)) {
+        (Some(r), Some(g), Some(b)) => TabledColor::rgb_fg(r, g, b),
+        _ => TabledColor::FG_WHITE,
+    }
+}
+
+/// A single-cell row padded out to `cols` cells (the shape a spanned row needs).
+fn bar_cells(text: String, cols: usize) -> Vec<String> {
+    let mut row = vec![text];
     row.resize(cols.max(1), String::new());
     row
 }

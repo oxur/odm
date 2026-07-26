@@ -28,6 +28,30 @@ use odm_core::gates::GateSets;
 use odm_core::{Id, NodeType};
 use odm_index::{EdgeKind, IndexRecord};
 
+/// Which family of nodes to list.
+///
+/// The two families are the model's own (ODD-0013 §2.2 — *work* nodes and
+/// *document* nodes); these are their **display names**, chosen so the flag
+/// reads as a question about the corpus rather than about the schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Group {
+    /// Work nodes: `project`/`arc`/`slice` — the plan itself.
+    Plan,
+    /// Document nodes: `design`/`research`/`adr`/`note` — what the plan is
+    /// grounded in and decided by; consulted, not executed.
+    Reference,
+}
+
+impl Group {
+    /// Whether `node_type` belongs to this group.
+    fn holds(self, node_type: NodeType) -> bool {
+        match self {
+            Group::Plan => node_type.is_work(),
+            Group::Reference => !node_type.is_work(),
+        }
+    }
+}
+
 /// Which date the leading column shows (F-5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum DateColumn {
@@ -69,15 +93,15 @@ impl Status {
     }
 }
 
-/// A line of the rendered list: either a node, or a header separating the work
+/// A line of the rendered list: either a node, or the rule separating the work
 /// tree from the document group (F-8 — the two are different kinds of thing, so
 /// the eye should not have to infer the boundary).
 #[derive(Debug, Clone)]
 pub(crate) enum Row {
     /// A node row.
     Node(Box<NodeRow>),
-    /// A group header, spanning the NAME column.
-    Group(&'static str),
+    /// A horizontal rule between the two groups.
+    Divider,
 }
 
 /// One rendered node row.
@@ -100,47 +124,60 @@ pub(crate) struct NodeRow {
 ///
 /// `records` is the already-filtered record set; `all_records` is the whole
 /// corpus, needed because supersession and containment reference nodes a filter
-/// may have excluded. `include_withdrawn` keeps retired/superseded rows (F-15).
+/// may have excluded. `include_withdrawn` keeps retired/superseded rows (F-15),
+/// `status_filter` narrows to one STATUS value, and `group` to one family.
 pub(crate) fn build_rows(
     records: &[&IndexRecord],
     all_records: &[IndexRecord],
     gates: &GateSets,
     date: DateColumn,
     include_withdrawn: bool,
+    status_filter: Option<&str>,
+    group: Option<Group>,
 ) -> Vec<Row> {
     let superseded = superseded_ids(all_records);
-    let shown: HashSet<Id> = records.iter().map(|r| r.id).collect();
 
-    let keep = |row: &NodeRow| include_withdrawn || !row.status.is_withdrawn();
+    // Every row filter is applied **before** the tree is derived, never after.
+    // The branch glyphs encode "last among siblings", and root-ness is "my
+    // parent is not on screen" — both are properties of the *visible* set, so
+    // filtering afterwards would leave a `├─` pointing at a row that is not
+    // there, and would anchor children to an invisible parent.
+    let visible: Vec<&IndexRecord> = records
+        .iter()
+        .copied()
+        .filter(|r| group.is_none_or(|g| g.holds(r.node_type)))
+        .filter(|r| {
+            let status = status_of(r, gates, &superseded);
+            let wanted =
+                status_filter.is_none_or(|want| status.label().eq_ignore_ascii_case(want.trim()));
+            wanted && (include_withdrawn || !status.is_withdrawn())
+        })
+        .collect();
+    let shown: HashSet<Id> = visible.iter().map(|r| r.id).collect();
 
     // Work nodes: walk the containment tree from its roots so children follow
     // their parent, and the depth is the indent.
-    let work: Vec<NodeRow> = work_tree(records, all_records, &shown)
+    let work: Vec<NodeRow> = work_tree(&visible, all_records, &shown)
         .into_iter()
         .map(|(record, depth, last_at)| {
             row_for(record, gates, &superseded, date, tree_prefix(depth, &last_at))
         })
-        .filter(&keep)
         .collect();
 
     // Document nodes: no containment parent, so no tree — a flat group.
-    let mut docs: Vec<&&IndexRecord> = records.iter().filter(|r| !r.node_type.is_work()).collect();
+    let mut docs: Vec<&&IndexRecord> = visible.iter().filter(|r| !r.node_type.is_work()).collect();
     docs.sort_by_key(|r| (r.created, r.number));
     let docs: Vec<NodeRow> = docs
         .into_iter()
         .map(|record| row_for(record, gates, &superseded, date, String::new()))
-        .filter(&keep)
         .collect();
 
-    let mut rows = Vec::new();
-    // The headers earn their line only when there is something to separate.
+    let mut rows: Vec<Row> = Vec::new();
+    // The rule earns its line only when there is something on both sides of it.
     let both = !work.is_empty() && !docs.is_empty();
-    if both {
-        rows.push(Row::Group("work"));
-    }
     rows.extend(work.into_iter().map(|r| Row::Node(Box::new(r))));
     if both {
-        rows.push(Row::Group("documents"));
+        rows.push(Row::Divider);
     }
     rows.extend(docs.into_iter().map(|r| Row::Node(Box::new(r))));
     rows

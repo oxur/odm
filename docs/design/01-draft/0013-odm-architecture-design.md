@@ -9,7 +9,7 @@ updated: 2026-07-26
 state: Draft
 supersedes: null
 superseded-by: null
-version: 2.1
+version: 2.2
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -82,6 +82,14 @@ Two families, one substrate:
   A document node is **`research` iff its source frontmatter `tags` include
   `research`**, else `design` — self-documenting, and robust where a
   title-prefix or filename rule would not be (v2.0).
+
+**Display names for the two families (v2.2).** The CLI names them **`plan`**
+(the work nodes — what is being built) and **`reference`** (the document nodes —
+what the plan is grounded in and decided by; consulted, not executed), as in
+`odm list --group plan|reference`. The *model's* terms remain **work** and
+**document** (`NodeType::is_work`/`is_document`); these are the reader-facing
+labels, recorded here so the two vocabularies stay explicitly paired rather than
+drifting apart the way `odd` did (F-2).
 
 `type` is fixed at creation. New types are config + a gate-set; the engine is
 type-agnostic. (Open Q-1: is `type` ever mutable? Current answer: no — model a
@@ -497,6 +505,13 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.2 — 2026-07-26
+Display names recorded for the two node families (§2.2): the CLI calls work
+nodes **`plan`** and document nodes **`reference`** (`odm list --group`), while
+the model keeps *work*/*document*. Paired explicitly so the UI vocabulary cannot
+drift from the model unnoticed — the failure mode F-2 caught with `odd`.
+Surfaced by: an operator request during RH C-3 review.
 
 ### v2.1 — 2026-07-26
 Naming convention added (§2.1): **names do not embed numbers** — a

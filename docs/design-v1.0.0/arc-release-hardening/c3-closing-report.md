@@ -24,17 +24,23 @@ DATE | TYPE | STATUS | NAME (tree, de-numbered) | ID
 ```
  NODES
 DATE       │TYPE     │STATUS      │NAME                                          │ID
-           │         │            │ ── work ──                                   │
  2026-07-07│ project │ in-progress│ odm v1.0.0 — Project Plan (arc roadmap)      │ 01KWXMBBTJCJ…
  2026-07-07│ arc     │ verified   │ ├─ Substrate & node CRUD (plan-of-record)    │ 01KWXMBBTKKT…
  2026-07-07│ slice   │ tested     │ │  ├─ Workspace scaffolding (plan-of-record) │ 01KWXMBBTKSH…
  2026-07-07│ arc     │ in-progress│ └─ Migrate, self-host & PM-skill             │ 01KWXMBBTKNA…
- 2026-07-07│ slice   │ tested     │    ├─ `migrate` importer core                │ 01KWXMBBTKPJ…
-           │         │            │ ── documents ──                              │
+ 2026-07-07│ slice   │ tested     │    └─ `migrate` importer core                │ 01KWXMBBTKPJ…
+ ──────────┼─────────┼────────────┼──────────────────────────────────────────────┼───────────── 
  2025-12-27│ design  │ final      │ Oxur Design Documentation CLI - Build Plan   │ 01KWWGS8HDHK…
  2026-06-20│ research│ final      │ Research: A markdown/git-native, dependen ...│ 01KWWGS8HD25…
  Total: 59 node(s) shown — 1 filtered or withdrawn (--all shows every node)
 ```
+
+The two groups are separated by a **rule**, not a label (operator's call during review — a
+`── work ──` header row was redundant with the tree itself). The rule crosses the column
+separators at `┼` and is drawn in the *separator* colour, so it and the verticals read as one
+grid rather than as a row of content; it keeps the same leading and trailing space every other
+row has. It is emitted as a single spanned cell, because the separator between cells is
+tabled's to draw and would otherwise lay a `│` through it.
 
 ## Findings, one by one
 
@@ -43,10 +49,12 @@ DATE       │TYPE     │STATUS      │NAME                                   
 | **F-4** drop NUMBER | Column gone. `number` stays frontmatter metadata and a CLI handle (`odm show 13` still works); the ULID is identity. |
 | **F-5** DATE first | Leftmost column, showing `created`; **`--date={created\|updated}`** switches it. |
 | **F-7** STATUS after TYPE | The furthest-reached gate, ordered by the **configured sequence** — not by the record's gate list, which the index stores gate-name sorted (alphabetical, not chronological). `—` when nothing is reached. |
-| **F-8** branch-and-leaf tree | Work nodes render by `part_of` containment with `├─`/`└─`/`│` glyphs; document nodes follow under a `── documents ──` header. Name-prefixing is gone. |
+| **F-8** branch-and-leaf tree | Work nodes render by `part_of` containment with `├─`/`└─`/`│` glyphs; document nodes follow below a full-width rule. Name-prefixing is gone. |
 | **F-6** de-numbered names | `"Slice 05 (Arc 06): UAT — CLI feedback"` renders as `"UAT — CLI feedback"`. **Display-only** — no stored `name` was rewritten. The convention *"names don't embed numbers"* is now ODD-0013 §2.1 (v2.1). |
 | **F-9** width + elision | **`--width`** flag and **`[display] max_width`** in `odm.toml` (default 64); longer names are cut at `width − 4` and marked ` ...`, so the cell lands exactly on the limit. |
-| **F-15** retired/superseded | **Excluded by default**; `--all` (alias `--include-retired`) brings them back with STATUS `retired`/`superseded` and the row **dimmed**. |
+| *(added in review)* `--group` | **`--group plan\|reference`** narrows to one family — the work tree, or the design/research/adr/note material. Display names for the model's *work*/*document* families, paired in ODD-0013 §2.2 (v2.2). |
+| *(added in review)* STATUS palette | The STATUS cell carries the **`oxur-odm` 0.3.5 state colours** — `draft` yellow, `under-review` cyan, `revised` blue, `accepted`/`final` green, `active` bright green, `deferred` magenta, `rejected`/`withdrawn`/`superseded` red — reused via the same `oxur_term::table::helpers::state_to_fg_color` the original called, on the same column, colour only (0.3.5 used no weight there). A gate the palette does not know — the work-node sequences — stays uncoloured, as an unknown state did originally. |
+| **F-15** retired/superseded | **Excluded by default**; `--all` (alias `--include-retired`) brings them back with STATUS `retired`/`superseded` and the row **dimmed**; **`--status <VALUE>`** shows only the rows at one status — `--status retired` is exactly the set a default listing withholds. |
 
 ## The index needed two fields
 
@@ -67,24 +75,66 @@ and records the bump history, so no future bump can land silently.
 `part_of` and `Supersedes` were already in the record's edges, so the tree and the superseded
 set needed no further enrichment.
 
+## A flaw found in review, and fixed
+
+The first cut derived the tree and *then* dropped withdrawn rows. But `├─` versus `└─` encodes
+**"last among siblings"**, and root-ness encodes **"my parent is on screen"** — both are
+properties of the *visible* set, not the stored one. Filtering afterwards therefore left stale
+structure: with #1605 hidden, `self-host cutover` kept a `├─` pointing at a row that was not
+rendered.
+
+```
+before                              after
+  ├─ schema versioning                ├─ schema versioning
+  ├─ self-host cutover   ← dangling   └─ self-host cutover   ← closes the branch
+── documents ──                     ── documents ──
+```
+
+Fixed by applying **every** row filter before the structure is derived. The same flaw had a
+second, latent face: hiding a *parent* would have left its children indented under an absent
+row. Both are now regression-tested (`hiding_the_last_child_promotes_its_previous_sibling…`,
+`hiding_a_parent_reroots_its_children`), and both tests were confirmed to fail against the
+unfixed source — the pre-existing F-15 tests passed either way, which is why the bug survived
+the first pass. Spotted by the operator reading the rendered output.
+
 ## Notes worth the operator's attention
 
 1. **The summary line says what it is not showing.** With rows withheld it reads
    `Total: 59 node(s) shown — 1 filtered or withdrawn (--all shows every node)`. Hiding rows
    silently is exactly the L-2 hazard that produced F-15 in the first place, so the view states
    its own omission rather than letting a reader infer the corpus is smaller than it is.
-2. **`--json` is deliberately unfiltered by `--all`.** The machine path emits every node and its
+2. **`--group plan|reference` lists one family at a time.** Added on operator request. The
+   model names these families *work* and *document* (ODD-0013 §2.2); `plan`/`reference` are
+   their **display** names — chosen because "document" reads as general English even though it
+   is precise in odm, and because the second family is what the plan is *grounded in*, not what
+   is executed. The pairing is recorded in ODD-0013 §2.2 (v2.2) so the two vocabularies cannot
+   drift apart unnoticed — which is exactly what F-2 caught with `odd`.
+3. **The state palette is reused, not restated.** `state_to_fg_color` is the *same function*
+   0.3.5 called — it moved from `oxur-cli` to `oxur-term` in C-1 — so the colours cannot drift
+   from the original by being retyped. Two consequences worth knowing: work-node gates
+   (`planned`/`built`/`tested`/…) are **uncoloured**, because the palette only knows the
+   document lifecycle and the original left an unknown state uncoloured; and on a withdrawn row
+   the **dimming wins** over the status colour, since greying the whole row is the stronger
+   signal. Extending the palette to the work sequences would be a new decision, not a
+   restoration.
+4. **`--status <VALUE>` answers "show me what was hidden".** Added on operator request during
+   review: the summary said a row had been withheld but gave no way to look at it. The flag
+   filters on the rendered STATUS token and implies `--all` for a withdrawn value, so
+   `--status retired` lands directly on the withheld set. It generalises past F-15 —
+   `--status built` narrows to work at one gate — and, like every other filter, is applied
+   before the tree is derived.
+5. **`--json` is deliberately unfiltered by `--all`.** The machine path emits every node and its
    `retired` field and lets the consumer decide; the default-hiding is a human-view affordance.
    That also keeps `--json` a stable contract for the LLM-surface arc.
-3. **A filtered view still renders.** `--type slice` would otherwise vanish into an empty tree
+6. **A filtered view still renders.** `--type slice` would otherwise vanish into an empty tree
    (its parents are filtered out), so a node whose parent is not in the shown set becomes a root
    of that view — flat, not missing.
-4. **F-15's superseded half has no corpus instance.** The audit found **exactly one** retired
+7. **F-15's superseded half has no corpus instance.** The audit found **exactly one** retired
    node (#1605) and **zero** supersedes edges. The prompt's "coarse scan flagged ~5 superseded
    ODDs" was a false positive: those five files match the *word* "superseded" in their bodies
    (ODD-0013's own frontmatter example, and prose). Superseded-exclusion is implemented and
    unit-tested, but it is exercised by fixtures, not by the live corpus.
-5. **Names still carry "(plan-of-record)" suffixes.** Not a number-reference, so out of F-6's
+8. **Names still carry "(plan-of-record)" suffixes.** Not a number-reference, so out of F-6's
    scope; if those should go too, that is a data change for a re-`self-host`, not a display rule.
 
 ## Verification
@@ -94,7 +144,7 @@ All local, Rust 1.85+ (attested-by-CC):
 | Check | Result |
 |-------|--------|
 | `cargo build --workspace` | clean |
-| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+9 new `listview` CLI tests, +6 new unit tests) |
+| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+19 new `listview` CLI tests, +6 new unit tests) |
 | `cargo clippy --all-targets --workspace -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `unsafe` | none added |
