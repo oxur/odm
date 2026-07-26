@@ -15,12 +15,13 @@
 //! exists at `init` and never during ordinary use. If `gix` grows worktree
 //! support, this module is the only thing to delete.
 //!
-//! **Scope widened once, deliberately (slice 03).** §5 originally ratified the
-//! exception for *creating* a worktree. Attach and ff-sync need three more
-//! operations — `worktree add <dir> <branch>` over an existing branch, `fetch`,
-//! and `merge --ff-only` — plus ancestry queries. They live here rather than
-//! anywhere else so the boundary stays one module wide, and the invariant that
-//! matters is unchanged: **`init`-time only, steady state on `gix`** (L-15).
+//! **Scope widened deliberately, twice.** §5 originally ratified the exception
+//! for *creating* a worktree. Attach and ff-sync (slice 03) added
+//! `worktree add <dir> <branch>`, `fetch` and `merge --ff-only`; rename (slice
+//! 04) adds `worktree move` and `branch -m`, both named in §5. They live here
+//! rather than anywhere else so the boundary stays one module wide, and the
+//! invariant that matters is unchanged: **setup-time only (`init`/`rename`),
+//! steady state on `gix`**.
 //!
 //! ## The two paths
 //!
@@ -45,7 +46,7 @@
 //! two paths produce different stores, which is exactly the kind of divergence
 //! a fallback must not have.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{Result, StoreError};
@@ -273,6 +274,110 @@ pub fn is_ancestor(cwd: &Path, ancestor: &str, descendant: &str) -> Result<bool>
 pub fn count_commits(cwd: &Path, range: &str) -> Result<usize> {
     let output = capture(cwd, &["rev-list".into(), "--count".into(), range.into()])?;
     Ok(output.and_then(|t| t.trim().parse().ok()).unwrap_or(0))
+}
+
+/// Moves a worktree from `old` to `new`.
+///
+/// **`git worktree move` behaves like `mv`:** given an *existing* directory as
+/// the destination it moves the worktree *inside* it (`new/<basename>`) rather
+/// than *to* it, and reports success. So the caller must reject a target that
+/// already exists before calling this — git will not do it — and must read the
+/// resulting location back rather than assume it (see [`path_of_branch`]).
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git is absent or the move fails.
+pub fn move_worktree(repo_root: &Path, old: &Path, new: &Path) -> Result<()> {
+    run(
+        repo_root,
+        &[
+            "worktree".into(),
+            "move".into(),
+            old.to_string_lossy().into_owned(),
+            new.to_string_lossy().into_owned(),
+        ],
+    )
+}
+
+/// Renames a **local** branch. The upstream configuration follows it; the
+/// remote's own branch is untouched.
+///
+/// Works on an unborn branch too — the case a freshly bootstrapped store is in
+/// — because it rewrites the symbolic HEAD rather than moving a ref.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git is absent or the rename fails (no such branch,
+/// or the target name is taken).
+pub fn rename_branch(cwd: &Path, old: &str, new: &str) -> Result<()> {
+    run(cwd, &["branch".into(), "-m".into(), old.into(), new.into()])
+}
+
+/// Where git says the worktree holding `branch` actually is.
+///
+/// Parsed from `worktree list --porcelain`, which names the branch even when it
+/// is unborn. This is how a rename learns the *observed* state rather than
+/// trusting the path it asked for — the difference matters precisely because
+/// `worktree move` can put the tree somewhere other than the argument given.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn path_of_branch(repo_root: &Path, branch: &str) -> Result<Option<PathBuf>> {
+    let Some(text) = capture(repo_root, &["worktree".into(), "list".into(), "--porcelain".into()])?
+    else {
+        return Ok(None);
+    };
+    let wanted = format!("branch refs/heads/{branch}");
+    let mut current: Option<&str> = None;
+    for line in text.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            current = Some(path);
+        } else if line.trim() == wanted {
+            return Ok(current.map(PathBuf::from));
+        }
+    }
+    Ok(None)
+}
+
+/// Whether a local branch of this name exists.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn branch_exists(repo_root: &Path, branch: &str) -> Result<bool> {
+    Ok(rev_parse(repo_root, &format!("refs/heads/{branch}"))?.is_some()
+        || path_of_branch(repo_root, branch)?.is_some())
+}
+
+/// The branch currently checked out in `worktree_dir`, if any.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn current_branch(worktree_dir: &Path) -> Result<Option<String>> {
+    let out = capture(worktree_dir, &["branch".into(), "--show-current".into()])?;
+    Ok(out.map(|t| t.trim().to_string()).filter(|b| !b.is_empty()))
+}
+
+/// Whether `branch` has an upstream configured, or a remote carries it — the
+/// signal that renaming it locally will desynchronise a shared branch.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn is_published(repo_root: &Path, branch: &str) -> Result<bool> {
+    if rev_parse(repo_root, &format!("{branch}@{{upstream}}"))?.is_some() {
+        return Ok(true);
+    }
+    let Some(text) = capture(
+        repo_root,
+        &["for-each-ref".into(), "--format=%(refname)".into(), "refs/remotes/".into()],
+    )?
+    else {
+        return Ok(false);
+    };
+    Ok(text.lines().any(|r| r.trim().ends_with(&format!("/{branch}"))))
 }
 
 /// Runs `git`, returning its stdout, or `None` when it exits non-zero.

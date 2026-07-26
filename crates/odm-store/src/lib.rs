@@ -13,6 +13,8 @@
 //!   which file configures it (the store's `config.toml`, else the locator).
 //! - [`StoreConfig`] — the operational config, parsed from whichever of those
 //!   two files applies.
+//! - [`rename`] — moving the home (`odm store rename`), keeping the locator
+//!   and the git side in lockstep so the corpus is never lost.
 //! - [`init`] — standing the home up (`odm store init`, bootstrap arm), and
 //!   [`worktree`] — the one place odm shells out to the `git` binary, because
 //!   `gix` cannot create a worktree (ODD-0022 §5).
@@ -29,6 +31,7 @@ pub mod layout;
 
 pub mod home;
 pub mod init;
+pub mod rename;
 pub mod worktree;
 
 mod config;
@@ -40,4 +43,5 @@ pub use error::{Result, StoreError};
 pub use git::Repo;
 pub use home::{StoreHome, StoreLocation};
 pub use init::{Bootstrapped, Mode as InitMode, Plan as InitPlan};
+pub use rename::{RenamePlan, Renamed};
 pub use store::Store;

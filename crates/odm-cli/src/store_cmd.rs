@@ -11,7 +11,8 @@ use std::io::Write;
 use std::path::Path;
 
 use odm_store::init::{self, Mode, SyncAction};
-use odm_store::{InitPlan, StoreHome};
+use odm_store::rename::Decision;
+use odm_store::{InitPlan, RenamePlan, StoreHome};
 use serde::Serialize;
 
 use crate::term;
@@ -273,4 +274,141 @@ fn sync(
         )?,
     }
     Ok(())
+}
+
+/// The `--json` shape for a rename.
+#[derive(Serialize)]
+struct RenameJson {
+    /// What happened: `renamed` | `no-op` | `collision`.
+    outcome: &'static str,
+    /// Whether this was a plan rather than a change.
+    dry_run: bool,
+    /// The worktree directory before.
+    old_worktree: String,
+    /// The worktree directory after — observed, not assumed.
+    new_worktree: String,
+    /// The branch before.
+    old_branch: String,
+    /// The branch after.
+    new_branch: String,
+    /// The resolved store root after.
+    store_root: String,
+    /// Set when the renamed branch is shared, and the remote keeps the old name.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    published_warning: bool,
+    /// What blocked the rename, when something did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collision: Option<String>,
+}
+
+/// Runs `odm store rename`.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if there is no store to rename, or a git
+/// operation fails.
+pub(crate) fn rename(
+    root: &Path,
+    new_worktree: Option<&str>,
+    new_branch: Option<&str>,
+    dry_run: bool,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let Some(current) = home.location.clone() else {
+        anyhow::bail!(
+            "no `[store]` in {} — this repo's store is the repo root, so there is no worktree to \
+             rename. Run `odm store init` to give it a home first.",
+            home.repo_root.join("odm.toml").display()
+        )
+    };
+
+    let plan = RenamePlan {
+        repo_root: home.repo_root.clone(),
+        current,
+        new_worktree: new_worktree.map(str::to_string),
+        new_branch: new_branch.map(str::to_string),
+        dry_run,
+    };
+    let done = odm_store::rename::rename(&plan)?;
+
+    if json {
+        let outcome = match &done.decision {
+            Decision::NoOp => "no-op",
+            Decision::Collision(_) => "collision",
+            Decision::Proceed { .. } => "renamed",
+        };
+        let view = RenameJson {
+            outcome,
+            dry_run,
+            old_worktree: done.old_root.display().to_string(),
+            new_worktree: done.new_root.display().to_string(),
+            old_branch: done.old_branch.clone(),
+            new_branch: done.new_branch.clone(),
+            store_root: done.new_root.display().to_string(),
+            published_warning: done.published_warning,
+            collision: match &done.decision {
+                Decision::Collision(c) => Some(c.describe()),
+                _ => None,
+            },
+        };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    match &done.decision {
+        Decision::NoOp => {
+            term::success(err, "store rename: already named that — nothing to do")?;
+            return Ok(());
+        }
+        Decision::Collision(c) => {
+            term::warning(
+                err,
+                &format!(
+                    "store rename: {} — nothing was changed. Choose another name, or move what \
+                     is in the way first.",
+                    c.describe()
+                ),
+            )?;
+            return Ok(());
+        }
+        Decision::Proceed { .. } => {}
+    }
+
+    // Said before the outcome line: a local branch rename silently desyncs a
+    // shared branch, and that is worth knowing whether or not the rename works.
+    if done.published_warning {
+        term::warning(
+            err,
+            &format!(
+                "store rename: {:?} is published — this renames it **locally only**, and the \
+                 remote keeps the old name. Renaming a shared store branch is a team \
+                 coordination event (push the new name, delete the old, everyone re-points); \
+                 odm will not do that for you.",
+                done.old_branch
+            ),
+        )?;
+    }
+
+    let what = describe(&done);
+    if dry_run {
+        term::info(err, &format!("store rename (dry-run): would rename {what} — nothing written"))?;
+        return Ok(());
+    }
+    term::success(err, &format!("store rename: {what}"))?;
+    Ok(())
+}
+
+/// A one-line description of what a rename moved.
+fn describe(done: &odm_store::Renamed) -> String {
+    let mut parts = Vec::new();
+    if done.old_root != done.new_root {
+        parts.push(format!("{} → {}", done.old_root.display(), done.new_root.display()));
+    }
+    if done.old_branch != done.new_branch {
+        parts.push(format!("branch {:?} → {:?}", done.old_branch, done.new_branch));
+    }
+    parts.join(", ")
 }

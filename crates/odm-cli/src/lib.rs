@@ -193,6 +193,31 @@ impl From<EvidenceArg> for Evidence {
 /// The `odm store …` operations.
 #[derive(Debug, Subcommand)]
 enum StoreCommand {
+    /// Rename the store's worktree directory and/or its branch.
+    ///
+    /// Distinct from `odm rename`, which renames a *node*: this moves where the
+    /// store lives, keeping the `[store]` locator in step so the corpus is
+    /// never lost.
+    Rename {
+        /// Rename both the worktree and the branch to this name.
+        #[arg(value_name = "NEW")]
+        new: Option<String>,
+        /// Rename only the worktree directory.
+        #[arg(long, value_name = "NEW")]
+        worktree: Option<String>,
+        /// Rename only the local branch.
+        #[arg(long, value_name = "NEW")]
+        branch: Option<String>,
+        /// Report the plan and change nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+        /// Emit JSON describing the rename.
+        #[arg(long)]
+        json: bool,
+    },
     /// Create the store's home: a worktree holding a dedicated orphan branch.
     ///
     /// Bootstrap only for now — a repo whose store branch already exists stops
@@ -656,6 +681,21 @@ pub fn dispatch(
             commands::decomposed(&store, &reference, &children, dry_run, err)?;
         }
         Command::Store { command } => match command {
+            StoreCommand::Rename { new, worktree, branch, dry_run, yes: _, json } => {
+                // The bare positional renames both halves; the flags override
+                // it per half, so `rename plan --branch keep` is expressible.
+                let new_worktree = worktree.or_else(|| new.clone());
+                let new_branch = branch.or(new);
+                store_cmd::rename(
+                    root,
+                    new_worktree.as_deref(),
+                    new_branch.as_deref(),
+                    dry_run,
+                    json,
+                    out,
+                    err,
+                )?;
+            }
             StoreCommand::Init { worktree, branch, dry_run, yes: _, json } => {
                 store_cmd::init(
                     root,
