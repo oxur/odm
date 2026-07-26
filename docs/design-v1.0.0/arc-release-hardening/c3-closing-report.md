@@ -53,7 +53,7 @@ tabled's to draw and would otherwise lay a `│` through it.
 | **F-6** de-numbered names | `"Slice 05 (Arc 06): UAT — CLI feedback"` renders as `"UAT — CLI feedback"`. **Display-only** — no stored `name` was rewritten. The convention *"names don't embed numbers"* is now ODD-0013 §2.1 (v2.1). |
 | **F-9** width + elision | **`--width`** flag and **`[display] max_width`** in `odm.toml` (default 64); longer names are cut at `width − 4` and marked ` ...`, so the cell lands exactly on the limit. |
 | *(added in review)* `--group` | **`--group plan\|reference`** narrows to one family — the work tree, or the design/research/adr/note material. Display names for the model's *work*/*document* families, paired in ODD-0013 §2.2 (v2.2). |
-| *(added in review)* STATUS palette | The STATUS cell carries the **`oxur-odm` 0.3.5 state colours** — `draft` yellow, `under-review` cyan, `revised` blue, `accepted`/`final` green, `active` bright green, `deferred` magenta, `rejected`/`withdrawn`/`superseded` red — reused via the same `oxur_term::table::helpers::state_to_fg_color` the original called, on the same column, colour only (0.3.5 used no weight there). A gate the palette does not know — the work-node sequences — stays uncoloured, as an unknown state did originally. |
+| *(added in review)* STATUS palette | The STATUS cell carries the **`oxur-odm` 0.3.5 state colours** — `draft` yellow, `under-review` cyan, `revised` blue, `accepted`/`final` green, `active` bright green, `deferred` magenta, `rejected`/`withdrawn`/`superseded` red — reused via the same `oxur_term::table::helpers::state_to_fg_color` the original called, on the same column, colour only (0.3.5 used no weight there). The **work sequences postdate that palette**, so they were mapped onto its *slots*: `planned` yellow, `in-progress`/`built` cyan, `complete`/`tested` green, `verified` bright green. |
 | **F-15** retired/superseded | **Excluded by default**; `--all` (alias `--include-retired`) brings them back with STATUS `retired`/`superseded` and the row **dimmed**; **`--status <VALUE>`** shows only the rows at one status — `--status retired` is exactly the set a default listing withholds. |
 
 ## The index needed two fields
@@ -110,13 +110,27 @@ the first pass. Spotted by the operator reading the rendered output.
    is executed. The pairing is recorded in ODD-0013 §2.2 (v2.2) so the two vocabularies cannot
    drift apart unnoticed — which is exactly what F-2 caught with `odd`.
 3. **The state palette is reused, not restated.** `state_to_fg_color` is the *same function*
-   0.3.5 called — it moved from `oxur-cli` to `oxur-term` in C-1 — so the colours cannot drift
-   from the original by being retyped. Two consequences worth knowing: work-node gates
-   (`planned`/`built`/`tested`/…) are **uncoloured**, because the palette only knows the
-   document lifecycle and the original left an unknown state uncoloured; and on a withdrawn row
-   the **dimming wins** over the status colour, since greying the whole row is the stronger
-   signal. Extending the palette to the work sequences would be a new decision, not a
-   restoration.
+   0.3.5 called — it moved from `oxur-cli` to `oxur-term` in C-1 — so the document colours
+   cannot drift from the original by being retyped.
+
+   The **work sequences did not exist** when that palette was written, so they were mapped onto
+   its slots rather than given colours of their own (operator decision):
+
+   | Slot | Document | Work | SGR |
+   |------|----------|------|-----|
+   | recorded, not started | `draft` | `planned` | 33 yellow |
+   | under way | `under-review` | `in-progress`, `built` | 36 cyan |
+   | done at its layer | `accepted`, `final` | `complete`, `tested` | 32 green |
+   | strongest evidence | `active` | `verified` | 92 bright green |
+
+   Keeping `complete` green and `verified` bright green is the point: ODD-0013 §5.1 split
+   "done at its layer" from "verified live" precisely because collapsing them hid a production
+   failure, and the colours should not re-collapse what the gate model separates. Note the
+   terminal gate differs by type — `verified` for project/arc, `tested` for slice, `final` for
+   design/research — so "green" does not always mean "finished"; it means done at that node's
+   layer. The two palettes are disjoint, so the document one always wins where it applies. On a
+   withdrawn row the **dimming wins** over the status colour, greying the row being the
+   stronger signal.
 4. **`--status <VALUE>` answers "show me what was hidden".** Added on operator request during
    review: the summary said a row had been withheld but gave no way to look at it. The flag
    filters on the rendered STATUS token and implies `--all` for a withdrawn value, so
@@ -144,7 +158,7 @@ All local, Rust 1.85+ (attested-by-CC):
 | Check | Result |
 |-------|--------|
 | `cargo build --workspace` | clean |
-| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+19 new `listview` CLI tests, +6 new unit tests) |
+| `cargo test --all-features --workspace` | **53 binaries ok, 0 failed** (+20 new `listview` CLI tests, +6 new unit tests) |
 | `cargo clippy --all-targets --workspace -- -D warnings` | clean |
 | `cargo fmt --check` | clean |
 | `unsafe` | none added |

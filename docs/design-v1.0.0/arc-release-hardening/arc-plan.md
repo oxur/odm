@@ -230,8 +230,13 @@ vocabulary stay explicitly paired — the drift F-2 caught with `odd`. (5) **The
 palette restored**: the STATUS cell is coloured by the *same* `state_to_fg_color` helper
 `oxur-odm` called (it moved `oxur-cli`→`oxur-term` in C-1), so the colours cannot drift by being
 retyped — `draft` yellow, `accepted`/`final` green, and so on, colour only, as the original had
-it. Work-node gates stay uncoloured (the palette knows the document lifecycle only, and the
-original left an unknown state uncoloured); dimming wins over the colour on a withdrawn row.
+it. The work sequences postdate that palette, so they were mapped onto its **slots** (operator
+decision): `planned` yellow, `in-progress`/`built` cyan, `complete`/`tested` green, `verified`
+bright green. `complete` green + `verified` bright green deliberately keeps ODD-0013 §5.1's
+"done at its layer" ≠ "verified live" split visible — the colours must not re-collapse what the
+gate model separates. Note the terminal gate differs by type (`verified` project/arc, `tested`
+slice, `final` design/research), so green means *done at that node's layer*, not *finished*.
+Dimming wins over the colour on a withdrawn row.
 
 ### v1.6 — 2026-07-26
 **C-2 CDC-verified; F-17 logged.** Independent CDC structural verification (`C-2-cdc-verification.md`) reproduced C-2's close — 60 nodes (9 design + 5 research + 46 work), zero `odd` in frontmatter, type/schema pairing clean, the 4 research ULIDs preserved, `restamp` bootstrap sound; `odm check` + `make check` operator-confirmed green. RH-2 Verify pointer → the CDC doc (closer ≠ verifier). New finding **F-17** (Batch 2): re-stamp does not refresh node *bodies* (node #20 keeps pre-amendment `odd/v1.0` text vs its source's `design/v1.0`) — snapshot-by-design vs body-refresh is an open migrate/self-host decision, not C-3. Surfaced by: the C-2 CDC verification.

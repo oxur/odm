@@ -264,6 +264,26 @@ fn status_cells_carry_the_legacy_state_colours() {
 }
 
 #[test]
+fn work_gate_statuses_carry_the_matching_palette_slots() {
+    // The work sequences postdate the 0.3.5 palette, so they reuse its slots:
+    // early yellow, under way cyan, done green, verified-live bright green.
+    // `complete` green and `verified` bright green keep ODD-0013 §5.1's
+    // done-at-its-layer / verified-live distinction visible.
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    run(dir.path(), &["set-gate", "4", "planned"]);
+    run(dir.path(), &["set-gate", "1", "verified"]);
+    let raw = run(dir.path(), &["list"]).out;
+
+    let row_for = |name: &str| {
+        raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
+    };
+    assert!(row_for("Alpha").contains("\u{1b}[36m"), "`built` is cyan (under way)");
+    assert!(row_for("Beta").contains("\u{1b}[33m"), "`planned` is yellow (not started)");
+    assert!(row_for("Root project").contains("\u{1b}[92m"), "`verified` is bright green");
+}
+
+#[test]
 fn dimming_wins_over_the_state_colour_on_a_withdrawn_row() {
     // A retired row is dimmed whole; the status colour must not fight it.
     let dir = TempDir::new().unwrap();

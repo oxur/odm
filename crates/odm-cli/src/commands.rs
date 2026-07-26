@@ -379,15 +379,10 @@ pub fn list(
                     // is the stronger signal, so it wins over the status colour
                     // below rather than fighting it cell by cell.
                     table.dim_last();
-                } else if let Some(fg) =
-                    oxur_term::table::helpers::state_to_fg_color(node.status.label())
-                {
-                    // The state palette `oxur-odm` shipped, reused rather than
-                    // restated: the same `oxur-term` helper, on the same STATUS
-                    // column, with the row's band behind it — colour only, no
-                    // weight, exactly as 0.3.5 rendered it. A gate the palette
-                    // does not know (the work-node sequences) stays uncoloured,
-                    // which is what the original did with an unknown state.
+                } else if let Some(fg) = listview::status_color(node.status.label()) {
+                    // Colour only, no weight — exactly as 0.3.5 rendered the
+                    // STATUS column. See `listview::status_color` for which
+                    // palette a given gate comes from.
                     table.color_last(STATUS_COLUMN, fg);
                 }
             }

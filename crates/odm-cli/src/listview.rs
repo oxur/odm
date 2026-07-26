@@ -27,6 +27,7 @@ use chrono::NaiveDate;
 use odm_core::gates::GateSets;
 use odm_core::{Id, NodeType};
 use odm_index::{EdgeKind, IndexRecord};
+use oxur_term::table::{TabledColor, helpers};
 
 /// Which family of nodes to list.
 ///
@@ -102,6 +103,40 @@ pub(crate) enum Row {
     Node(Box<NodeRow>),
     /// A horizontal rule between the two groups.
     Divider,
+}
+
+/// The colour a STATUS token renders in, or `None` to leave it uncoloured.
+///
+/// The **document** lifecycle keeps `oxur-odm` 0.3.5's palette verbatim — this
+/// calls the very helper the original called, so the colours cannot drift by
+/// being retyped.
+///
+/// The **work** sequences postdate that palette, so they are mapped onto the
+/// same *slots* rather than given new colours: early is yellow, under way is
+/// cyan, done is green, and the strongest evidence is bright green. Keeping
+/// `complete` green and `verified` bright green is what preserves ODD-0013
+/// §5.1's distinction — "done at its layer" is not "verified live", and
+/// collapsing them is the confusion that gate model exists to prevent.
+///
+/// The two palettes are disjoint (no gate name appears in both), so the
+/// document one always wins where it applies.
+pub(crate) fn status_color(label: &str) -> Option<TabledColor> {
+    helpers::state_to_fg_color(label).or_else(|| work_gate_color(label))
+}
+
+/// The work-node half of [`status_color`] — `project`/`arc`/`slice` gates.
+fn work_gate_color(label: &str) -> Option<TabledColor> {
+    match label.trim().to_ascii_lowercase().as_str() {
+        // Recorded, not started — the slot `draft` holds.
+        "planned" => Some(TabledColor::FG_YELLOW),
+        // Under way — the slot `under-review` holds.
+        "in-progress" | "in progress" | "built" => Some(TabledColor::FG_CYAN),
+        // Done at its layer, and a slice's terminal gate.
+        "complete" | "tested" => Some(TabledColor::FG_GREEN),
+        // Verified live — the strongest, as `active` is for a document.
+        "verified" => Some(TabledColor::FG_BRIGHT_GREEN),
+        _ => None,
+    }
 }
 
 /// One rendered node row.
