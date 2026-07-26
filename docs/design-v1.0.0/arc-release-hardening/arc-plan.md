@@ -40,7 +40,7 @@ cc-prompts, re-validated by re-running `odm self-host`.
 
 | Chunk | Scope | Kind | Covers (F-rows) | Depends on |
 |-------|-------|------|-----------------|------------|
-| ~~**C-1 — Adopt Oxur table styling/theming**~~ **DONE 2026-07-26** | Colours + the warm-orange Oxur theme for all output. **Route B taken** (ADR `adr-c1-oxur-table-re-extraction.md`): the crate was extracted upstream as **`oxur-term`** (table **+** `common`) and odm depends on it alone at tag `0.2.1`; `oxur-cli` dropped. Tables render in the house shape (title bar / columns / indented data / `Total:` summary); status lines carry `✓`/`→`/`Warning:`/`Error:`. See `c1-closing-report.md`. | model/arch (ADR) | F-1 | — (foundational) |
+| **C-1 — Adopt Oxur table styling/theming** | Colours + the warm-orange Oxur theme for all output. **Route OPEN** (needs joint investigation + decision, then an ADR): **(A)** depend on `oxur-cli` lib-only (`default-features = false` → `table` + `common::output`, no compiler stack) — matches odm's CLAUDE.md verbatim; **(B)** re-extract a standalone `oxur-table` crate (reverse the late-2025 fold) and depend on just that. See the record below. | model/arch (ADR) | F-1 | — (foundational) |
 | **C-2 — Type taxonomy** | `odd` → `design`; add `research` type; re-stamp the 13 migrated nodes; reclassify research docs; gate-sets + schema markers + migrate mapping. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
 | **C-3 — `odm list` overhaul** | Drop the number column; date-first + `--date=updated`; status column after type; branch-and-leaf tree (drop name-prefixing); max-width config+flag with ` ...` elision; names lose number-refs. | surface | F-4, F-5, F-6, F-7, F-8, F-9 | C-1, C-2 |
 | **C-4 — Command surface cleanup** | `context`→`project` (+`--name`, current default); `path`→`chain`; `new` warns-not-displays on re-run; `rollup` help + md/json output + `--out`/format name (defaults `md`/`ROLLUP`). | surface | F-10, F-11, F-12, F-13 | (light) C-1 |
@@ -69,14 +69,14 @@ uses) → C-3 → C-4 / C-5 slottable anytime. More batches → more chunks.
 
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
-| RH-1 | C-1 (shared styling/table crate) closed | ptr: C-1 `c1-closing-report.md` | serious | arc-plan | **attested** | `c1-closing-report.md` (2026-07-26): workspace build/test/clippy/fmt green; `oxur-cli` absent from `cargo tree`; `odm self-host` + `odm check` re-run green (59 nodes, 0 minted); `list` row data diffed identical to `--json`; capture in `c1-capture-odm-list.ansi` | attested-by-CC → **reproduced** when CI runs the cargo rows. Foundational — all output renders through it. |
+| RH-1 | C-1 (shared styling/table crate) closed | ptr: `C-1-cdc-verification.md` | serious | arc-plan | **attested** | CDC structural verify (`C-1-cdc-verification.md`): `oxur-term` is odm's sole oxur dep (`oxur-cli` dropped), no raw `tabled` table-building remains, rendering routes through `odm-cli/src/table.rs` (`TableStyleConfig::default().apply_to_table`) + status via `term.rs`/`oxur_term::common::output`; **themed `odm list` reproduced visually** (2026-07-26 capture, 59 nodes, warm-orange). | Flips `reproduced`/`done` on: commit of the staged diff + CC cargo/clippy/fmt green (local 1.85+) + `odm check` green + CI. Foundational — all output renders through it. Disclosed deviation (not a defect): impl uses the lower-level `Builder`+`apply_to_table` (the `oxur-odm` path), not high-level `OxurTable`, because `OxurTable` lacks theme-injection + a text footer — upstream follow-up noted in `table.rs`. |
 | RH-2 | C-2 (type taxonomy: `odd`→`design` + `research`) closed | ptr: C-2 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Needs ODD-0013 + ODD-0020 amendment first. |
 | RH-3 | C-3 (`odm list` overhaul) closed | ptr: C-3 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Depends on RH-1 + RH-2. |
 | RH-4 | C-4 (command surface cleanup) closed | ptr: C-4 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | RH-5 | C-5 (fold `self-host` into `migrate`) closed | ptr: C-5 `cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | RH-6 | **Compose:** the self-hosted CLI is coherent + themed + UAT-validated end-to-end | arc-scale demo: run `odm list`/`orient`/`project`/`chain` on the real corpus — coloured, tree-structured, renamed, de-numbered | serious | arc-plan / UAT | open | | reproduce at arc scale. |
 | RH-7 | **Compose:** re-running `odm self-host` after the type/name changes yields a `check`-green corpus with `design`/`research` types + de-numbered names | arc-scale demo: re-self-host → `odm check` green; nodes carry `design/v1.0` etc. | serious | arc-plan / ODD-0013/0020 | open | | reproduce at arc scale. The reflexive validation loop. |
-| RH-8 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as chunks close. |
+| RH-8 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as chunks close. **C-1 (v1.2):** F-1 dispositioned (Route B / `oxur-term`); F-15 surfaced while validating C-1's themed `list` (routed to C-3, not a C-1 defect) — logged, not dropped. |
 
 Closes in `arc-release-hardening/closing-report.md`: per-chunk walk + composition verdict,
 independently gated. A failed compose row spawns a remediation chunk, not a re-pass.
@@ -94,7 +94,7 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 
 | ID | Finding | Triage | Chunk | Disposition | Status |
 |----|---------|--------|-------|-------------|--------|
-| F-1 | Output is plain (no colours); adopt the `oxur-cli` table styling/theming (an established pattern) — **very important for v1**; OK to split the table/terminal code out of `oxur-cli` | **model/arch** | C-1 | **Shipped via Route B.** `oxur-term` (table **+** `common`) extracted upstream and consumed at tag `0.2.1`; `oxur-cli` dropped from odm's deps. Tables → `OxurTable` (warm orange), status lines → `✓`/`→`/`Warning:`/`Error:`. See `c1-closing-report.md`. | **done** — 2026-07-26 |
+| F-1 | Output is plain (no colours); adopt the `oxur-cli` table styling/theming (an established pattern) — **very important for v1**; OK to split the table/terminal code out of `oxur-cli` | **model/arch** | C-1 | **DECIDED: Route B — `oxur-term` extracted** (table **+** terminal helpers; ADR `adr-c1-oxur-table-re-extraction.md` §0). odm depends on `oxur-term` alone (`oxur-cli` shed). C-1 wires odm's tables + status lines through it; themed `list` reproduced. | **dispositioned** (RH-1 attested-on-close) |
 | F-2 | Don't surface `odd` as a type in the UI → use **`design`** | **model** | C-2 | Rename `NodeType::Odd`→`Design`; schema marker `odd/v1.0`→`design/v1.0`; gate-set `[gates.odd]`→`[gates.design]`; re-stamp the 13 nodes → ODD-0013/0020 amendment | open |
 | F-3 | Add a **`research`** type; reclassify research docs from `odd`/`design` → `research` | **model** | C-2 | New `NodeType::Research` + gate-set + schema marker; reclassify the relevant migrated nodes | open |
 | F-4 | Remove the **number column** from `odm list` | surface | C-3 | Drop the column (the `number` field stays as metadata; ULID is identity) | open |
@@ -109,14 +109,13 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 | F-13 | `odm rollup` help hardcodes `ROLLUP.md` → it supports md **and** json + an optional output name (defaults `md` / `ROLLUP`) | surface | C-4 | Fix help; `--format={md\|json}` + `--out <name>` (defaults `md` / `ROLLUP`) | open |
 | F-14 | `odm self-host` is a special case of `odm migrate` → **combine**; support the self-host case within `migrate` | surface/medium | C-5 | Fold `self-host` into `migrate` (autodetect plan-set vs legacy, or `--plan`); one verb | open |
 
-### Raised during implementation
-
-> F-rows surfaced by CC while building a chunk, rather than by a UAT batch. Numbered in the
-> same sequence (IDs are stable).
+### Batch 2 — 2026-07-26 (surfaced while validating C-1's themed `list`)
 
 | ID | Finding | Triage | Chunk | Disposition | Status |
 |----|---------|--------|-------|-------------|--------|
-| F-15 | Themed tables emit ANSI **unconditionally** (`tabled::settings::Color`), so `odm list > file` / `\| less` carries escapes. Status lines *do* degrade to plain off a TTY (`colored` honours TTY + `NO_COLOR`); tables do not. | surface / question | (unassigned) | Raised by C-1 and deliberately **not** absorbed into it (it would widen a rendering swap into a behaviour change). A TTY/`NO_COLOR` guard is best landed **upstream in `oxur-term`** so odm and oxur agree. Weigh against the pass-2 L-findings on LLM consumption — `--json` is the machine path today. | open — decide |
+| F-15 | **`odm list` shows retired/superseded nodes with no distinction.** Node **1605** (`Slice 05 (Arc 06): UAT — CLI feedback`) carries a `retired:` frontmatter block (retired 2026-07-25 — the **L-2** stale-slice-list tombstone) yet renders identically to live work, reading as A6's "slice 05" — the exact "trust the filesystem over the plan-of-record" hazard the node was created to document. Now the tool itself surfaces the tombstone as live work. | surface | C-3 | `odm list` **default-excludes** retired/superseded nodes; `--all` / `--include-retired` opts them back in; when shown, a `retired`/`superseded` value in C-3's **status column (F-7)** + a dimmed style. The *default-visibility* call is the new decision (F-7 already covers "make it distinct"). **Audit** whether other superseded nodes leak — a coarse scan flagged ~5 migrated ODDs matching the same pattern (only 1605 confirmed structurally). | open |
+
+Cross-ref: `uat-report-llm-pass-batch2.md` **L-2**; node `01KYDAHHHZAHNMQY47A4VBSHJD` (#1605). Not a C-1 defect — C-1 is rendering-only and this predates it; surfaced *because* the themed `list` made the corpus legible.
 
 ## Amendments raised
 
@@ -127,7 +126,7 @@ independently gated. A failed compose row spawns a remediation chunk, not a re-p
 |-----|--------------|-------------|
 | ODD-0013 | Node-type taxonomy: `odd`→`design`; add `research`; per-type gate-sets updated | F-2, F-3 |
 | ODD-0020 | Schema markers: `design/v1.0`, `research/v1.0`; re-stamp path for the rename | F-2, F-3 |
-| ADR (new) | Adopt Oxur table styling — **route A (oxur-cli lib-only) vs B (re-extract `oxur-table`)** — decision pending joint investigation. **Not** a "reversal" of intent: odm's CLAUDE.md + ODD-0012/0013 §11 already spec oxur-cli/tabled output; the *code* drifted. | F-1 |
+| ADR (new) | **DECIDED — Route B: `oxur-term` extracted** (table + terminal helpers), odm depends on it alone. `adr-c1-oxur-table-re-extraction.md` (§0 Decision update). Was: "route A vs B pending joint investigation." | F-1 |
 
 ### Record — prior oxur-table history (found 2026-07-07)
 
@@ -162,10 +161,10 @@ then write the ADR + the C-1 cc-prompt.
 
 - **Consumes:** A6 slice04's self-hosted corpus (what UAT runs on) + the whole command
   surface (A1–A3).
-- **Base branch — settled at C-1 (2026-07-26):** the A6 slice04 tip had already landed on
-  `release/1.0.x` (`4ac36f6`), so the "merge green-A6-first" option was already true and no
-  merge was needed. Chunks branch off **`release/1.0.x`** directly; C-1 did
-  (`rh-c1-adopt-oxur-term`).
+- **Base branch:** the chunks build on the latest migrate + self-host + schema code, which
+  lives on the **A6 slice04 tip** (`arc06-slice04-self-host-cutover`, off `release/1.0.x`,
+  unmerged). **Open item for C-1's cc-prompt:** branch off the A6 tip directly, *or* merge the
+  green A6-so-far to `release/1.0.x` first and branch from there. (Recommend deciding at C-1.)
 - **Reflexive loop:** after C-2/C-3, re-run `odm self-host` to regenerate the corpus with the
   new type names + de-numbered names, and re-verify `check`-green (RH-7).
 
@@ -179,17 +178,18 @@ the settled surface.
 ## Version History
 
 ### v1.2 — 2026-07-26
-**C-1 closed (RH-1 attested).** Route B shipped: `oxur-term` (extracted upstream as table +
-`common`, tag `0.2.1`) is now odm's only oxur dependency; `oxur-cli` removed. `list`,
-`migrate` and `self-host` render in the Oxur house shape — title bar, column names, data rows
-indented one space and closed with one, `Total:` summary bar — and status lines carry the
-house glyphs. Shape specified by the operator mid-implementation from the `oxur-odm` original;
-it is also what makes the theme paint correctly (it always styles row 0 as a title and the
-last row as a footer). Base-branch open item settled: `release/1.0.x` already carried the A6
-tip. **F-15 raised** (tables emit ANSI unconditionally; status lines don't) — left for
-triage rather than absorbed. Two upstream follow-ups recorded in `oxur-term`'s consumers:
-writer-taking status helpers, and `OxurTable::with_theme` + a text-carrying footer.
-Evidence: `c1-closing-report.md`. Surfaced by: C-1 implementation (CC).
+**C-1 close started (RH-1 attested); F-1 dispositioned Route B; F-15 logged.** The styling-crate
+route resolved to **B**: `oxur-term` was extracted upstream (table + `common` terminal helpers;
+ADR `adr-c1-oxur-table-re-extraction.md`), and C-1 wired odm's tables (`odm-cli/src/table.rs` →
+`TableStyleConfig::default().apply_to_table`) and status lines (`term.rs` / `oxur_term::common::output`)
+through it, with `oxur-cli` dropped as a dependency. **RH-1 → attested** on CDC structural verify +
+a themed-`list` capture (2026-07-26, 59 nodes); flips `reproduced`/`done` on commit + CC
+cargo/clippy/fmt + `odm check` green + CI. **F-1 → dispositioned.** New finding **F-15** logged
+(Batch 2): `odm list` shows retired/superseded nodes undifferentiated — node 1605's L-2 tombstone
+renders as live work; routed to **C-3** (default-exclude + `--all`; status marker via F-7). Disclosed
+C-1 deviation: lower-level `Builder`+`apply_to_table` used, not high-level `OxurTable` (theme/footer
+gap) — upstream follow-up noted. Surfaced by: C-1 implementation + hands-on validation of the themed
+`list`. **Base-branch decision (RH §Dependencies):** work is on `rh-c1-adopt-oxur-term`.
 
 ### v1.1 — 2026-07-07
 **C-1 reframed after finding the record.** F-1 is not a "reverse the no-oxur-cli decision" —
