@@ -12,7 +12,7 @@
 //! 2. `[store]` written to the code-branch `odm.toml` — after which slice 01's
 //!    resolution redirects every command into the new home
 //! 3. the store scaffolded *inside* the worktree: `config.toml` + empty `nodes/`
-//! 4. `.gitignore` in the store, keeping derived `.odm/` state out of its history
+//! 4. `.gitignore` in the store, keeping the derived index out of its history
 //! 5. `/.worktrees/` git-ignored on the code branch
 //!
 //! Ordering matters: the locator is written only once the worktree exists, so a
@@ -28,14 +28,37 @@ use crate::worktree::{self, GitVersion};
 
 /// The store's own `.gitignore`, scaffolded at bootstrap.
 ///
-/// `.odm/` is derived state: the index is a stat-cache that rebuilds from the
-/// nodes, and `context.json` records one operator's current focus. Tracking
-/// either would make every `odm` invocation dirty the store branch and turn a
-/// shared history into a merge-conflict generator.
+/// **The caches are ignored; the context is not.** They sit side by side under
+/// `.odm/`, but they are different kinds of thing:
+///
+/// - the `index` and `drift` snapshots are **derived**. They rebuild from
+///   `nodes/`, change on nearly every command, and carry no information the
+///   nodes do not — so tracking them would put a conflict generator on a branch
+///   whose whole purpose is to be shared. The rule is written as
+///   ignore-the-directory plus one exception, so a cache added later is ignored
+///   by default rather than committed until someone notices.
+/// - `context.json` is a **deliberate statement**: an operator saying which arc
+///   the project is working on. That is exactly what a newcomer needs, and the
+///   project's own success test is that a fresh session reaches full situational
+///   awareness from `odm orient` alone. Ignoring it would mean every fresh clone
+///   opens on "(no current arc)" — the store would carry the plan but not the
+///   place in it.
+///
+/// The cost is real and accepted: two people working different arcs will contend
+/// over one line. That is a coordination problem with a coordination answer, and
+/// it is a better default than silently withholding the focus from everyone.
 pub const STORE_GITIGNORE: &str = "\
-# Derived state: the index rebuilds from `nodes/`, and `context.json` is one
-# operator's current selection. The store's history holds sources only.
-/.odm/
+# `.odm/` is derived state by default — the index and the drift snapshot are
+# caches that rebuild from `nodes/`, and anything added later will be too.
+# Ignoring the directory and re-admitting one file keeps that true without
+# needing an edit each time a new cache appears; the reverse (listing the caches)
+# fails open, and commits the next one by accident.
+/.odm/*
+
+# ...except the current focus, which is a deliberate statement about where the
+# work is, not a cache of what the nodes already say. It travels with the store
+# so a fresh session gets it from `odm orient`.
+!/.odm/context.json
 ";
 
 /// The operational config a fresh store is scaffolded with — the gate-sets
@@ -301,11 +324,9 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
     let nodes = store_root.join(crate::layout::NODES_DIR);
     std::fs::create_dir_all(&nodes).map_err(|e| StoreError::io(&nodes, e))?;
 
-    // 4. Keep derived state out of the store's history. `.odm/` holds the index
-    //    (a rebuildable stat-cache) and `context.json` (one user's current
-    //    selection) — neither is source, and both change on almost every
-    //    command, so committing them would put a conflict-generating cache on a
-    //    branch whose entire purpose is to be shared.
+    // 4. Keep the derived index out of the store's history — but not the
+    //    context, which is a statement about where the work is rather than a
+    //    cache of what the nodes already say (see `STORE_GITIGNORE`).
     let ignore = store_root.join(".gitignore");
     std::fs::write(&ignore, STORE_GITIGNORE).map_err(|e| StoreError::io(&ignore, e))?;
 

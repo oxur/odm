@@ -42,7 +42,7 @@ fn odm(dir: &Path) -> AssertCommand {
 // ----- RH C-5: derived state stays out of the store's history ---------------
 
 #[test]
-fn the_scaffolded_store_ignores_its_derived_state() {
+fn the_scaffolded_store_ignores_the_index_but_keeps_the_context() {
     let dir = repo();
     odm(dir.path()).args(["store", "init"]).assert().success();
     let store = dir.path().join(".worktrees").join("odm");
@@ -52,13 +52,28 @@ fn the_scaffolded_store_ignores_its_derived_state() {
     odm(dir.path()).args(["check"]).assert().success();
     assert!(store.join(".odm").is_dir(), "the run produced derived state to ignore");
 
+    odm(dir.path()).args(["use", "project", "P"]).assert().success();
+    assert!(store.join(".odm").join("index").is_file(), "there is an index to ignore");
+    assert!(store.join(".odm").join("context.json").is_file(), "there is a context to keep");
+
     let untracked = git(&store, &["status", "--porcelain", "--untracked-files=all"]);
     assert!(
-        !untracked.contains(".odm/"),
-        "`.odm/` is derived — an index that rebuilds and one operator's current \
-         selection — and must not be offered for commit on a shared branch; got:\n{untracked}"
+        !untracked.contains(".odm/index"),
+        "the index is a derived cache and must not be offered for commit on a shared \
+         branch; got:\n{untracked}"
     );
-    // The other half: the sources it protects are still very much there.
+    assert!(
+        !untracked.contains(".odm/drift"),
+        "the drift snapshot is a cache too — the rule ignores the directory rather than \
+         naming each cache, so a new one is covered on arrival; got:\n{untracked}"
+    );
+    // The other half, and the one that matters: ignoring the cache must not
+    // also withhold the focus, which is what a fresh session needs from
+    // `orient`. A blanket `/.odm/` would pass the assertion above and fail this.
+    assert!(
+        untracked.contains(".odm/context.json"),
+        "the current focus travels with the store; got:\n{untracked}"
+    );
     assert!(untracked.contains("nodes/"), "nodes are still tracked; got:\n{untracked}");
     assert!(untracked.contains("config.toml"), "the config is still tracked; got:\n{untracked}");
 }
