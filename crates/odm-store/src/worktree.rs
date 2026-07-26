@@ -17,8 +17,10 @@
 //!
 //! ## The two paths
 //!
-//! `git worktree add --orphan` landed in **git 2.42**. Below that, the same end
-//! state is reached in two steps — add a detached worktree, then orphan the
+//! `git worktree add --orphan` landed in **git 2.42**, where the branch is
+//! named with `-b` (the synopsis is
+//! `worktree add … [--orphan] [(-b|-B) <branch>] <path>` — the branch is never
+//! a bare positional). Below 2.42, the same end state is reached in two steps — add a detached worktree, then orphan the
 //! branch inside it — so odm works on stock and LTS git rather than requiring a
 //! recent one. The version is detected once and mapped to a [`Plan`], which is
 //! a pure function and therefore testable without running anything.
@@ -113,7 +115,19 @@ pub fn plan(version: GitVersion, dir: &Path, branch: &str) -> Plan {
     let dir = dir.to_string_lossy().into_owned();
     if version.has_orphan_flag() {
         Plan::Orphan {
-            add: vec!["worktree".into(), "add".into(), "--orphan".into(), branch.into(), dir],
+            // `-b` is not optional decoration: in the 2.42+ synopsis
+            // (`worktree add … [--orphan] [(-b|-B) <branch>] <path>`) the branch
+            // is *never* a bare positional. Without it git reads the branch as
+            // `<path>` and the dir as `<commit-ish>`, and refuses:
+            // "fatal: '--orphan' and '<commit-ish>' cannot be used together".
+            add: vec![
+                "worktree".into(),
+                "add".into(),
+                "--orphan".into(),
+                "-b".into(),
+                branch.into(),
+                dir,
+            ],
         }
     } else {
         Plan::DetachThenOrphan {
@@ -210,6 +224,9 @@ mod tests {
                     "worktree".into(),
                     "add".into(),
                     "--orphan".into(),
+                    // The branch is named with `-b`; as a bare positional git
+                    // reads it as the path and rejects the command.
+                    "-b".into(),
                     "odm".into(),
                     "/w/odm".into()
                 ]

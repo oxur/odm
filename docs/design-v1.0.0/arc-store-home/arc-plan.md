@@ -53,7 +53,7 @@ already-exists paths; 04 is small).
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | SH-1 | Slice 01 (resolution + two-config split) closed | ptr: `slice01…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice01-store-resolution/closing-report.md` (2026-07-26): build/test (**54 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green; `[store]` resolves to `<repo>/<base>/<name>`, absent ⇒ repo root; operational config from the store's `config.toml` with locator fallback; a hand-placed `.worktrees/odm/` store takes every node write while **nothing lands at the repo root**; back-compat reproduced on odm's own corpus (no `[store]` → `check` green at 60 nodes, `nodes/` unmoved). L-7 mechanically clean: no `git` subprocess, no worktree ops. | attested-by-CC → **reproduced** when CI runs the cargo rows. Foundational — slices 02–04 and RH C-5 build on this. Raised for later slices: `.odm/context.json` still keys off the invocation root while the index follows the store; `ROLLUP.md` likewise; `branch_name` parsed but unconsumed until slice 02. |
-| SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice02-init-bootstrap/closing-report.md` (2026-07-26): build/test (**55 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green. `odm store init` creates the worktree + **orphan** branch (proved by `git merge-base` *failing*), writes the `[store]` locator, scaffolds `config.toml` + empty `nodes/`, gitignores `/.worktrees/`; `odm new` + `check` then green in the home. L-14 holds: `Command::new` in src is `worktree.rs` ×2 + the pre-existing shell probe. | attested-by-CC (**local git 2.39.5**) → **reproduced** when CI runs the cargo rows **on git ≥ 2.42** — the modern `--orphan` arm is argv-tested only here. Two real bugs found and fixed in-slice (unborn-branch detection; fallback non-equivalence) — see the closing report. |
+| SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice02-init-bootstrap/closing-report.md` (2026-07-26): build/test (**55 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green. `odm store init` creates the worktree + **orphan** branch (proved by `git merge-base` *failing*), writes the `[store]` locator, scaffolds `config.toml` + empty `nodes/`, gitignores `/.worktrees/`; `odm new` + `check` then green in the home. L-14 holds: `Command::new` in src is `worktree.rs` ×2 + the pre-existing shell probe. | attested-by-CC **as amended**. Shipped at `6703394` with a **wrong modern-git argv** — CDC reproduced the failure on git 2.43 (6/8 integration tests) and verified the fix; corrected here, plus a CI guard that now *asserts* the git version (a `>= 2.42` gate on `test`, and a `test-old-git` job for the fallback arm). Three real bugs total: unborn-branch detection and fallback non-equivalence (found in-slice), and the modern argv (found by independent verification). **`reproduced` on CI once both git jobs run green.** |
 | SH-3 | Slice 03 (`init` attach + ff-sync) closed | ptr: `slice03…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | SH-4 | Slice 04 (`rename`) closed | ptr: `slice04…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Slottable. |
 | SH-5 | **Compose:** `odm init` stands up a working home end-to-end — **bootstrap** on a fresh repo, **attach** on a clone (no fork), **ff-sync** freshens; divergence warns + stops | arc-scale demo: all three modes in scratch repos | serious | arc-plan | open | | reproduce at arc scale. |
@@ -72,6 +72,28 @@ becomes the active work (plan-late, plan-deep). CC implements on local 1.85+; CD
 the arc closes with `closing-report.md` + the composition check + the project bubble-up.
 
 ## Version History
+
+### v1.3 — 2026-07-26
+**Slice 02 amended — the flagged risk was the defect.** The closing report warned that the
+modern `--orphan` arm was verified at the argv level only, because local git 2.39.5 can never
+run it, and that the CI git version was therefore load-bearing evidence. It was: the argv was
+**wrong** (`worktree add --orphan <branch> <dir>`, where 2.42+ requires `-b <branch>`), so
+`odm store init` failed on every current git. CDC reproduced it in a container on **git 2.43**
+— 6 of 8 integration tests — root-caused it, and verified the one-line fix. Corrected here; the
+unit test was corrected too, since it had asserted the broken argv and so could never have
+caught it.
+
+**This is the closer-≠-verifier rule paying for itself.** The implementing environment could
+not execute the failing path at all, so no amount of care there would have found it; an
+independent verifier on a different git did, immediately.
+
+**The missing guard is why it hid, so the guard is part of the fix.** CI now *asserts* the git
+version instead of assuming it: the `test` job fails fast below 2.42 (so the modern arm is
+always under test), and a new **`test-old-git`** job runs `store_init` on a pre-2.42 container
+for the fallback arm. Two arms, two jobs — they must produce an identical empty store, which is
+exactly what the in-slice fallback bug violated, so this is a standing check rather than a
+one-off. **SH-2 attested as amended**; `reproduced` once both jobs run green. Surfaced by: CDC
+verification (`slice02…/cdc-verification.md`).
 
 ### v1.2 — 2026-07-26
 **Slice 02 closed (SH-2 attested).** `odm store init` stands the home up end to end — worktree,

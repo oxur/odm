@@ -38,4 +38,49 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
+      # `odm store init` shells out to git, and takes a *different* path either
+      # side of 2.42 (`worktree add --orphan` vs a detach-then-orphan
+      # fallback). A wrong argv in the modern arm shipped once already because
+      # the implementation machine ran 2.39 and only ever exercised the
+      # fallback — so the version under test is asserted here rather than
+      # assumed. Fail fast and say why, instead of silently testing one arm.
+      - name: Require git >= 2.42 (exercises `worktree add --orphan`)
+        run: |
+          version="$(git --version | awk '{print $3}')"
+          major="${version%%.*}"; rest="${version#*.}"; minor="${rest%%.*}"
+          echo "git $version"
+          if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 42 ]; }; then
+            echo "::error::git $version is too old: the store_init suite must run on >= 2.42 so the modern 'worktree add --orphan' path is the one under test."
+            exit 1
+          fi
+
       - run: cargo test --workspace --all-features
+
+  # The other half of the same guard: the fallback arm, on a git that predates
+  # `--orphan`. The two arms must produce an identical empty store — they
+  # diverged once (the fallback carried the code branch's checkout into the
+  # store), so keeping both under test is what stops that recurring.
+  test-old-git:
+    name: Test (git < 2.42, fallback arm)
+    runs-on: ubuntu-latest
+    container: debian:bullseye
+    steps:
+      - name: Install toolchain deps
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates build-essential
+          git --version
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Confirm this really is a pre-2.42 git
+        run: |
+          version="$(git --version | awk '{print $3}')"
+          major="${version%%.*}"; rest="${version#*.}"; minor="${rest%%.*}"
+          echo "git $version"
+          if [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 42 ]; }; then
+            echo "::error::this job exists to cover the pre-2.42 fallback, but git is $version; pin an older image or drop the job."
+            exit 1
+          fi
+      # Only the suite that depends on the git path — the rest is covered above.
+      - run: cargo test -p oxur-odm --test store_init

@@ -82,13 +82,52 @@ a bug in what it created.
 **Back-compat:** odm's own repo has no `[store]`, and `odm check` is green at 60 nodes,
 unchanged.
 
+## Amendment (2026-07-26) — the modern argv was wrong
+
+The risk flagged below **was the bug**. CDC ran the slice in a clean container on **git 2.43**
+and `odm store init` failed: 6 of 8 integration tests. The modern arm emitted
+
+```
+git worktree add --orphan <branch> <dir>          # wrong
+```
+
+which git reads as `<path>` + `<commit-ish>` and rejects —
+`fatal: '--orphan' and '<commit-ish>' cannot be used together`. In the 2.42+ synopsis
+(`worktree add … [--orphan] [(-b|-B) <branch>] <path>`) the branch is **never** a bare
+positional; it needs `-b`. Corrected, and the unit test corrected with it — it had asserted the
+*broken* argv, so it could never have caught this. Local git 2.39 only ever ran the fallback, so
+the suite was green on an arm that had never executed.
+
+Confirmed here independently of the reproduction: local git 2.39's own synopsis already shows
+`-b <new-branch>` as the only way to name a branch, and 2.42 adds `[--orphan]` to that same
+shape.
+
+**This is what "closer ≠ verifier" is for.** No amount of care in the implementing environment
+would have found it, because the environment could not run the code path. The one thing that
+did was an independent verifier on a different git.
+
+### The CI guard (added here, since the missing guard is why it hid)
+
+`.github/workflows/ci.yml` now **asserts** the git version instead of assuming it:
+
+- the `test` job fails fast with a clear message if git < 2.42, so the modern arm is always the
+  one under test;
+- a new **`test-old-git`** job runs `store_init` on a pre-2.42 container, covering the fallback.
+
+Two arms, two jobs. They must produce an identical empty store — which is exactly what bug #2
+below violated — so this is a standing check, not a one-off.
+
 ## ⚠ The git version this was built on
 
 **Local git is 2.39.5 — below the 2.42 boundary.** So the **fallback is the path actually
 exercised here**, and the modern `--orphan` arm is verified only at the argv level. That is the
-weaker half of L-1/L-2, and it is the half CI must cover: **CI needs a git ≥ 2.42** for the
-modern path to be executed at all. If CI also runs an older git, better still — the two arms
-must produce identical stores, which is exactly the equivalence bug #2 above violated.
+weaker half of L-1/L-2, and it is the half CI must cover.
+
+*(Written before the amendment above. It was right, and the gap it named is where the defect
+was. Left standing rather than rewritten: the prediction and the outcome are more useful
+together than a tidied-up account would be. The gap is now closed by the CI guard — but note
+that the post-amendment local rerun **still** exercises only the fallback, so the modern arm's
+green evidence remains CDC's run on git 2.43 plus the CI job.)*
 
 ## The two carried items
 
@@ -121,6 +160,6 @@ None. Everything the cc-prompt scoped in shipped. Everything scoped out — atta
 
 ## Ledger
 
-- **`SH-2`** — ready to close: **attested** on this report; **reproduced** when CI runs the
-  cargo rows green **on a git ≥ 2.42**.
+- **`SH-2`** — **attested** on this report *as amended*; **reproduced** when CI runs the cargo
+  rows green **on a git ≥ 2.42**, which the new guard now enforces rather than hopes for.
 - **L-1…L-15** all `done`; see `ledger.md` for per-row evidence.
