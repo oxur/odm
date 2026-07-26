@@ -20,6 +20,7 @@ mod migrate;
 mod orient;
 mod reconcile;
 mod rollup;
+mod store_cmd;
 mod table;
 mod term;
 
@@ -187,6 +188,32 @@ impl From<EvidenceArg> for Evidence {
             EvidenceArg::Reconciled => Evidence::Reconciled,
         }
     }
+}
+
+/// The `odm store …` operations.
+#[derive(Debug, Subcommand)]
+enum StoreCommand {
+    /// Create the store's home: a worktree holding a dedicated orphan branch.
+    ///
+    /// Bootstrap only for now — a repo whose store branch already exists stops
+    /// untouched, since attaching to it is a different operation.
+    Init {
+        /// The worktree directory name (default `odm`).
+        #[arg(long, value_name = "NAME")]
+        worktree: Option<String>,
+        /// The orphan branch name (default `odm`).
+        #[arg(long, value_name = "NAME")]
+        branch: Option<String>,
+        /// Report the plan and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+        /// Emit JSON describing the created home.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -456,6 +483,15 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
+    /// Manage the store itself: where it lives and how it is created.
+    ///
+    /// The store's own lifecycle, as distinct from the nodes inside it
+    /// (ODD-0023).
+    Store {
+        /// The store operation.
+        #[command(subcommand)]
+        command: StoreCommand,
+    },
     /// Import a legacy number-/state-directory ODD corpus into the node model.
     ///
     /// Idempotent (re-running is a no-op, keyed on the preserved legacy number),
@@ -572,10 +608,13 @@ pub fn dispatch(
         Command::Supersede { reference, with, kind, dry_run, yes: _ } => {
             commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)?;
         }
+        // The context names node ids, so it belongs with the nodes: it resolves
+        // under the store root, as the `.odm/` index already does (slice-01
+        // carried item #1).
         Command::Use { kind, reference } => {
-            commands::use_context(&store, root, kind.into(), &reference, err)?;
+            commands::use_context(&store, &home.store_root, kind.into(), &reference, err)?;
         }
-        Command::Context { json } => commands::context(&store, root, json, out)?,
+        Command::Context { json } => commands::context(&store, &home.store_root, json, out)?,
         // `check` returns its own exit code (0 clean / 1 violations).
         Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
         // `reconcile` likewise returns its own exit code (0 clean / 1 drift).
@@ -616,6 +655,19 @@ pub fn dispatch(
         Command::Decomposed { reference, children, dry_run, yes: _ } => {
             commands::decomposed(&store, &reference, &children, dry_run, err)?;
         }
+        Command::Store { command } => match command {
+            StoreCommand::Init { worktree, branch, dry_run, yes: _, json } => {
+                store_cmd::init(
+                    root,
+                    worktree.as_deref(),
+                    branch.as_deref(),
+                    dry_run,
+                    json,
+                    out,
+                    err,
+                )?;
+            }
+        },
         Command::Migrate { legacy_path, dry_run } => {
             migrate::migrate(&store, root, &legacy_path, dry_run, out, err)?;
         }

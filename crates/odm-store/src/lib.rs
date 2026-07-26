@@ -13,6 +13,9 @@
 //!   which file configures it (the store's `config.toml`, else the locator).
 //! - [`StoreConfig`] — the operational config, parsed from whichever of those
 //!   two files applies.
+//! - [`init`] — standing the home up (`odm store init`, bootstrap arm), and
+//!   [`worktree`] — the one place odm shells out to the `git` binary, because
+//!   `gix` cannot create a worktree (ODD-0022 §5).
 //!
 //! The incremental index/cache (`odm-index`) is deliberately out of scope here;
 //! this slice full-scans. Edge semantics, CRUD commands, and `check` arrive in
@@ -25,6 +28,8 @@ pub mod git;
 pub mod layout;
 
 pub mod home;
+pub mod init;
+pub mod worktree;
 
 mod config;
 mod error;
@@ -34,4 +39,5 @@ pub use config::StoreConfig;
 pub use error::{Result, StoreError};
 pub use git::Repo;
 pub use home::{StoreHome, StoreLocation};
+pub use init::{Bootstrapped, Mode as InitMode, Plan as InitPlan};
 pub use store::Store;

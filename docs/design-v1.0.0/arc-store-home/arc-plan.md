@@ -53,7 +53,7 @@ already-exists paths; 04 is small).
 | ID | Criterion | Verify | Significance | Origin | Status | Evidence | Notes |
 |----|-----------|--------|--------------|--------|--------|----------|-------|
 | SH-1 | Slice 01 (resolution + two-config split) closed | ptr: `slice01…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice01-store-resolution/closing-report.md` (2026-07-26): build/test (**54 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green; `[store]` resolves to `<repo>/<base>/<name>`, absent ⇒ repo root; operational config from the store's `config.toml` with locator fallback; a hand-placed `.worktrees/odm/` store takes every node write while **nothing lands at the repo root**; back-compat reproduced on odm's own corpus (no `[store]` → `check` green at 60 nodes, `nodes/` unmoved). L-7 mechanically clean: no `git` subprocess, no worktree ops. | attested-by-CC → **reproduced** when CI runs the cargo rows. Foundational — slices 02–04 and RH C-5 build on this. Raised for later slices: `.odm/context.json` still keys off the invocation root while the index follows the store; `ROLLUP.md` likewise; `branch_name` parsed but unconsumed until slice 02. |
-| SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
+| SH-2 | Slice 02 (git plumbing + `init` bootstrap) closed | ptr: `slice02…/closing-report.md` (CDC verify pending) | serious | arc-plan | **attested** | `slice02-init-bootstrap/closing-report.md` (2026-07-26): build/test (**55 binaries, 0 failed**, +17 new)/clippy `-D warnings`/fmt green. `odm store init` creates the worktree + **orphan** branch (proved by `git merge-base` *failing*), writes the `[store]` locator, scaffolds `config.toml` + empty `nodes/`, gitignores `/.worktrees/`; `odm new` + `check` then green in the home. L-14 holds: `Command::new` in src is `worktree.rs` ×2 + the pre-existing shell probe. | attested-by-CC (**local git 2.39.5**) → **reproduced** when CI runs the cargo rows **on git ≥ 2.42** — the modern `--orphan` arm is argv-tested only here. Two real bugs found and fixed in-slice (unborn-branch detection; fallback non-equivalence) — see the closing report. |
 | SH-3 | Slice 03 (`init` attach + ff-sync) closed | ptr: `slice03…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. |
 | SH-4 | Slice 04 (`rename`) closed | ptr: `slice04…/cdc-verification.md` | serious | arc-plan | open | | attested-on-close. Slottable. |
 | SH-5 | **Compose:** `odm init` stands up a working home end-to-end — **bootstrap** on a fresh repo, **attach** on a clone (no fork), **ff-sync** freshens; divergence warns + stops | arc-scale demo: all three modes in scratch repos | serious | arc-plan | open | | reproduce at arc scale. |
@@ -72,6 +72,38 @@ becomes the active work (plan-late, plan-deep). CC implements on local 1.85+; CD
 the arc closes with `closing-report.md` + the composition check + the project bubble-up.
 
 ## Version History
+
+### v1.2 — 2026-07-26
+**Slice 02 closed (SH-2 attested).** `odm store init` stands the home up end to end — worktree,
+orphan branch, `[store]` locator, scaffolded `config.toml` + empty `nodes/`, gitignore entry —
+and slice-01 resolution then redirects every command into it. The command is born under
+**`odm store`** (ODD-0023's third tier) rather than as a top-level `init` to be renamed later;
+none of the rest of that reorg is here. The `git` shell-out is confined to one module
+(`worktree.rs`), as ODD-0022 §5 ratifies, and steady state stays on `gix`.
+
+**Two bugs the slice surfaced, both fixed here.** (1) **An orphan branch is invisible to a refs
+lookup** — `checkout --orphan` leaves it *unborn*, so `refs/heads/<branch>` does not exist until
+the first commit, and the arc-plan's refs-only detection could not see the home `init` had just
+created (a second `init` would try again). Detection now also treats an existing store directory
+as "exists locally": the directory is the reliable signal during the unborn window, the ref
+afterwards. (2) **The old-git fallback was not equivalent to the modern path** — `checkout
+--orphan` deliberately keeps the working tree, so on git < 2.42 the code branch's whole checkout
+landed in the store, staged; `worktree add --orphan` produces an empty tree. Fixed with a
+`git rm -rf` step. Caught by *running* it, not by the tests, which asserted what the store
+contained but not what it did **not** — the both-halves discipline slice 01 used and this slice
+initially missed; the assertion is now there.
+
+**⚠ CI needs git ≥ 2.42.** Local git is **2.39.5**, so the *fallback* is the arm actually
+exercised here and the modern `--orphan` arm is verified only at the argv level. Both arms must
+produce identical stores — which is exactly what bug (2) violated — so the version CI runs is
+load-bearing evidence, not an environment detail.
+
+**Carried items disposed:** `.odm/context.json` now follows the resolved store root (it names
+node ids, so it rides with the nodes); `ROLLUP.md` stays at the invocation root by decision — it
+is a projection out of the store for a code-branch reader. Three things raised for slice 03: the
+`--json` `worktree`/`store_root` duplication, `--yes` accepted but unused, and that `init`
+leaves an untracked `config.toml` (the branch is unborn by design), which sync must reason
+about. Silent-drop diff: none. Surfaced by: slice 02 implementation (CC).
 
 ### v1.1 — 2026-07-26
 **Slice 01 closed (SH-1 attested).** The store root resolves through `odm.toml`'s `[store]`
