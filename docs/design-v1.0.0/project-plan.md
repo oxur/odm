@@ -72,7 +72,7 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 |-----|-----------|--------------|--------|
 | **Release Hardening (RH)** | UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from `oxur-cli`); type taxonomy `odd`→`design` + new `research`; tree-structured de-numbered `list`; command renames (`context`→`project`, `path`→`chain`, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged **surface** (cc-prompt) vs. **model** (ODD-0013/0020 amendment or ADR). | A6·s04 (the self-hosted corpus UAT runs on) | **active** — `arc-release-hardening/arc-plan.md` (chunks C-1…C-5; batch 1 of ~3–4) |
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
-| **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **planned** — `arc-store-home/arc-plan.md` (4 slices); runs **before** RH C-5, which populates the home |
+| **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **active** — `arc-store-home/arc-plan.md`; **slices 01–03 done** (SH-1/2/3, CDC-reproduced on git 2.43), slice 04 (`rename`) next; runs **before** RH C-5, which re-self-hosts into the home |
 
 **Sequencing (settled with operator, 2026-07-25):** Release Hardening (active) → LLM
 command surface (next) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
@@ -80,7 +80,7 @@ so the skill and prose-retirement target the *settled* command surface. Both ins
 arcs consume A6 slice04's self-hosted corpus; A6 is **paused after slice04**, not
 abandoned (§3).
 
-## 3. Current status (2026-07-25)
+## 3. Current status (2026-07-26)
 
 - **A1 — COMPLETE.** Merged to `main`, CI-green.
 - **A2 — COMPLETE.** Merged to `main`, CI-green.
@@ -117,13 +117,32 @@ abandoned (§3).
   LLM-command-surface arc wrap, so those target the settled surface. *(Was, at v1.0–1.6:
   "PLANNED, not started.")*
 - **Release Hardening (UAT) — ▶ ACTIVE.** Named, number-deferred (§2a). Batch-1 punch
-  list (14 findings) triaged into chunks C-1…C-5; C-1 (adopt `oxur-cli` table styling)
-  route open pending an ADR — depend on `oxur-cli` lib-only vs. re-extract a standalone
-  `oxur-table` crate. No chunk code landed yet. `arc-release-hardening/arc-plan.md`.
+  list (14 findings) triaged into chunks C-1…C-5. **C-1…C-3 done:** C-1 adopted the
+  re-extracted **`oxur-term`** styling crate (Route B, ADR) — `oxur-cli` shed; C-2 landed the
+  type taxonomy (`odd`→`design` + `research`; corpus re-stamped to 60 nodes, `check` green);
+  C-3 overhauled `list` (date/type/status/tree, de-numbered, retired excluded by default).
+  **C-4** (command-surface cleanup) + **C-5** (fold `self-host` into `migrate` + names + dates,
+  one re-stamp) remain. Companion surface work landed alongside arc-store-home: **ODD-0023**
+  (command reorg → top-level verbs / `odm node` / `odm store`) drafted and the
+  `odm-command-inventory.md` rewritten to it; the **UAT coverage audit** routed the four
+  previously un-routed items (L-3/L-6/L-8/G-7). `arc-release-hardening/arc-plan.md`.
 - **LLM command surface — ◆ NEXT (shaped, not started).** Named, number-deferred (§2a).
   Shaped 2026-07-25 from the pass-2 LLM UAT; 7 slices closing the LLM situational-awareness
   gaps, reconciled against `odm-command-inventory.md` (the command-surface authority). Runs
   after Release Hardening, before A6 resumes.
+- **Store Home & `init` — ▶ ACTIVE.** Named, number-deferred (§2a; **ODD-0022**, Accepted).
+  **Slices 01–03 done (SH-1/2/3), each CDC-reproduced in an independent git-2.43 container;
+  slice 04 (`rename`) next.** `odm store init` now stands the store home up three ways —
+  **bootstrap** (create the orphan `odm` branch in `.worktrees/odm`), **attach** (check out an
+  existing local/remote branch, no re-orphan, no re-scaffold), **ff-sync** (fast-forward only;
+  warns + stops on divergence / no-upstream / local-ahead, never rebasing or merging the shared
+  branch). The `git`-worktree shell-out is confined to `init`/rename (ratified ODD-0022 §5); all
+  steady-state stays on `gix`. **Slice 02 shipped a modern-git `--orphan` argv defect** (broken
+  on git ≥ 2.42): CDC caught it in an independent git-2.43 environment — where 6/8 integration
+  tests failed while the implementer's local git 2.39 had only ever run the pre-2.42 fallback —
+  the one-line `-b` fix was verified, and a **CI two-arm git-version matrix** now keeps both
+  paths under test. Runs **before RH C-5**, which re-self-hosts odm's corpus into the new home
+  (the dogfood cutover, SH-6). `arc-store-home/arc-plan.md`.
 
 **Next-arc sequencing — RESOLVED** *(was "open — operator's call" at v1.0–1.6, when A4/A5/A6
 were free to order and a case was floated for taking A6 next to realize self-hosting
@@ -217,6 +236,28 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.10 — 2026-07-26
+**arc-store-home slices 01–03 landed (SH-1/2/3); ODD-0023 + inventory rewrite; UAT tail routed.**
+The Store Home arc moved from *planned* to **active**: `odm store init` now bootstraps, attaches, and
+ff-syncs the dedicated orphan-`odm`-branch store home, each slice CDC-**reproduced** in an independent
+git-2.43 container (§2a status + a new §3 bullet). **Slice 02 caught a real defect:** the modern
+`git worktree add --orphan` argv was wrong (broken on git ≥ 2.42) and only the pre-2.42 fallback had
+ever run on the implementer's machine — CDC reproduced the failure on git 2.43, the one-line `-b` fix
+was verified, and a **CI two-arm git-version matrix** now keeps both `--orphan` and the fallback under
+test (the load-bearing guard that had been missing — bug 2 in the same slice had shown the two arms can
+diverge). Slice 03's fast-forward-only safety invariant (never rebase/merge the shared branch) is
+verified on real state (diverged → HEAD unmoved, own work intact, other's absent). **Companion surface
+work:** **ODD-0023** (command-surface reorg → top-level workflow verbs / `odm node` / `odm store`)
+drafted, and `odm-command-inventory.md` rewritten to its three-tier shape; the RH **UAT coverage
+audit** routed the four previously un-routed items (L-3 → C-5 data + C-6 check rule; L-6 → a
+release-engineering follow-up; L-8 → pre-release housekeeping + a design-corpus migrate; **G-7** →
+arc-store-home, *largely resolved by design* since the orphan-branch worktree isolates odm's commits).
+**Bubble-up disposition (P-13): expansion, not re-scope** — the A1–A6 DoD is unchanged; **P-14**
+(arc-store-home) stays open, closing at the arc's SH-5/SH-6 compose. **Next:** slice 04 (`rename`) →
+RH C-5 re-self-hosts into the home. **Push note:** these commits sit on `sh-slice0x` branches locally —
+origin is SSH, unreachable from the cloud session, so they await a push from the operator's terminal.
+Surfaced by: arc-store-home slices 01–03 and their CDC verifications.
 
 ### v1.9 — 2026-07-26
 **arc-store-home added to the roadmap (from ODD-0022).** A third named, number-deferred arc — **Store Home & `init`** — joins §2a, realizing **ODD-0022 (Accepted)**: a dedicated store home (orphan `odm` branch in a `.worktrees/odm` worktree), the two-config split (`odm.toml` locator + in-store `config.toml`), and the `init` command (bootstrap / attach / ff-sync). **v1.0.x — expands the v1.0.0 DoD** (operator call). Added the §2a row + §3 sequencing (runs **before RH C-5**, which re-self-hosts *into* the new home — the dogfood cutover, SH-6) + **P-14**. Not UAT-driven (unlike RH/LLM) — ODD-0022-driven. Surfaced by: ODD-0022 acceptance + the slice-breakdown session.
