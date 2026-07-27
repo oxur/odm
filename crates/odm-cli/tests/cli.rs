@@ -507,11 +507,16 @@ fn check_clean_passes() {
     // A total tree: project <- arc <- slice (every non-root resolves to a
     // parent). v2 recomposition is stricter than v1 — a top-level arc with no
     // project parent is now an orphan, so the corpus must be a real tree.
+    //
+    // C-6 raised the bar again: "clean" now also means the project states a
+    // vision (L-3b) and every parent has affirmed its decomposition (G-3), so
+    // the fixture discharges both. That is the point of the rules — this test
+    // says what a clean corpus *is*, and the definition grew.
     let mut project_id = Id::new();
     seed(dir.path(), |id| {
         project_id = id;
         let fm = Frontmatter::new(id, 1, NodeType::Project, "Odm", day(), day(), Origin::Planned);
-        Document::new(fm, "body\n")
+        Document::new(fm, "body\n\n# Vision\n\nA planning substrate.\n")
     });
     let mut arc_id = Id::new();
     seed(dir.path(), |id| {
@@ -520,9 +525,19 @@ fn check_clean_passes() {
         fm.edges_mut().part_of = Some(project_id);
         Document::new(fm, "body\n")
     });
+    let mut child_id = Id::new();
     seed_slice(dir.path(), 3, "Child", |fm| {
+        child_id = fm.id();
         fm.edges_mut().part_of = Some(arc_id);
     });
+    // Affirm both parents' decompositions (G-3).
+    let store = Store::open(dir.path());
+    for (parent, children) in [(project_id, vec![arc_id]), (arc_id, vec![child_id])] {
+        let mut doc = store.load(parent).expect("load parent");
+        doc.frontmatter_mut().affirm_decomposed(children, day());
+        store.persist(&doc).expect("affirm");
+    }
+
     let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0));
     assert!(r.out.contains("validate: ok"), "out: {}", r.out);
@@ -1590,4 +1605,111 @@ fn mutator_edge_cases() {
 
     // new --parent with an unresolvable parent fails before writing.
     assert!(!run(dir.path(), &["node", "new", "slice", "Orphan", "--parent", "404"]).ok);
+}
+
+// ----- C-6: the static hardening rules (G-2 / G-3 / L-3b) -------------------
+
+/// A repo with gate-sets configured, a project, and two slices under it.
+fn hardening_fixture() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("odm.toml"),
+        "[gates.project]\nsequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]\n\
+         [gates.arc]\nsequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]\n\
+         [gates.slice]\nsequence = [\"planned\", \"built\", \"tested\"]\n",
+    )
+    .unwrap();
+    run(dir.path(), &["node", "new", "project", "P"]);
+    run(dir.path(), &["node", "new", "slice", "A", "--parent", "1"]);
+    run(dir.path(), &["node", "new", "slice", "B", "--parent", "1"]);
+    dir
+}
+
+#[test]
+fn g3_parent_with_children_but_no_decomposed_warns() {
+    let dir = hardening_fixture();
+    let r = run(dir.path(), &["validate"]);
+
+    assert_eq!(r.code, Some(0), "a warning does not fail the run");
+    assert!(r.out.contains("undecomposed-parent"), "the rule fires: {}", r.out);
+    assert!(r.out.contains("2 child(ren)"), "and names the count: {}", r.out);
+    assert!(r.out.contains("odm node decomposed 1"), "with the fix: {}", r.out);
+}
+
+#[test]
+fn g3_affirming_the_decomposition_clears_the_warning() {
+    let dir = hardening_fixture();
+    run(dir.path(), &["node", "decomposed", "1"]);
+    let r = run(dir.path(), &["validate"]);
+    assert!(!r.out.contains("undecomposed-parent"), "affirmed, so silent: {}", r.out);
+}
+
+#[test]
+fn g3_strict_promotes_the_warning_to_a_failure() {
+    let dir = hardening_fixture();
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(0));
+    assert_eq!(
+        run(dir.path(), &["validate", "--strict"]).code,
+        Some(1),
+        "--strict makes the gap fail CI"
+    );
+}
+
+#[test]
+fn l3b_a_project_without_a_vision_is_reported() {
+    let dir = hardening_fixture();
+    let r = run(dir.path(), &["validate"]);
+    assert!(r.out.contains("no-vision"), "the rule fires: {}", r.out);
+    assert!(r.out.contains("# Vision"), "and says what is missing: {}", r.out);
+}
+
+#[test]
+fn l3b_a_stated_vision_clears_the_finding() {
+    let dir = hardening_fixture();
+    // Write a vision into the project's body, as L-3a's derivation does.
+    let file = std::fs::read_dir(dir.path().join("nodes/2026"))
+        .unwrap()
+        .flat_map(|y| std::fs::read_dir(y.unwrap().path()).unwrap())
+        .map(|f| f.unwrap().path())
+        .find(|p| std::fs::read_to_string(p).unwrap().contains("type: project"))
+        .expect("the project file");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, format!("{text}\n# Vision\n\nA planning substrate.\n")).unwrap();
+
+    let r = run(dir.path(), &["validate"]);
+    assert!(!r.out.contains("no-vision"), "a stated vision clears it: {}", r.out);
+}
+
+#[test]
+fn c6_rules_are_static_so_check_inherits_them() {
+    // The taxonomy claim: all three are `validate` rules, and `check` runs
+    // `validate` first — so they must appear identically under both verbs.
+    let dir = hardening_fixture();
+    let validated = run(dir.path(), &["validate"]);
+    let checked = run(dir.path(), &["check"]);
+    for code in ["undecomposed-parent", "no-vision"] {
+        assert!(validated.out.contains(code), "`validate` reports {code}: {}", validated.out);
+        assert!(checked.out.contains(code), "`check` inherits {code}: {}", checked.out);
+    }
+}
+
+#[test]
+fn g2_a_tear_rationale_reaches_validate_and_show() {
+    let dir = hardening_fixture();
+    run(dir.path(), &["node", "link", "2", "depends_on", "3"]);
+    run(dir.path(), &["node", "tear", "2", "depends_on", "3", "--because", "B ships first"]);
+
+    // The integrity output lists the assumed dependency with its reason...
+    let r = run(dir.path(), &["validate"]);
+    assert!(r.out.contains("active tears"), "listed: {}", r.out);
+    assert!(r.out.contains("B ships first"), "with the reason: {}", r.out);
+
+    // ...and so does the node itself, which is where a reader looks first.
+    let shown = run(dir.path(), &["node", "show", "2"]);
+    assert!(shown.out.contains("assumed (torn) dependencies"), "shown: {}", shown.out);
+    assert!(shown.out.contains("B ships first"), "with the reason: {}", shown.out);
+
+    let json = run(dir.path(), &["node", "show", "2", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&json.out).expect("valid JSON");
+    assert_eq!(v["tears"][0]["because"], "B ships first");
 }

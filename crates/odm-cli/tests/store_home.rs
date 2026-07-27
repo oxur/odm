@@ -106,7 +106,13 @@ fn check_is_green_against_the_resolved_store() {
 
     let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "check green on the worktree store:\n{}", r.out);
-    assert!(r.out.contains("3 node(s)"), "it validated the seeded corpus:\n{}", r.out);
+    // *Which* corpus it read is the claim here, and that is asked directly
+    // rather than inferred from the verdict line — C-6 added warnings that a
+    // bare fixture legitimately trips, and this test is about resolution, not
+    // about how clean the fixture happens to be.
+    let listed = run(dir.path(), &["node", "list", "--json"]);
+    let nodes: serde_json::Value = serde_json::from_str(&listed.out).expect("valid JSON");
+    assert_eq!(nodes.as_array().unwrap().len(), 3, "it read the seeded corpus:\n{}", listed.out);
 }
 
 // ----- L-3 / L-9: no `[store]` ⇒ unchanged behaviour -------------------------
@@ -124,7 +130,9 @@ fn without_a_store_section_everything_stays_at_the_repo_root() {
 
     let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "check green in the unredirected mode:\n{}", r.out);
-    assert!(r.out.contains("3 node(s)"));
+    let listed = run(dir.path(), &["node", "list", "--json"]);
+    let nodes: serde_json::Value = serde_json::from_str(&listed.out).expect("valid JSON");
+    assert_eq!(nodes.as_array().unwrap().len(), 3, "it read the seeded corpus:\n{}", listed.out);
 }
 
 // ----- L-4: operational config comes from the store's `config.toml` ----------

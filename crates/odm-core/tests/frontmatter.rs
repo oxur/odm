@@ -514,6 +514,36 @@ fn tear_carries_rationale() {
     assert_eq!(tears[0].because, "B is assumed to ship first");
 }
 
+// ----- G-2: a tear without a rationale cannot exist -------------------------
+
+#[test]
+fn a_tear_without_a_rationale_is_rejected_at_parse() {
+    // RH C-6 proposed *warning* about tears carrying no recorded reason. The
+    // schema already forbids them outright, which is the stronger guarantee —
+    // an unexplained assumed dependency cannot be written down at all, so there
+    // is no state for a warning to describe. Pinned here because implementing
+    // that warning would have required making `because` optional, trading this
+    // parse-time impossibility for a runtime nag.
+    let text = "\
+---
+id: 01ARZ3NDEKTSV4RRFFQ69G5FAV
+number: 1
+type: slice
+name: A
+created: 2026-06-24
+updated: 2026-06-24
+origin: planned
+edges:
+  tears:
+  - edge: 01ARZ3NDEKTSV4RRFFQ69G5FB0
+---
+# A
+";
+    let err = Document::parse(text).expect_err("a tear with no rationale must not parse");
+    let message = err.to_string();
+    assert!(message.contains("because"), "the error names the missing field: {message}");
+}
+
 // ----- C-3: a populated `tears` round-trips (parse ∘ emit = identity) -------
 
 proptest! {

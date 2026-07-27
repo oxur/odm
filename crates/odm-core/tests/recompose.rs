@@ -239,12 +239,110 @@ fn no_semantic_scope_guessing() {
     // against that child. A *human* might suspect an arc with a single slice is
     // under-scoped — but the tool makes NO such claim: there is no "missing
     // scope" finding, so a structurally-sound parent is clean.
-    let p = node('P', 1, NodeType::Project); // root, only planning
+    let mut p = node('P', 1, NodeType::Project); // root, only planning
+    p.affirm_decomposed(vec![id('Q')], day()); // G-3: affirmed, so it is silent
     let mut q = child('Q', 2, NodeType::Arc, 'P');
     reach(&mut q, &gates, "verified");
     q.affirm_decomposed(vec![id('X')], day());
     let x = child('X', 3, NodeType::Slice, 'Q');
 
+    // Every *structural* obligation is discharged, so anything reported here
+    // could only come from the tool second-guessing the plan's semantics.
     let findings = integrity(&[p, q, x], &gates);
     assert!(findings.is_empty(), "structurally sound, got: {findings:?}");
+}
+
+// ----- G-3: a parent with children must affirm its decomposition ------------
+
+#[test]
+fn undecomposed_parent_with_children_is_reported() {
+    // A parent that has decomposed at all, but never affirmed the result.
+    let p = node('P', 1, NodeType::Project);
+    let q = child('Q', 2, NodeType::Arc, 'P');
+    let findings = integrity(&[p, q], &gates());
+
+    let issues: Vec<&Issue> = findings.iter().map(|f| &f.issue).collect();
+    assert!(
+        issues.iter().any(|i| matches!(i, Issue::UndecomposedParent { children: 1 })),
+        "the project is reported with its child count: {issues:?}"
+    );
+}
+
+#[test]
+fn a_childless_parent_is_not_undecomposed() {
+    // Nothing has been decomposed yet, so there is nothing to affirm. (A
+    // childless parent that has *advanced* is an undeveloped stub — a different
+    // finding, tested above.)
+    let p = node('P', 1, NodeType::Project);
+    let findings = integrity(&[p], &gates());
+    assert!(
+        !findings.iter().any(|f| matches!(f.issue, Issue::UndecomposedParent { .. })),
+        "no children, nothing to affirm: {findings:?}"
+    );
+}
+
+#[test]
+fn an_affirmed_parent_is_not_reported() {
+    let mut p = node('P', 1, NodeType::Project);
+    let q = child('Q', 2, NodeType::Arc, 'P');
+    p.affirm_decomposed(vec![id('Q')], day());
+    let findings = integrity(&[p, q], &gates());
+    assert!(
+        !findings.iter().any(|f| matches!(f.issue, Issue::UndecomposedParent { .. })),
+        "affirmed, so silent: {findings:?}"
+    );
+}
+
+#[test]
+fn a_done_parent_reports_the_stronger_finding_only() {
+    // Both rules describe the same gap. A done parent is the more serious case,
+    // and reporting both would count one gap twice.
+    let mut p = node('P', 1, NodeType::Project);
+    let q = child('Q', 2, NodeType::Arc, 'P');
+    let g = gates();
+    reach(&mut p, &g, "verified");
+    let findings = integrity(&[p, q], &g);
+
+    let n_advanced =
+        findings.iter().filter(|f| matches!(f.issue, Issue::AdvancedWithoutDecomposition)).count();
+    let n_undecomposed =
+        findings.iter().filter(|f| matches!(f.issue, Issue::UndecomposedParent { .. })).count();
+    assert_eq!(n_advanced, 1, "the terminal-gate finding fires: {findings:?}");
+    assert_eq!(n_undecomposed, 0, "and not the broader one as well: {findings:?}");
+}
+
+#[test]
+fn a_slice_is_never_an_undecomposed_parent() {
+    // Slices admit no children, so the rule does not apply to them at all.
+    let p = node('P', 1, NodeType::Project);
+    let q = child('Q', 2, NodeType::Arc, 'P');
+    let x = child('X', 3, NodeType::Slice, 'Q');
+    let findings = integrity(&[p, q, x], &gates());
+    assert!(
+        !findings
+            .iter()
+            .any(|f| f.node == id('X') && matches!(f.issue, Issue::UndecomposedParent { .. })),
+        "not parent-capable: {findings:?}"
+    );
+}
+
+#[test]
+fn a_mismatched_decomposition_still_drifts_not_merely_undecomposed() {
+    // An affirmation that no longer matches its children is drift — a *wrong*
+    // assertion, which is worse than an absent one and must not be masked by
+    // the new rule.
+    let mut p = node('P', 1, NodeType::Project);
+    let q = child('Q', 2, NodeType::Arc, 'P');
+    let r = child('R', 3, NodeType::Arc, 'P');
+    p.affirm_decomposed(vec![id('Q')], day());
+    let findings = integrity(&[p, q, r], &gates());
+
+    assert!(
+        findings.iter().any(|f| matches!(f.issue, Issue::DecompositionDrift { .. })),
+        "the added child drifts the affirmation: {findings:?}"
+    );
+    assert!(
+        !findings.iter().any(|f| matches!(f.issue, Issue::UndecomposedParent { .. })),
+        "and it is not also reported as unaffirmed: {findings:?}"
+    );
 }

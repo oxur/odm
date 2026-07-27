@@ -138,6 +138,18 @@ pub enum Issue {
     /// A parent-capable node reached its terminal ("done") gate without ever
     /// affirming `decomposed: complete`.
     AdvancedWithoutDecomposition,
+    /// A parent-capable node **has children** but has never affirmed that they
+    /// account for its scope (ODD-0013 §4.5) — and is not yet done, which is the
+    /// stronger [`Issue::AdvancedWithoutDecomposition`] case.
+    ///
+    /// Broadens the affirmation requirement from "before you call it done" to
+    /// "once you have decomposed at all" (RH G-3): a parent whose scope was
+    /// never affirmed is a gap whether or not it has finished, and waiting for
+    /// the terminal gate means learning about it at the latest possible moment.
+    UndecomposedParent {
+        /// How many children it has.
+        children: usize,
+    },
 }
 
 /// Analyzes a corpus for decomposition/recomposition integrity, returning all
@@ -201,11 +213,16 @@ fn check_decomposition(
                 findings.push(finding(fm, Issue::UndevelopedStub { gate }));
             }
         }
-        // H-7: reached the terminal gate ("done") without affirming the
-        // decomposition.
+        // H-7 / G-3: never affirmed the decomposition. The two cases are
+        // deliberately exclusive — a done parent reports the stronger one, so a
+        // single gap is never counted twice.
         let done = gset.terminal().is_some_and(|t| fm.status().has_reached(t));
-        if done && fm.decomposed().is_none() {
-            findings.push(finding(fm, Issue::AdvancedWithoutDecomposition));
+        if fm.decomposed().is_none() {
+            if done {
+                findings.push(finding(fm, Issue::AdvancedWithoutDecomposition));
+            } else if !kids.is_empty() {
+                findings.push(finding(fm, Issue::UndecomposedParent { children: kids.len() }));
+            }
         }
     }
 

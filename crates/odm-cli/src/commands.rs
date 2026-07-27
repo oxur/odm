@@ -147,6 +147,17 @@ struct NodeJson {
     /// across types *and* still see which rung.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     gates: Vec<GateJson>,
+    /// Deliberately-assumed dependencies, each with the reason it was assumed
+    /// (G-2). Omitted when the node has torn nothing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tears: Vec<TearEdgeJson>,
+}
+
+/// One assumed (torn) dependency, as `--json` reports it.
+#[derive(Serialize)]
+struct TearEdgeJson {
+    depends_on: String,
+    because: String,
 }
 
 /// One reached gate, as `--json` reports it.
@@ -229,6 +240,14 @@ impl NodeJson {
             }),
             status: None,
             gates: Vec::new(),
+            tears: edges
+                .tears
+                .iter()
+                .map(|tear| TearEdgeJson {
+                    depends_on: dependency_label(&tear.edge),
+                    because: tear.because.clone(),
+                })
+                .collect(),
         }
     }
 }
@@ -595,6 +614,15 @@ pub fn show(
     }
     if let Some(s) = &edges.supersedes {
         writeln!(out, "  supersedes: {} ({})", s.node, supersede_kind_str(s.kind))?;
+    }
+    // Assumed dependencies, with the reason each was assumed (G-2). A tear is a
+    // deliberate, reviewable decision; reading the node should show both that
+    // one was made and why, not just that an edge is missing from the ordering.
+    if !edges.tears.is_empty() {
+        writeln!(out, "  assumed (torn) dependencies:")?;
+        for tear in &edges.tears {
+            writeln!(out, "    depends_on {} — {}", dependency_label(&tear.edge), tear.because)?;
+        }
     }
     // Way-finding: children in the containment tree.
     if children.is_empty() {
@@ -1380,7 +1408,9 @@ fn has_advanced(fm: &Frontmatter, gates: &GateSets) -> bool {
 /// merely because an arc was advanced before its decomposition was affirmed.
 fn recompose_severity(issue: &Issue) -> Severity {
     match issue {
-        Issue::UndevelopedStub { .. } | Issue::AdvancedWithoutDecomposition => Severity::Warning,
+        Issue::UndevelopedStub { .. }
+        | Issue::AdvancedWithoutDecomposition
+        | Issue::UndecomposedParent { .. } => Severity::Warning,
         // Orphan, decomposition-drift, and any future structural issue: error.
         _ => Severity::Error,
     }
@@ -1415,12 +1445,53 @@ fn recompose_render(store: &Store, f: &recompose::Finding) -> (&'static str, Str
             "reached its terminal gate without affirming `decomposed: complete`".to_string(),
             format!("affirm `decomposed` in {file} before completing it"),
         ),
+        Issue::UndecomposedParent { children } => (
+            "undecomposed-parent",
+            format!(
+                "has {children} child(ren) but has never affirmed that they account for its scope"
+            ),
+            format!("affirm it with `odm node decomposed {}` (or edit {file})", f.number),
+        ),
         _ => (
             "recomposition",
             "structural decomposition issue".to_string(),
             format!("inspect {file}"),
         ),
     }
+}
+
+/// A dependency's target as display text: the bare id, or `id@gate` when the
+/// dependency is gate-qualified.
+///
+/// Distinct from [`dependency_target`], which answers *which node* — this
+/// answers *how to show the edge*, and the qualifying gate is part of that.
+fn dependency_label(dep: &Dependency) -> String {
+    match dep {
+        Dependency::Bare(id) => id.to_string(),
+        Dependency::Qualified { node, satisfied_at } => format!("{node}@{satisfied_at}"),
+    }
+}
+
+/// Whether a project body states a vision (L-3b).
+///
+/// Matches the heading `orient` looks for, at any heading level and regardless
+/// of case, so a body that renders a vision to a reader is not reported as
+/// lacking one on a technicality. A heading with nothing under it does **not**
+/// count: an empty section is the same absence with extra steps.
+fn has_vision(body: &str) -> bool {
+    let mut lines = body.lines().skip_while(|l| !is_vision_heading(l));
+    if lines.next().is_none() {
+        return false;
+    }
+    // Some prose before the next heading.
+    lines.take_while(|l| !l.trim_start().starts_with('#')).any(|l| !l.trim().is_empty())
+}
+
+/// Whether `line` is a `# Vision` heading at any level.
+fn is_vision_heading(line: &str) -> bool {
+    let line = line.trim_start();
+    let Some(rest) = line.strip_prefix('#') else { return false };
+    rest.trim_start_matches('#').trim().eq_ignore_ascii_case("vision")
 }
 
 /// Aggregates every graph-level invariant over the given frontmatters (the
@@ -1509,6 +1580,33 @@ fn aggregate(
             detail,
             fix,
         });
+    }
+
+    // (c2) L-3b: a project must state a vision. The definition of done depends
+    // on one, and L-3a had to backfill it into odm's own project after
+    // `self-host` carried the plan's structure but not its substance — so this
+    // is the rule that stops that regressing silently.
+    //
+    // Bodies are deliberately out of the index (ODD-0014 §3.5), so this is a
+    // targeted load of the project nodes alone — the same shape `orient` uses
+    // for the one body it needs. A project that cannot be loaded is skipped
+    // rather than reported: that is a store problem, and the schema pass above
+    // already owns it.
+    for fm in frontmatters.iter().filter(|f| f.node_type() == NodeType::Project) {
+        let Ok(doc) = store.load(fm.id()) else { continue };
+        if !has_vision(doc.body()) {
+            let file = store.path_of(fm.id());
+            entries.push(CheckEntry {
+                severity: Severity::Warning,
+                code: "no-vision",
+                node: Some(fm.id()),
+                number: Some(fm.number()),
+                name: Some(fm.name().to_string()),
+                detail: "the project states no vision (no `# Vision` section in its body)"
+                    .to_string(),
+                fix: format!("add a `# Vision` section to {}", file.display()),
+            });
+        }
     }
 
     // (d) soft-satisfaction + (e) out-of-order/staleness (slice04) — warnings.
@@ -2104,4 +2202,58 @@ pub fn chain(
         None => writeln!(out, "path: no dependency path")?,
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ----- L-3b: the no-vision predicate ------------------------------------
+
+    #[test]
+    fn test_has_vision_accepts_a_stated_vision() {
+        assert!(has_vision("# odm\n\n# Vision\n\nA planning substrate.\n"));
+    }
+
+    #[test]
+    fn test_has_vision_is_indifferent_to_heading_level_and_case() {
+        // A body that renders a vision to a reader must not be reported as
+        // lacking one over a `##` or a lowercase `v`.
+        assert!(has_vision("# P\n\n## Vision\n\nText.\n"));
+        assert!(has_vision("# P\n\n### vision\n\nText.\n"));
+        assert!(has_vision("# P\n\n#   VISION   \n\nText.\n"));
+    }
+
+    #[test]
+    fn test_has_vision_rejects_an_absent_section() {
+        assert!(!has_vision("# odm\n\nSome prose but no vision heading.\n"));
+        assert!(!has_vision(""));
+    }
+
+    #[test]
+    fn test_has_vision_rejects_an_empty_section() {
+        // A heading with nothing under it is the same absence with extra steps.
+        assert!(!has_vision("# P\n\n# Vision\n\n# Next section\n\nText.\n"));
+        assert!(!has_vision("# P\n\n# Vision\n"));
+    }
+
+    #[test]
+    fn test_has_vision_ignores_the_word_elsewhere() {
+        // Prose about a vision is not a stated vision, and a heading that merely
+        // begins with the word is a different section.
+        assert!(!has_vision("# P\n\nOur vision is great.\n"));
+        assert!(!has_vision("# P\n\n# Vision statement process\n\nText.\n"));
+    }
+
+    // ----- G-2: how a tear's target renders ---------------------------------
+
+    #[test]
+    fn test_dependency_label_keeps_the_qualifying_gate() {
+        let id = odm_core::Id::new();
+        assert_eq!(dependency_label(&Dependency::Bare(id)), id.to_string());
+        assert_eq!(
+            dependency_label(&Dependency::Qualified { node: id, satisfied_at: "tested".into() }),
+            format!("{id}@tested")
+        );
+    }
 }
