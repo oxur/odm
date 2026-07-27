@@ -9,6 +9,16 @@
 
 ---
 
+## 0b. Resume update — 2026-07-27 (G-1 CLOSED — read this first)
+
+**✅ G-1 is CLOSED; the minting freeze is LIFTED.** Per **ODD-0024** (Accepted,
+`docs/design/04-accepted/`): odm **retains ULID** identity; the register-style `D-YYMM-XXXX`
+scheme is **rejected**; `number` is unchanged; no id is re-stamped. **You may mint new nodes.**
+Any "do not mint before G-1" warning below (§0a, §0) is **superseded** by this. The id-scheme
+question does not reopen without superseding ODD-0024.
+
+---
+
 ## 0a. Resume update — 2026-07-26 (RH C-5: the cutover — read this first)
 
 **⚠ The corpus moved. `nodes/` is not in the working tree any more.** odm now
@@ -34,9 +44,10 @@ directory, so the dates span **2026-06-20 → 2026-07-25** across 13 days instea
 of reading 45× `2026-07-07`. If you have older notes quoting a node name or date,
 they are stale — re-query.
 
-**G-1 is untouched and still in force.** The cutover **preserved every ULID** —
-it relocated and re-stamped existing files, and minted nothing. **Do not mint new
-nodes before the G-1 decision.**
+**G-1 — SUPERSEDED: now CLOSED (2026-07-27, ODD-0024); minting freeze LIFTED.** ~~G-1 is
+untouched and still in force.~~ The cutover **preserved every ULID** —
+it relocated and re-stamped existing files, and minted nothing. ~~Do not mint new
+nodes before the G-1 decision.~~ *(ULID retained — new nodes may now be minted.)*
 
 **What this cost, worth knowing:** the dogfood found three defects that four
 green slices had not, all of the same shape — a path that could not be exercised
@@ -76,7 +87,7 @@ Ownership section explains what is odm's vs lykn's).
 - **`arc-llm-command-surface/arc-plan.md`** (v1.1, unnumbered) — 7 shaped
   slices closing the LLM gaps; reconciled against the inventory.
 
-**⚠ Before minting ANY new node: G-1.** The operator intends to switch the ID
+**⚠ Before minting ANY new node: G-1. — CLOSED 2026-07-27 (ODD-0024): ULID retained, freeze lifted; see §0b. (Historical below.)** The operator intends to switch the ID
 scheme (register-style `D-YYMM-XXXX` vs ULID) — recorded ONLY in the gap
 review. Write the ODD and get the decision **first**; identity cannot change
 after ship. CDC input is in the review (keep ULID as `id`; D-style competes

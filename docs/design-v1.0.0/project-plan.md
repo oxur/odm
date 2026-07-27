@@ -155,8 +155,8 @@ were free to order and a case was floated for taking A6 next to realize self-hos
 early).* The order taken was **A4 → A5 → A6**: A4 and A5 are closed, A6 is in progress and
 self-hosts. The remaining v1.0.0 path is **Release Hardening (✅ closed 2026-07-27) → arc-store-home (✅ closed;
 SH-6 delivered by RH C-5) → LLM command surface (next — materially lighter, since RH C-8 already
-delivered its blocking slice L-1) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5). Two
-standing pre-ship gates: **G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**
+delivered its blocking slice L-1) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5). ~~Two
+standing pre-ship gates: **G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**~~ **G-1 is CLOSED (2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted).** One standing pre-ship gate remains: **L-8b**
 (reconcile the four state-drifted ODDs).
 
 ## 4. Post-MVP extension roadmap (v1.0.0+)
@@ -244,6 +244,15 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.12 — 2026-07-27 — G-1 closed (id scheme decided); minting unfrozen
+
+**G-1 is closed** by **ODD-0024** (Accepted): odm retains **ULID** identity; the register-style
+`D-YYMM-XXXX` proposal is **rejected**; `number` is unchanged. The standing "do not mint before
+G-1" freeze is **lifted**. **Which child surfaced it:** the `arc-migration-fidelity` planning
+thread — the freeze blocked the arc that repairs the self-hosted corpus, forcing the
+long-deferred decision. One standing pre-ship gate remains: **L-8b** (reconcile the four drifted
+ODDs).
 
 ### v1.11 — 2026-07-27 — Release Hardening closed; the surface is settled
 

@@ -54,7 +54,7 @@ which belong to neither odm nor lykn.
 
 ## Two decisions made in conversation today with **no repo record** `[ran: greps cited]`
 
-- **G-1 — the ID-system switch.** Operator, 2026-07-25: *"I like yours better,
+- **G-1 — the ID-system switch. ✅ RESOLVED 2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted.** Operator, 2026-07-25: *"I like yours better,
   and I'm going to switch odm v2 to use it"* — the register's `D-YYMM-XXXX`
   scheme vs ULID. **Zero hits in the repo** for any such intention. This is
   identity — the one thing that cannot change after ship — and it is currently
@@ -72,7 +72,7 @@ which belong to neither odm nor lykn.
 
 | Gap | Work | Size |
 |---|---|---|
-| **G-1** ID decision recorded as an ODD | decision, not code | hours |
+| **G-1** ✅ DONE — ID decision recorded as **ODD-0024** (ULID retained) | decision, not code | hours |
 | **G-2** tear-rationale persisted + surfaced in `check`; re-route from the phantom "arc02 slice08" to a real chunk here (**C-6**) | schema field + plumbing | small |
 | **G-3** `decomposed`/orphan enforcement in `check` (warn; `--strict` error) | one check rule | small |
 | **G-4** status read-back on `show`/`--json` (llm-surface slice01, pulled forward alone if the arc waits) | print computed state | small |
