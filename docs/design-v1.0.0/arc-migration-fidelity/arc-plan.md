@@ -67,7 +67,7 @@ the same capability.
 
 | Slice | Scope | Mints nodes? | Depends on |
 |-------|-------|--------------|------------|
-| **s01 — coverage-discovery** | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
+| **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
 | **s02 — model** | The ODD(s): `provenance` sub-map; `supersedes`→`Vec` + guaranteed bidirectional; supporting-doc **artifact-vs-work** node class; frontmatter-fidelity schema mapping; F4 normalization (trim + line-endings); F7 containment-optional for doc nodes. | no | s01 |
 | **s03 — migration-fidelity core** | 1:1 verbatim body import + **hard body-hash gate** + provenance persistence + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`). | building | s02 |
 | **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. | yes | s03 |
@@ -87,17 +87,35 @@ at slice-activation, not pre-committed here.
 
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
-| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned |
-| MF-3 | Every migrated node carries a `provenance` sub-map | grep/`check` over the store | correctness | planned |
+| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, attested); the *enforced check* MF-1 asks for is s05's job |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, live-verified); s03 builds the gate |
+| MF-3 | Every migrated node carries a `provenance` sub-map | grep/`check` over the store | correctness | planned — s01's provenance-absence detector confirms the baseline (0/60, exact); s02/s03 land the field |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned |
-| MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned |
+| MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s01 counted the exact gap (6 arc dirs, 5 slice dirs unrepresented — the 6th arc is `arc-migration-fidelity` itself, shaped after the audit); s04/s05 mint |
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, provenance | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.1 — 2026-07-27 — s01 (coverage-discovery) closed; the arc's work-list is now exact
+
+**Slice 01 is closed** (`slice01-coverage-discovery/closing-report.md`; 9/9 ledger rows done, 0
+deferred, 0 no-op). It shipped a read-only `coverage` module + `odm migrate <docs> --coverage`
+and ran it against the live corpus: **326 source docs, 60 covered, 266 uncovered; 6/12 arc dirs
++ 39/44 slice dirs represented; 44 stub bodies; 60/60 nodes missing provenance** — committed as
+`slice01-coverage-discovery/coverage-report.md`, now the arc's authoritative work-list (every
+divergence from the audit's ≈44/≈211/5 ballpark reconciled by name in that report, not rounded
+off). **Which child surfaced it, and what it revealed:** (1) a real classification-boundary
+question for s02's model — chunk-scale artifacts (`cN-closing-report.md` etc.) fold into their
+slice-scale sibling class here, but s02's node-class design must decide this for real, not
+inherit the choice silently; (2) `docs/dev/research/` is a third, distinct thing sharing the
+word "research" with the ODD `research` tag and with `docs/dev/` generally — worth a
+disambiguating line in s02's model doc; (3) the slice's own open-set files correctly appear as
+uncovered/unrepresented in its own report (self-referential, not a bug). MF-1/MF-3/MF-5 stay
+**planned** (the detector exists; the enforced check / minting / provenance field are s02–s05's
+jobs) with pointers to this closing report as their baseline evidence.
 
 ### v1.0 — 2026-07-27 — arc shaped
 
