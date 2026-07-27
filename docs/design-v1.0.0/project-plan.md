@@ -70,12 +70,13 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 
 | Arc | Capability | `depends_on` | Status |
 |-----|-----------|--------------|--------|
-| **Release Hardening (RH)** | UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from `oxur-cli`); type taxonomy `odd`→`design` + new `research`; tree-structured de-numbered `list`; command renames (`context`→`project`, `path`→`chain`, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged **surface** (cc-prompt) vs. **model** (ODD-0013/0020 amendment or ADR). | A6·s04 (the self-hosted corpus UAT runs on) | **active** — `arc-release-hardening/arc-plan.md` (chunks C-1…C-5; batch 1 of ~3–4) |
+| **Release Hardening (RH)** | UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from `oxur-cli`); type taxonomy `odd`→`design` + new `research`; tree-structured de-numbered `list`; command renames (`context`→`project`, `path`→`chain`, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged **surface** (cc-prompt) vs. **model** (ODD-0013/0020 amendment or ADR). | A6·s04 (the self-hosted corpus UAT runs on) | **CLOSED 2026-07-27** — `arc-release-hardening/closing-report.md`. All chunks done (C-1…C-6, C-8; **C-7 retired into C-5**): theming, type taxonomy, `list` overhaul, the ODD-0023 three-tier command surface + `validate`/`check` split, the fold + real dates + names + vision **+ the SH-6 store cutover**, normalized status, and `validate` hardening. **RH-6 compose reproduced**, **RH-7 reflexive reproduced** (`validate` exit 0 at 60 nodes), RH-8 dispositioned. |
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
 | **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **code-complete** — `arc-store-home/closing-report.md`; **slices 01–04 done** (SH-1…SH-4; SH-3 CDC-reproduced on git 2.43) and **SH-5 composed**; **SH-6 (dogfood cutover) open, pending RH C-5**, which re-self-hosts into the home |
 
-**Sequencing (settled with operator, 2026-07-25):** Release Hardening (active) → LLM
-command surface (next) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
+**Sequencing (updated 2026-07-27):** Release Hardening **closed** → LLM command surface
+(**next**, and materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
+read-back; see that arc's v1.2) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
 so the skill and prose-retirement target the *settled* command surface. Both inserted
 arcs consume A6 slice04's self-hosted corpus; A6 is **paused after slice04**, not
 abandoned (§3).
@@ -116,11 +117,21 @@ abandoned (§3).
   slice05** (PM-skill) + slice06 (retire prose) once Release Hardening and the
   LLM-command-surface arc wrap, so those target the settled surface. *(Was, at v1.0–1.6:
   "PLANNED, not started.")*
-- **Release Hardening (UAT) — ▶ ACTIVE.** Named, number-deferred (§2a). Batch-1 punch
-  list (14 findings) triaged into chunks C-1…C-5. **C-1…C-3 done:** C-1 adopted the
-  re-extracted **`oxur-term`** styling crate (Route B, ADR) — `oxur-cli` shed; C-2 landed the
-  type taxonomy (`odd`→`design` + `research`; corpus re-stamped to 60 nodes, `check` green);
-  C-3 overhauled `list` (date/type/status/tree, de-numbered, retired excluded by default).
+- **Release Hardening (UAT) — ✅ CLOSED 2026-07-27.** Named, number-deferred (§2a).
+  **The surface is settled.** 21 findings worked down to 18 done + 3 carried with reasons,
+  across seven chunks: C-1 adopted the re-extracted **`oxur-term`** styling crate (Route B,
+  ADR) — `oxur-cli` shed; C-2 landed the type taxonomy (`odd`→`design` + `research`); C-3
+  overhauled `list` (date/type/status/tree, de-numbered, retired excluded by default); C-4
+  landed **ODD-0023's three-tier surface** (`odm node` / `odm store` / workflow verbs) with a
+  hard cut and the **`validate`/`check` split**; C-5 folded `self-host` into `migrate`,
+  recovered the plan's **real creation dates**, normalized names, wrote the project's vision
+  — **and moved odm onto its own store branch** (SH-6); C-8 normalized STATUS so types
+  compare, **and delivered the LLM arc's blocking L-1** on the way; C-6 hardened `validate`
+  (G-3 undecomposed-parent, L-3b no-vision). C-7 retired into C-5.
+  **Compose:** RH-6 reproduced (whole surface in one pass on the self-hosted store), RH-7
+  reproduced (`validate` exit 0 at 60 nodes, every ULID preserved through the cutover).
+  **Carried:** `store status`, shared-`context.json` two-level model, **L-8b (reconcile 4
+  ODDs — a pre-ship gate)**, F-16/F-17/F-21, and **G-1 still gates minting any new node**.
   **C-4** (command-surface cleanup) + **C-5** (fold `self-host` into `migrate` + names + dates,
   one re-stamp) remain. Companion surface work landed alongside arc-store-home: **ODD-0023**
   (command reorg → top-level verbs / `odm node` / `odm store`) drafted and the
@@ -221,13 +232,13 @@ Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 | P-4 | A4 (index & cache) closed + composed | ptr: `arc04-index-cache/closing-report.md` | correctness | project-plan | done | **reproduced/reconciled:** arc-close done (`arc04-index-cache/closing-report.md`) — 8/8 slices CDC-verified, class-(b) composition rows A-9…A-13 reproduced at arc scale (structural CDC + executable **CI green 2026-06-30**), independent arc-gate review **PASS-WITH-NOTES**; ODD-0014 `[P]`→`[E]`. | Delivered set is *broader* than the roadmap line (also `check`+`rollup`) — over-delivery, not drift. |
 | P-5 | A5 (reconciliation) closed + composed | ptr: `arc05-reconciliation/closing-report.md` | correctness | project-plan | done | **reproduced/reconciled:** arc-close done — 8/8 slices CDC-verified, class-(b) compose rows reproduced at arc scale, independent arc-gate review **PASS-WITH-NOTES**; CI green on `release/1.0.x`. Freshness model (ODD-0019) realized; zero index change across the arc. | Delivered incremental-freshness beyond the roadmap line (ODD-0019) — over-delivery, not drift. |
 | P-6 | A6 (migrate, self-host & PM-skill) closed + composed | ptr: arc06 closing-report | correctness | project-plan | open | | attested-on-close. |
-| P-7 | **Compose (DoD):** a fresh session reaches full situational awareness from `odm orient` alone | project-scale demo: fresh session, `odm orient` only | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now; reproduce at project scale on close. The headline DoD. |
+| P-7 | **Compose (DoD):** a fresh session reaches full situational awareness from `odm orient` alone | project-scale demo: fresh session, `odm orient` only | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now; reproduce at project scale on close. The headline DoD. **Surface settled 2026-07-27** by the Release Hardening close, so this demo now has a stable target: `orient` renders a vision and a resolved focus on odm's own store (both were blank before RH C-5), and the command surface will not churn again before ship. |
 | P-8 | **Compose (DoD):** every dependency is a queryable edge; `next`/`blocked`/`path` answer correctly | project-scale demo over a real corpus | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-9 | **Compose (DoD):** `check` catches cycles-without-tears, dangling refs, out-of-order work, broken recomposition | project-scale demo: seed each violation, observe the finding | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-10 | **Compose (DoD):** status is multi-gate with evidence levels | project-scale demo | serious | project-plan / 0015 §2 | open | | MVP-demonstrable now. |
 | P-11 | **Compose (DoD):** desired-vs-actual drift is detected and reported (the prod-DB-503 class) | project-scale demo: declare a fact, diverge reality, observe drift | serious | project-plan / 0001-C2 | done | **reproduced (A5, CI green):** `odm reconcile`/`rollup`/`orient` detect + report drift end-to-end (arc05 A-8/A-10 reproduced at arc scale); fresh on every command (ODD-0019). The C2 marquee case is cashed. | Landed with A5 (reconciliation). |
 | P-12 | **Compose (DoD):** odm self-hosts — manages its own plan as nodes; these design docs are queryable via `odm orient` | project-scale demo: migrate + orient on odm's own corpus | serious | project-plan / 0013 §9 | open | | **Self-host landed (attested) at A6 slice04** — `odm self-host` → 45 work nodes, `check` green on 58, `rollup`/`orient` reproduce the state; cargo/exec rows pending CI. Reproduce at A6 arc-close for `done`. |
-| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; adapter-fidelity invariant → arc05 v1.2 (v1.4). A5: no roadmap re-scope; three findings forward-carried to A6 (two-reads optimization; `CLAUDE.md` oxur-cli doc-drift; volatile-re-entry behavior change) — recorded, v1.6. A6 (in progress): UAT of the self-hosted tool surfaced release-blocking CLI/type/naming/output work → **two arcs inserted** (Release Hardening, LLM command surface; §2a), A6 paused after slice04 — expansion (A1–A6 DoD unchanged), recorded v1.7/v1.8. **v1.9:** arc-store-home added from ODD-0022 (expands the v1.0.0 DoD) — recorded. |
+| P-13 | Arc bubble-up findings dispositioned | ptr: project-plan change-log (Version History) | correctness | bubble-up | open | | Accrues per arc close. A3: no project-plan change (recorded). A4: no roadmap re-scope; adapter-fidelity invariant → arc05 v1.2 (v1.4). A5: no roadmap re-scope; three findings forward-carried to A6 (two-reads optimization; `CLAUDE.md` oxur-cli doc-drift; volatile-re-entry behavior change) — recorded, v1.6. A6 (in progress): UAT of the self-hosted tool surfaced release-blocking CLI/type/naming/output work → **two arcs inserted** (Release Hardening, LLM command surface; §2a), A6 paused after slice04 — expansion (A1–A6 DoD unchanged), recorded v1.7/v1.8. **v1.9:** arc-store-home added from ODD-0022 (expands the v1.0.0 DoD) — recorded. **Release Hardening closed 2026-07-27** (`arc-release-hardening/closing-report.md`): 21 findings → 18 done, 3 carried (F-16 upstream `oxur-term`, F-17 a decision not a defect, F-21 routed to the LLM arc); routed L/G rows closed out with **L-8b (reconcile 4 ODDs) still a pre-ship gate** and **G-1 still gating any new node**. The arc also folded in **arc-store-home's SH-6 dogfood cutover** (C-5), so odm now runs on its own store branch. Ten defects were surfaced and fixed by the arc's own work — the reusable lesson recorded there is **check the brief's facts before implementing them**: four of the ten came from reading the corpus or running the binary before writing code. |
 | P-14 | **arc-store-home (store home & `init`) closed + composed** — odm's store lives on the orphan `odm` branch; `init` bootstraps/attaches/ff-syncs it | ptr: `arc-store-home/closing-report.md` | serious | project-plan / ODD-0022 | **attested (complete)** | `arc-store-home/closing-report.md` (2026-07-26): slices 01–04 closed — SH-1/SH-2/SH-4 attested, **SH-3 CDC-reproduced** (git 2.43), **SH-5 composition reproduced** (bootstrap → attach → ff-sync → rename, `check` green). 57 test binaries, 0 failed (58 after C-5); clippy `-D warnings`, fmt clean; CI runs the store suite on **both git arms**. | **SH-6 closed 2026-07-26 by the RH C-5 cutover** — odm's 60 nodes now live on the orphan `odm` branch at `.worktrees/odm`, `check` green at 60 **in the home**, the working branch no longer carries `nodes/`, and `odm.toml` is locator-only with the operational half in the store's `config.toml`. Every ULID preserved: a relocation and in-place re-stamp, not a re-derivation (which would have minted ids, broken every edge and tripped the G-1 freeze). See `arc-release-hardening/c5-closing-report.md`. **The dogfood immediately found three defects four green slices had not** — `orient` resolving the CLI context against the invocation root while `use` wrote the store root (indistinguishable until odm's own store moved), `init` scaffolding no store `.gitignore`, and a first fix that would have withheld the current focus from every clone. All fixed in-chunk. The arc's own lesson, recorded there: **an opt-in feature nobody has opted into is not verified.** |
 
 Closes in a project-level `closing-report.md` with the per-row walk and the **project
@@ -236,6 +247,39 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.11 — 2026-07-27 — Release Hardening closed; the surface is settled
+
+**Release Hardening (UAT) is closed** (`arc-release-hardening/closing-report.md`). Seven
+chunks — C-1…C-6 and C-8, with C-7 retired into C-5 — took the UAT punch-list from 21 open
+findings to 18 done and 3 carried with stated reasons. **RH-6 (compose) reproduced** on the
+self-hosted store; **RH-7 (reflexive) reproduced** with `validate` exit 0 at 60 nodes.
+
+**What it unblocks.** The command surface will not churn again before ship, so the two arcs
+behind it now target a settled target:
+
+1. **LLM command surface — next, and materially lighter.** RH C-8 delivered its *blocking*
+   slice 01 (L-1, status read-back) as a side effect of checking a premise: the chunk was
+   briefed that `show`/`--json` already exposed the gate vector, and neither exposed gates at
+   all. Fixing that is L-1. The arc's v1.2 records the remainder.
+2. **A6 resumes at slice05** (PM-skill) + slice06 (retire prose), against the settled surface.
+
+**Two things this arc absorbed beyond its brief.** It folded in **arc-store-home's SH-6
+dogfood cutover** (C-5), because C-5 already rewrote the corpus and doing both once beat doing
+it twice — so odm now manages its own plan on an orphan `odm` branch, with every ULID
+preserved. And it took **ODD-0023 to Accepted** (v1.1) with three recorded reversals, one of
+which — `validate` as the pure verb and `check` as the composite — was the operator's
+correction to the draft's own recommendation.
+
+**Still gating.** **G-1 (the ID scheme) is unchanged and still blocks minting any new node**;
+C-5 was built to preserve every id precisely so it would not trip that freeze. **L-8b
+(reconcile the four ODDs) remains a pre-ship gate.** Neither is release-blocked by this close.
+
+**Honest on evidence.** Every cargo row across the arc is **attested-by-CC on a real
+toolchain, not CI-reproduced** — `release/1.0.x` is 38 commits ahead of an SSH `origin` and
+unpushed. The durable `reproduced` rides that push.
+
+Surfaced by: the Release Hardening arc close (RH-6/RH-7 compose + RH-8 bubble-up).
 
 ### v1.10 — 2026-07-26
 **arc-store-home slices 01–03 landed (SH-1/2/3); ODD-0023 + inventory rewrite; UAT tail routed.**
