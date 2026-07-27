@@ -29,3 +29,6 @@ Thumbs.db
 
 # Misc
 /workbench
+
+# odm worktree home — store (odm/store) + per-project lines
+.worktrees/
