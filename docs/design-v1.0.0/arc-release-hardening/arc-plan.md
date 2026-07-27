@@ -44,10 +44,14 @@ cc-prompts, re-validated by re-running `odm self-host`.
 | **C-2 — Type taxonomy** **DONE 2026-07-26** | `odd` → `design`; added `research`; ODD-0013 v2.0 + ODD-0020 v1.1 amended first; re-stamped the corpus in place (**9 `design` + 5 `research`**, identities preserved) via a new `odm-migrate::restamp` pass; `[gates.design]` + `[gates.research]` (mirrored). `check` green at 60 nodes, no `odd` left. See `c2-closing-report.md`. | model (ODD-0013 + ODD-0020) | F-2, F-3 | — (foundational) |
 | **C-3 — `odm list` overhaul** **DONE 2026-07-26** | Shipped: `DATE\|TYPE\|STATUS\|NAME\|ID` — no NUMBER; `--date={created\|updated}`; STATUS = furthest-reached gate; branch-and-leaf containment tree with documents as their own group; display-only de-numbering (+ the ODD-0013 §2.1 convention); `--width`/`[display] max_width` elision; retired/superseded excluded by default (`--all` shows them dimmed). Index `FORMAT_VERSION` 3→4 (`created`+`retired`). See `c3-closing-report.md`. | surface | F-4, F-5, F-6, F-7, F-8, F-9, **F-15** | C-1, C-2 |
 | **C-4 — Command surface cleanup** | `context`→`project` (+`--name`, current default); `path`→`chain`; `new` warns-not-displays on re-run; `rollup` help + md/json output + `--out`/format name (defaults `md`/`ROLLUP`). | surface | F-10, F-11, F-12, F-13 | (light) C-1 |
-| **C-5 — Fold `self-host` into `migrate`** | Consolidate: `self-host` becomes a case of `migrate` (e.g. `migrate --plan` / autodetect); one verb. **+ F-20:** derive work-node `created` from the plan directory's earliest git add-date instead of the cutover date, and **re-stamp the 46 existing work nodes** (re-running alone will not — it skips on `(type, number)`). | surface/medium + data | F-14, **F-20** | — |
+| **C-5 — Fold `self-host` into `migrate` + the dogfood cutover** **DONE 2026-07-26** | `self-host` folded into `migrate` (autodetect plan-set vs legacy; `--plan`/`--legacy` force); **F-20** real git dates (2026-06-20 → 2026-07-25, 13+ distinct days); **F-18** clean names (44/45; the 1 hit is #15's genuine doc title); **L-3a** project `# Vision` body + committed focus; **the SH-6 cutover** — odm's corpus relocated onto the orphan `odm` branch, **every ULID preserved** (in-place re-stamp, G-1-safe), `odm.toml` reduced to a locator, `nodes/` retired from the working branch. CDC-reproduced + fresh-context arc-gate PASS-WITH-NOTES. See `c5-closing-report.md` + `c5-cdc-verification.md`. | surface/medium + data + cutover | F-14, **F-18**, **F-20**, **L-3a** (+ SH-6) | arc-store-home |
+| ~~**C-7 — Source name-normalization**~~ **RETIRED into C-5** | The F-18 name work folded into C-5's single re-stamp (corpus rewritten once, not twice). The model rule — ODD-0013 §2.1 "names embed no metadata" (v2.2/v2.3) — **stands**; only the standalone chunk retired. | — | (F-18 → C-5) | — |
+| **C-6 — `check` hardening** | Three check-rule additions in **one pass** over `check` (churn once): **G-2** — persist tear-rationale + surface it (`tear --because` validates but the schema drops it → a data-loss bug on a *phantom* slice route; add the field); **G-3** — decomposed/orphan rule (a parent with children but no `decomposed` assertion, or an assertion that disagrees with reverse-`part_of` → warn; `--strict` errors); **L-3b** — a project with **no `# Vision` body** is a finding (the DoD depends on it; sibling to L-3a's data fix). | model (G-2 schema field) + check rules | **G-2, G-3, L-3b** | — |
+| **C-8 — Normalized display status** | A **display-only** `not-started` / `in-progress` / `done` state derived from ladder *position* (+ the F-15 `retired` overlay), so STATUS is comparable across types; the raw gate vector stays in `show`/`--json`. **No model change** — render-time derivation. cc-prompt drafted (`cc-prompt-c8-normalized-status.md`). | surface (render-only) | F-19 | C-3 |
 
 **Order:** C-1 + C-2 first (foundational — the renderer and the type names everything else
-uses) → C-3 → C-4 / C-5 slottable anytime. More batches → more chunks.
+uses) → C-3 → **C-5 (done — the cutover, with arc-store-home)** → **C-4 (surface reorg + ODD-0023)**
+→ C-6 (check-hardening) + C-8 (normalized status), slottable. More batches → more chunks.
 
 ## Exit criteria (arc acceptance)
 
@@ -60,6 +64,14 @@ uses) → C-3 → C-4 / C-5 slottable anytime. More batches → more chunks.
   corpus is `check`-green (the reflexive validation loop).
 - The CLI surface / type taxonomy / naming is **settled** enough that A6 slice05 (PM-skill)
   can document it and slice06 (retire prose) can point at it without churn.
+- **Pre-release housekeeping (L-8b):** reconcile the four normative design docs whose *directory*
+  no longer reflects their authority — ODD-0013 (the current architecture, in `01-draft/`) with its
+  amendments 0019/0020 (in `04-accepted/`), plus 0017/0018 — before v1.0.0 ships. The `odd`/design
+  corpus should not keep the truth-in-directory disease the node model cured (ODD-0013 §9). *(Routed
+  from the UAT coverage audit. Its siblings are dispositioned there too: **L-8a** — migrating the
+  design corpus into `design`-type nodes — and **L-6** — prebuilt binaries / `cargo-dist` — are
+  **post-1.0** follow-ups; **G-7** auto-commit is **resolved by the store-home**, since odm's commits
+  now target the store worktree, isolated from the code branch.)*
 
 ## Arc Ledger
 
@@ -186,6 +198,24 @@ five-iteration cap. Chunk closes bubble up to this arc-plan; the arc closes with
 the settled surface.
 
 ## Version History
+
+### v1.12 — 2026-07-26
+**C-5 closed (RH-5 attested) — the dogfood cutover; chunk table + routing reconciled.** C-5 shipped
+the fold (`self-host`→`migrate`, autodetect/`--plan`/`--legacy`), real git dates (F-20), clean names
+(F-18), the project vision body (L-3a), **and** the SH-6 cutover — odm's corpus relocated onto the
+orphan `odm` branch with **every ULID preserved** (in-place re-stamp, so nothing was minted and G-1
+stays clear; a fresh re-derivation would have broken every edge). CDC reproduced it independently and
+an **independent fresh-context arc-gate** returned **PASS-WITH-NOTES** — closing **arc-store-home**
+jointly (SH-6). Three dogfood-only defects were found and fixed in-chunk (the `use`/`orient` root split;
+`store init`'s missing index gitignore; and the over-broad first fix that would have withheld
+`context.json` from clones). The **Chunks table** is reconciled to reality: **C-5 → DONE** (now carries
+F-14/F-18/F-20/L-3a + SH-6); **C-7 retired into C-5** (the §2.1 model rule stands); **C-6** promoted to a
+proper row and **expanded to a `check`-hardening bundle — G-2 (tear-rationale) + G-3 (decomposed/orphan)
++ L-3b (no-vision finding)** — so `check` churns once; **C-8** (F-19 normalized status) added as a row.
+**Exit criteria** gained the **L-8b** pre-release reconciliation (the four state-drifted ODDs), with
+L-8a/L-6 recorded post-1.0 and **G-7 resolved by the store-home**. Surfaced by: the C-5 close + folding
+the UAT coverage-audit routing into the plan-of-record. *(L-3a's routing ratification is retroactively
+satisfied — it shipped in C-5.)*
 
 ### v1.11 — 2026-07-26
 **F-20 and F-21 logged — both surfaced by reading C-3's DATE column, neither a C-3 defect.**
