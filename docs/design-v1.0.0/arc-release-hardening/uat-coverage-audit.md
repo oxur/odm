@@ -18,7 +18,7 @@
 | F-10…F-13 (`new` warn, `context`→`project`, `path`→`chain`, `rollup` md/json) | **C-4** | **done** (2026-07-26) — folded with the ODD-0023 three-tier reorg; inventory ↔ `--help` parity verified 11/11/2 |
 | F-14 (`self-host`→`migrate`) | **C-5** | **done** (2026-07-26) |
 | F-18 (names embed metadata) | **C-5** (was C-7) | **done** (2026-07-26) — 44/45 work names normalized; one document-title parenthetical stays by design |
-| F-19 (normalized status) | **C-8** | open |
+| F-19 (normalized status) | **C-8** | **done** (2026-07-27) — `planned`/`active`/`done`; `--status` takes both vocabularies; `show`/`--json` gained the raw ladder they were assumed to have |
 | F-20 (work-node dates) | **C-5** | **done** (2026-07-26) — dates span 2026-06-20 → 2026-07-25, 13 distinct days |
 | F-16 (unconditional table ANSI) | upstream `oxur-term` (unassigned) | open — decide |
 | F-17 (body-snapshot drift) | migrate/self-host (unassigned) | open — decide |

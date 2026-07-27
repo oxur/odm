@@ -63,6 +63,13 @@ versioned schemas (`orient/v1`, `rollup/v1`, `check/v1`, `reconcile/v1`, …).
 everywhere; data → stdout, diagnostics → stderr; errors-as-affordances (every
 failure names the command that fixes it).
 
+**Node `--json` (C-8, additive):** node payloads carry `status` — the normalized
+state, the same token `node list` shows — and `gates`, the raw ladder in
+sequence order with each reached gate's date and evidence. Both are omitted
+rather than faked when the node's type has no gate-set, so a consumer can tell
+"no ladder" from "at the start of one". Every previously-emitted key is
+unchanged.
+
 ---
 
 ## 2. `odm node <cmd>` — node entity management
@@ -73,8 +80,8 @@ support `--dry-run` and `--yes`.
 | Command | Status | Description |
 |---------|--------|-------------|
 | `node new <TYPE> <NAME>` | `[shipped]` `[C-4]` | Create a node (idempotent: re-running describes rather than duplicating). Types: `project\|arc\|slice\|design\|adr\|note\|research` (`[C-2]`: `odd`→`design`, `+research`). `--parent <REF>` sets `part_of`. **C-4 (F-10):** on re-run against an existing node it **warns** (not info) and stays a one-liner — `project exists: #1 "P" — for details run `odm project --name="P"`` — rather than dumping details nobody asked for. |
-| `node show <REF>` | `[shipped]` | Show a node, its edges, and its way-finding (parent + children). |
-| `node list` | `[shipped]` `[C-3]` | List nodes, filtered (`--type <T>` `--tag <TAG>` `--component <C>`). **C-3 overhaul:** drop the number column; first column = creation date (`--date=updated` switches); "status" column after "type"; numbers removed from titles; branch-and-leaf ASCII tree (project → arcs → slices) replaces name-prefixing; max-display-width config + flag, overflow elided with " …". `[C-2]` type renames show in the UI. |
+| `node show <REF>` | `[shipped]` `[C-8]` | Show a node, its edges, and its way-finding (parent + children). **C-8:** now also prints the normalized `status:` and the full **gate ladder** — every rung of the node's own gate-set, reached (`[x]`, with date + evidence) or not (`[ ]`). This is where the raw ladder lives now that `node list` shows a normalized state; before C-8 neither `show` nor `--json` reported gates at all. |
+| `node list` | `[shipped]` `[C-3]` `[C-8]` | List nodes, filtered (`--type <T>` `--tag <TAG>` `--component <C>`). **C-3 overhaul:** drop the number column; first column = creation date (`--date=updated` switches); "status" column after "type"; numbers removed from titles; branch-and-leaf ASCII tree (project → arcs → slices) replaces name-prefixing; max-display-width config + flag, overflow elided with " …". `[C-2]` type renames show in the UI. **C-8 (F-19):** STATUS shows a **normalized state** — `planned` / `active` / `done`, plus the `retired`/`superseded` overlays — derived from the node's *position in its own gate ladder*, so a done arc (`verified`) and a done slice (`tested`) read alike and an arc at `complete` reads `active`. A type with no ladder (an `adr`) shows `—`. `--status <VALUE>` accepts **both** the normalized vocabulary and raw gate names. |
 | `node rename <REF> <NAME>` | `[shipped]` | Rename a node (name only — id and path unchanged). |
 | `node retire <REF> --because <WHY>` | `[shipped]` | Retire a node (withdraw it; file preserved, never deleted). |
 | `node supersede <REF> --with <REF> --kind <obsoletes\|updates>` | `[shipped]` | Record that one node supersedes another. |
