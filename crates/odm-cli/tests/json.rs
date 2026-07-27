@@ -149,7 +149,7 @@ fn seed_rich(root: &Path) {
 fn setup_rich(root: &Path) {
     write_config(root);
     seed_rich(root);
-    run(root, &["set-gate", "Dubya", "tested", "--evidence", "attested"]);
+    run(root, &["node", "set-gate", "Dubya", "tested", "--evidence", "attested"]);
     run(root, &["use", "project", "Proj"]);
     run(root, &["use", "arc", "Arc one"]);
 }
@@ -211,7 +211,7 @@ fn rollup_json_block_reason_variants() {
     reader.edges_mut().depends_on.push(Dependency::Bare(id('H')));
     reader.edges_mut().blocked_by.push(id('X'));
     persist(dir.path(), Document::new(reader, "# Reader\n"));
-    run(dir.path(), &["set-gate", "Softdep", "tested", "--evidence", "attested"]);
+    run(dir.path(), &["node", "set-gate", "Softdep", "tested", "--evidence", "attested"]);
 
     let v = run_json(dir.path(), &["rollup", "--json"]);
     let reader_block = v["blocked"]
@@ -271,7 +271,7 @@ fn check_json_envelope_shape_locked() {
     let dir = TempDir::new().unwrap();
     setup_rich(dir.path()); // includes an orphan (a finding) + a tear
 
-    let v = run_json(dir.path(), &["check", "--json"]);
+    let v = run_json(dir.path(), &["validate", "--json"]);
     assert_eq!(keys(&v), ["errors", "findings", "ok", "schema", "tears", "warnings"]);
     assert!(v["ok"].is_boolean() && v["errors"].is_u64() && v["warnings"].is_u64());
 
@@ -348,9 +348,50 @@ fn json_schema_version_marker() {
     let dir = TempDir::new().unwrap();
     setup_rich(dir.path());
 
-    assert_eq!(run_json(dir.path(), &["check", "--json"])["schema"], "check/v1");
+    assert_eq!(run_json(dir.path(), &["validate", "--json"])["schema"], "validate/v1");
     assert_eq!(run_json(dir.path(), &["rollup", "--json"])["schema"], "rollup/v1");
     assert_eq!(run_json(dir.path(), &["orient", "--json"])["schema"], "orient/v1");
+    assert_eq!(run_json(dir.path(), &["reconcile", "--json"])["schema"], "reconcile/v1");
+
+    // ODD-0023 §6a: `check` changed meaning, so its id changed with it. A
+    // consumer pinned to `check/v1` must *not* silently keep reading either the
+    // pure payload or the composite as though nothing happened.
+    let check = run_json(dir.path(), &["check", "--json"]);
+    assert_eq!(check["schema"], "check/v2");
+    assert_eq!(check["validate"]["schema"], "validate/v1", "the composite embeds the pure report");
+}
+
+// ----- ODD-0023 §5: the composite `check` and its fail-fast rule ------------
+
+#[test]
+fn check_json_embeds_both_phases_on_a_sound_graph() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "project", "P"]);
+
+    let check = run_json(dir.path(), &["check", "--json"]);
+    assert_eq!(check["validate"]["errors"], 0, "fixture premise: the graph is sound");
+    assert_eq!(check["schema"], "check/v2");
+    assert_eq!(check["validate"]["schema"], "validate/v1");
+    assert_eq!(check["reconcile"]["schema"], "reconcile/v1", "reconcile ran and is embedded");
+    assert_eq!(check["reconcile_skipped"], false);
+}
+
+#[test]
+fn check_json_skips_reconcile_when_validate_errors() {
+    let dir = TempDir::new().unwrap();
+    setup_rich(dir.path());
+
+    // This fixture has a hard finding, so the probe phase must not run: there
+    // is nothing to learn from probing a graph already known to be broken.
+    let check = run_json(dir.path(), &["check", "--json"]);
+    assert!(check["validate"]["errors"].as_u64().unwrap() >= 1, "fixture premise: an error");
+    assert_eq!(check["reconcile_skipped"], true);
+    assert_eq!(
+        check["reconcile"],
+        serde_json::Value::Null,
+        "null, not an empty report — absent must be distinguishable from clean"
+    );
+    assert_eq!(check["ok"], false);
 }
 
 // ----- J-7: valid JSON on the empty corpus + the no-project paths -----------

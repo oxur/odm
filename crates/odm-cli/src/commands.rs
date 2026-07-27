@@ -197,7 +197,10 @@ pub fn new(
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let node_type: NodeType = node_type.parse().map_err(|_| {
-        anyhow!("unknown type {node_type:?}; expected one of project|arc|slice|odd|adr|note")
+        anyhow!(
+            "unknown type {node_type:?}; expected one of \
+             project|arc|slice|design|research|adr|note"
+        )
     })?;
 
     // Resolve the parent (if any) up front, so an unresolvable ref fails before
@@ -211,10 +214,21 @@ pub fn new(
         .iter()
         .find(|d| d.frontmatter().node_type() == node_type && d.frontmatter().name() == name)
     {
+        // A **warning**, not info (RH F-10): the caller asked to create
+        // something and nothing was created, which is a mismatch worth
+        // noticing even though it is not an error. And it stays a one-liner —
+        // dumping the node's details here answers a question nobody asked, so
+        // it points at the command that does answer it instead.
         let fm = existing.frontmatter();
-        term::info(
+        term::warning(
             err,
-            &format!("exists: {} #{} {:?} ({})", node_type.as_str(), fm.number(), name, fm.id()),
+            &format!(
+                "{} exists: #{} {:?} — for details run `odm project --name={:?}`",
+                node_type.as_str(),
+                fm.number(),
+                name,
+                name
+            ),
         )?;
         return Ok(());
     }
@@ -857,8 +871,8 @@ pub fn decomposed(
 
     if node_type.valid_child_types().is_empty() {
         bail!(
-            "only a project or arc can be `decomposed`; #{number} {name:?} is a {}",
-            node_type.as_str()
+            "only a project or arc can be `decomposed`; #{number} {name:?} is {}",
+            with_article(node_type)
         );
     }
 
@@ -912,8 +926,8 @@ pub fn use_context(
     let fm = doc.frontmatter();
     if fm.node_type() != kind.node_type() {
         bail!(
-            "{reference:?} is a {}, not a {} (use `odm use {} <a {}>`)",
-            fm.node_type().as_str(),
+            "{reference:?} is {}, not a {} (use `odm use {} <a {}>`)",
+            with_article(fm.node_type()),
             kind.label(),
             kind.label(),
             kind.label()
@@ -929,11 +943,48 @@ pub fn use_context(
     Ok(())
 }
 
-/// `context` — shows the current project/arc selection. Data → `out`.
-pub fn context(store: &Store, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+/// A node type with its indefinite article — "an arc", "a slice".
+///
+/// Only `arc` and `adr` take "an" today, but the rule is spelled as a
+/// vowel test rather than a two-item match so a future type is right on arrival.
+fn with_article(node_type: NodeType) -> String {
+    let word = node_type.as_str();
+    let article = if word.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    format!("{article} {word}")
+}
+
+/// `project` — where you are in the plan: the current project and arc.
+///
+/// Was `context` (RH F-11): the command answers "which project am I in", and
+/// the name should be the answer, not the mechanism. `name` inspects a named
+/// project instead of the selected one.
+pub fn project(
+    store: &Store,
+    name: Option<&str>,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     let ctx = Context::load(store)?;
-    let project = ctx.project.and_then(|id| store.load(id).ok());
-    let arc = ctx.arc.and_then(|id| store.load(id).ok());
+    // `--name` asks about a *different* project than the selected one. Its arc
+    // is deliberately not shown: the current arc belongs to the current
+    // selection, and pairing it with another project would read as a claim
+    // about that project which nothing established.
+    let (project, arc) = match name {
+        Some(reference) => {
+            let doc = resolve(store, reference)?;
+            if doc.frontmatter().node_type() != NodeType::Project {
+                bail!(
+                    "{reference:?} is {}, not a project (use `odm project` for the current one)",
+                    with_article(doc.frontmatter().node_type())
+                );
+            }
+            (Some(doc), None)
+        }
+        None => (
+            ctx.project.and_then(|id| store.load(id).ok()),
+            ctx.arc.and_then(|id| store.load(id).ok()),
+        ),
+    };
 
     if json {
         let view = serde_json::json!({
@@ -1042,12 +1093,21 @@ struct TearJson {
 
 /// The `check --json` schema marker (arc03 slice04). Additive; versions the
 /// contract from its introduction forward.
-pub(crate) const CHECK_SCHEMA: &str = "check/v1";
+/// The pure graph-validation payload's schema id.
+///
+/// This is the payload `check/v1` used to carry. ODD-0023 §5 moved the pure
+/// operation to `validate`, and §6a bumped the ids rather than reusing them: a
+/// consumer pinned to `check/v1` should fail to recognize what `check` emits
+/// now, because `check` no longer does what it did.
+pub(crate) const VALIDATE_SCHEMA: &str = "validate/v1";
 
-/// JSON shape of the whole `check` report (stable, documented schema).
+/// The composite `check` payload's schema id — `validate` + `reconcile`.
+pub(crate) const CHECK_SCHEMA: &str = "check/v2";
+
+/// JSON shape of the `validate` report (stable, documented schema).
 #[derive(Serialize)]
-struct CheckReport {
-    /// The schema-version marker (`"check/v1"`).
+struct ValidateReport {
+    /// The schema-version marker (`"validate/v1"`).
     schema: &'static str,
     /// Whether the run passed (no failing findings for the active mode).
     ok: bool,
@@ -1415,80 +1475,102 @@ fn aggregate(
     Ok((entries, active))
 }
 
-/// `check` — the single mechanical gate: aggregates every graph-level invariant
-/// over the full corpus. Returns the exit code ([`EXIT_OK`] when the run passes,
-/// [`EXIT_VIOLATIONS`] when it fails). The report is data → `out`.
+/// The outcome of one pure validation pass over the corpus.
 ///
-/// Errors always fail. Warnings (staleness, soft-satisfaction) fail only under
-/// `strict` (the CI mode). A clean corpus prints `check: ok`.
-///
-/// # Errors
-///
-/// Returns an error (which the caller maps to exit code `2`) if the corpus
-/// cannot be loaded or the gate config is invalid.
-pub fn check(
-    store: &Store,
-    root: &Path,
-    strict: bool,
-    json: bool,
-    out: &mut dyn Write,
-) -> anyhow::Result<u8> {
+/// Split out from the command so the composite `check` can look at the result —
+/// specifically at `errors` — before deciding whether reconciling is worth
+/// doing (ODD-0023 §5).
+pub(crate) struct Validation {
+    /// The exit code for the active `strict` setting.
+    pub code: u8,
+    /// Hard findings. Non-zero means `check` stops here.
+    pub errors: usize,
+    /// Soft findings; they fail only under `strict`.
+    pub warnings: usize,
+    /// Every finding, in report order.
+    entries: Vec<CheckEntry>,
+    /// Assumed dependencies currently in effect.
+    tears: Vec<ActiveTear>,
+    /// How many nodes were validated.
+    nodes: usize,
+}
+
+/// Runs the graph-level invariants over the full corpus. **Pure**: it reads the
+/// corpus and touches nothing else — no probes, no writes.
+fn run_validation(store: &Store, root: &Path, strict: bool) -> anyhow::Result<Validation> {
     let (gates, _threshold) = load_gate_config(root)?;
     let frontmatters =
-        index_frontmatters(store, &gates).context("reconciling the index to check")?;
+        index_frontmatters(store, &gates).context("reconciling the index to validate")?;
     let (entries, tears) = aggregate(store, root, &frontmatters)?;
 
     let errors = entries.iter().filter(|e| e.severity == Severity::Error).count();
     let warnings = entries.iter().filter(|e| e.severity == Severity::Warning).count();
     let failed = errors > 0 || (strict && warnings > 0);
-    let code = if failed { EXIT_VIOLATIONS } else { EXIT_OK };
+    Ok(Validation {
+        code: if failed { EXIT_VIOLATIONS } else { EXIT_OK },
+        errors,
+        warnings,
+        entries,
+        tears,
+        nodes: frontmatters.len(),
+    })
+}
 
-    if json {
-        let report = CheckReport {
-            schema: CHECK_SCHEMA,
-            ok: !failed,
-            errors,
-            warnings,
-            findings: entries
-                .iter()
-                .map(|e| EntryJson {
-                    severity: e.severity.as_str().to_string(),
-                    code: e.code.to_string(),
-                    node: e.node.map(|id| id.to_string()),
-                    number: e.number,
-                    name: e.name.clone(),
-                    detail: e.detail.clone(),
-                    fix: e.fix.clone(),
-                })
-                .collect(),
-            tears: tears
-                .iter()
-                .map(|t| TearJson {
-                    from: t.from.to_string(),
-                    to: t.to.to_string(),
-                    because: t.because.clone(),
-                })
-                .collect(),
-        };
-        writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
-        return Ok(code);
+/// The JSON body for a validation, without the surrounding writeln.
+fn validation_report(v: &Validation) -> ValidateReport {
+    ValidateReport {
+        schema: VALIDATE_SCHEMA,
+        ok: v.code == EXIT_OK,
+        errors: v.errors,
+        warnings: v.warnings,
+        findings: v
+            .entries
+            .iter()
+            .map(|e| EntryJson {
+                severity: e.severity.as_str().to_string(),
+                code: e.code.to_string(),
+                node: e.node.map(|id| id.to_string()),
+                number: e.number,
+                name: e.name.clone(),
+                detail: e.detail.clone(),
+                fix: e.fix.clone(),
+            })
+            .collect(),
+        tears: v
+            .tears
+            .iter()
+            .map(|t| TearJson {
+                from: t.from.to_string(),
+                to: t.to.to_string(),
+                because: t.because.clone(),
+            })
+            .collect(),
     }
+}
 
-    if entries.is_empty() {
-        term::success(out, &format!("check: ok ({} node(s), no problems)", frontmatters.len()))?;
-        write_active_tears(out, &tears)?;
-        return Ok(EXIT_OK);
+/// Renders a validation as the human report. `label` names the command in the
+/// verdict line, so the composite can say `validate:` for its first phase.
+fn render_validation(
+    out: &mut dyn Write,
+    v: &Validation,
+    strict: bool,
+    label: &str,
+) -> anyhow::Result<()> {
+    if v.entries.is_empty() {
+        term::success(out, &format!("{label}: ok ({} node(s), no problems)", v.nodes))?;
+        write_active_tears(out, &v.tears)?;
+        return Ok(());
     }
 
     // The verdict carries the severity: a hard failure reads as an error, a
     // warnings-only run (which does not fail without `--strict`) as a warning.
-    let verdict = format!("check: {errors} error(s), {warnings} warning(s)");
-    if errors > 0 {
+    let verdict = format!("{label}: {} error(s), {} warning(s)", v.errors, v.warnings);
+    if v.errors > 0 {
         term::error(out, &verdict)?;
     } else {
         term::warning(out, &verdict)?;
     }
-    for e in &entries {
+    for e in &v.entries {
         let who = match (e.number, &e.name, e.node) {
             (Some(n), Some(name), Some(id)) => format!("#{n} {name:?} ({id})"),
             _ => "(corpus)".to_string(),
@@ -1496,11 +1578,99 @@ pub fn check(
         writeln!(out, "  [{}] {who}: [{}] {}", e.severity.as_str(), e.code, e.detail)?;
         writeln!(out, "    fix: {}", e.fix)?;
     }
-    write_active_tears(out, &tears)?;
-    if !strict && warnings > 0 && errors == 0 {
+    write_active_tears(out, &v.tears)?;
+    if !strict && v.warnings > 0 && v.errors == 0 {
         writeln!(out, "(warnings do not fail; run with --strict to enforce)")?;
     }
-    Ok(code)
+    Ok(())
+}
+
+/// `validate` — the single mechanical gate: aggregates every graph-level
+/// invariant over the full corpus. Returns the exit code ([`EXIT_OK`] when the
+/// run passes, [`EXIT_VIOLATIONS`] when it fails). The report is data → `out`.
+///
+/// **Pure.** No probes, no writes — that is the whole point of it having its own
+/// name (ODD-0023 §5). For "is the plan actually true", see [`check`].
+///
+/// Errors always fail. Warnings (staleness, soft-satisfaction) fail only under
+/// `strict` (the CI mode). A clean corpus prints `validate: ok`.
+///
+/// # Errors
+///
+/// Returns an error (which the caller maps to exit code `2`) if the corpus
+/// cannot be loaded or the gate config is invalid.
+pub fn validate(
+    store: &Store,
+    root: &Path,
+    strict: bool,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<u8> {
+    let v = run_validation(store, root, strict)?;
+    if json {
+        writeln!(out, "{}", serde_json::to_string_pretty(&validation_report(&v))?)?;
+        return Ok(v.code);
+    }
+    render_validation(out, &v, strict, "validate")?;
+    Ok(v.code)
+}
+
+/// `check` — the composite: [`validate`], then [`crate::reconcile::reconcile`].
+///
+/// "Is my plan actually true?" — the structure holds *and* the world still
+/// matches what the nodes claim about it.
+///
+/// **Validation errors stop the run.** Probing a graph with dangling edges or
+/// cycles reports on a state already known to be broken, and probes cost time
+/// and have side effects; there is nothing to learn from them until the graph
+/// itself is sound. Warnings do not stop it — they do not fail the run either,
+/// without `strict`.
+///
+/// The exit code is the worse of the two phases.
+///
+/// # Errors
+///
+/// Returns an error (mapped to exit code `2`) if either phase cannot run.
+pub fn check(
+    store: &Store,
+    root: &Path,
+    strict: bool,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<u8> {
+    let v = run_validation(store, root, strict)?;
+    let stopped = v.errors > 0;
+
+    if json {
+        // The reconcile half is `null` when it did not run, which is honest:
+        // absent is not the same as clean, and a consumer must be able to tell
+        // "no drift" from "we never looked".
+        let reconcile =
+            if stopped { None } else { Some(crate::reconcile::reconcile_value(store, strict)?) };
+        let code = reconcile.as_ref().map_or(v.code, |(rc, _)| v.code.max(*rc));
+        let report = serde_json::json!({
+            "schema": CHECK_SCHEMA,
+            "ok": code == EXIT_OK,
+            "validate": validation_report(&v),
+            "reconcile": reconcile.map(|(_, value)| value),
+            "reconcile_skipped": stopped,
+        });
+        writeln!(out, "{}", serde_json::to_string_pretty(&report)?)?;
+        return Ok(code);
+    }
+
+    render_validation(out, &v, strict, "validate")?;
+    if stopped {
+        writeln!(out)?;
+        term::warning(
+            out,
+            "skipped reconcile — fix the graph first, then `odm check` will probe it",
+        )?;
+        return Ok(v.code);
+    }
+    writeln!(out)?;
+    let reconcile_code = crate::reconcile::reconcile(store, strict, false, out)?;
+    Ok(v.code.max(reconcile_code))
 }
 
 /// Writes the active-tears listing (assumed dependencies in effect, each with
@@ -1789,7 +1959,7 @@ struct PathJson {
 }
 
 /// `path X [Y]` — the critical dependency chain from X, or a path from X to Y.
-pub fn path(
+pub fn chain(
     store: &Store,
     root: &Path,
     reference: &str,

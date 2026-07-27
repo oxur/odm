@@ -81,11 +81,11 @@ fn rollup_ready_blocked_named_edges() {
     write_config(root);
 
     // Build P -> Q -> {early, late}, with `late` depending on `early`.
-    run(root, &["new", "project", "Proj"]);
-    run(root, &["new", "arc", "Arc one", "--parent", "1"]);
-    run(root, &["new", "slice", "Early", "--parent", "2"]);
-    run(root, &["new", "slice", "Late", "--parent", "2"]);
-    run(root, &["link", "Late", "depends_on", "Early"]);
+    run(root, &["node", "new", "project", "Proj"]);
+    run(root, &["node", "new", "arc", "Arc one", "--parent", "1"]);
+    run(root, &["node", "new", "slice", "Early", "--parent", "2"]);
+    run(root, &["node", "new", "slice", "Late", "--parent", "2"]);
+    run(root, &["node", "link", "Late", "depends_on", "Early"]);
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
@@ -112,11 +112,11 @@ fn rollup_active_tears_rationale_rendered() {
     write_config(root);
 
     // A <-> B cycle, broken by tearing A depends_on B with a rationale.
-    run(root, &["new", "slice", "Aaa"]);
-    run(root, &["new", "slice", "Bbb"]);
-    run(root, &["link", "Aaa", "depends_on", "Bbb"]);
-    run(root, &["link", "Bbb", "depends_on", "Aaa"]);
-    run(root, &["tear", "Aaa", "depends_on", "Bbb", "--because", "cut the A-B cycle"]);
+    run(root, &["node", "new", "slice", "Aaa"]);
+    run(root, &["node", "new", "slice", "Bbb"]);
+    run(root, &["node", "link", "Aaa", "depends_on", "Bbb"]);
+    run(root, &["node", "link", "Bbb", "depends_on", "Aaa"]);
+    run(root, &["node", "tear", "Aaa", "depends_on", "Bbb", "--because", "cut the A-B cycle"]);
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
@@ -135,7 +135,7 @@ fn rollup_origin_view_groups_by_provenance() {
     write_config(root);
 
     // One planned (via CLI), one discovered, one amendment (via seed).
-    run(root, &["new", "slice", "Planned slice"]);
+    run(root, &["node", "new", "slice", "Planned slice"]);
     seed(root, || {
         Document::new(fm(2, NodeType::Slice, "Found slice", Origin::Discovered), "# x\n")
     });
@@ -180,7 +180,7 @@ fn rollup_clean_no_drift() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
-    run(root, &["new", "slice", "Only"]); // no declared facts → clean
+    run(root, &["node", "new", "slice", "Only"]); // no declared facts → clean
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
@@ -246,9 +246,9 @@ fn rollup_omits_deferred_until_a5() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
-    run(root, &["new", "project", "Proj"]);
-    run(root, &["new", "arc", "Arc", "--parent", "1"]);
-    run(root, &["set-gate", "Arc", "in-progress", "--evidence", "reproduced"]);
+    run(root, &["node", "new", "project", "Proj"]);
+    run(root, &["node", "new", "arc", "Arc", "--parent", "1"]);
+    run(root, &["node", "set-gate", "Arc", "in-progress", "--evidence", "reproduced"]);
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
@@ -264,9 +264,9 @@ fn rollup_command_regenerates_idempotently() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
-    run(root, &["new", "project", "Proj"]);
-    run(root, &["new", "arc", "Arc", "--parent", "1"]);
-    run(root, &["new", "slice", "Slice", "--parent", "2"]);
+    run(root, &["node", "new", "project", "Proj"]);
+    run(root, &["node", "new", "arc", "Arc", "--parent", "1"]);
+    run(root, &["node", "new", "slice", "Slice", "--parent", "2"]);
 
     assert!(run(root, &["rollup"]).ok);
     let first = read_rollup(root);
@@ -283,7 +283,7 @@ fn rollup_header_and_dry_run() {
     let dir = TempDir::new().unwrap();
     let root = dir.path();
     write_config(root);
-    run(root, &["new", "slice", "Only"]);
+    run(root, &["node", "new", "slice", "Only"]);
 
     // --dry-run: previews to stdout, writes no file.
     let dry = run(root, &["rollup", "--dry-run"]);
@@ -352,16 +352,16 @@ fn rollup_soft_and_block_reason_rendering() {
     //   Ext    — incomplete external block target.
     //   Reader — depends_on Soft and Hard, blocked_by Ext.
     //   Easy   — depends_on Soft only ⇒ soft-satisfied ⇒ ready with a soft flag.
-    run(root, &["new", "slice", "Soft dep"]);
-    run(root, &["new", "slice", "Hard dep"]);
-    run(root, &["new", "slice", "Ext block"]);
-    run(root, &["new", "slice", "Reader"]);
-    run(root, &["new", "slice", "Easy"]);
-    run(root, &["set-gate", "Soft dep", "tested", "--evidence", "attested"]);
-    run(root, &["link", "Reader", "depends_on", "Soft dep"]);
-    run(root, &["link", "Reader", "depends_on", "Hard dep"]);
-    run(root, &["link", "Reader", "blocked_by", "Ext block"]);
-    run(root, &["link", "Easy", "depends_on", "Soft dep"]);
+    run(root, &["node", "new", "slice", "Soft dep"]);
+    run(root, &["node", "new", "slice", "Hard dep"]);
+    run(root, &["node", "new", "slice", "Ext block"]);
+    run(root, &["node", "new", "slice", "Reader"]);
+    run(root, &["node", "new", "slice", "Easy"]);
+    run(root, &["node", "set-gate", "Soft dep", "tested", "--evidence", "attested"]);
+    run(root, &["node", "link", "Reader", "depends_on", "Soft dep"]);
+    run(root, &["node", "link", "Reader", "depends_on", "Hard dep"]);
+    run(root, &["node", "link", "Reader", "blocked_by", "Ext block"]);
+    run(root, &["node", "link", "Easy", "depends_on", "Soft dep"]);
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);

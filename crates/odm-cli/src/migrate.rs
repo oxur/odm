@@ -91,27 +91,12 @@ pub(crate) fn migrate(
     Ok(())
 }
 
-/// Runs `odm self-host <plan-path> [--dry-run]`: imports odm's own `design-v1.0.0`
-/// plan set (project + A1–A6 arcs + slices) into `store` as work nodes — the
-/// loop-closer. The report goes to `out`; a one-line status to `err`.
+/// The plan-set derivation: imports a `design-vX.Y.Z/` plan set (project + arcs
+/// + slices) as work nodes.
 ///
-/// # Errors
-///
-/// Returns an error (exit code `2`) if the cutover hits a store I/O failure.
-pub(crate) fn self_host(
-    store: &Store,
-    root: &Path,
-    plan_path: &str,
-    dry_run: bool,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> anyhow::Result<()> {
-    let plan_root = resolve(root, plan_path);
-    self_host_inner(store, &plan_root, dry_run, out, err)
-}
-
-/// The plan-set derivation, shared by `migrate` (folded, F-14) and the retained
-/// `self-host` spelling.
+/// Reached only through `migrate` now. `self-host` was folded into it by RH C-5
+/// (F-14) and the surviving top-level spelling was removed by C-4, per ODD-0023
+/// §5 — one verb, whose derivation the tree's shape selects.
 fn self_host_inner(
     store: &Store,
     plan_root: &Path,

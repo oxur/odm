@@ -85,7 +85,7 @@ fn seed(root: &Path, build: impl FnOnce(Id) -> Document) {
 #[test]
 fn new_persists_a_node() {
     let dir = TempDir::new().unwrap();
-    let r = run(dir.path(), &["new", "slice", "Store layer"]);
+    let r = run(dir.path(), &["node", "new", "slice", "Store layer"]);
     assert!(r.ok);
     assert!(r.err.contains("created slice #1"), "stderr: {}", r.err);
     assert_eq!(md_paths(dir.path()).len(), 1);
@@ -96,10 +96,12 @@ fn new_persists_a_node() {
 #[test]
 fn new_idempotent_does_not_duplicate() {
     let dir = TempDir::new().unwrap();
-    assert!(run(dir.path(), &["new", "slice", "Same"]).ok);
-    let r = run(dir.path(), &["new", "slice", "Same"]);
+    assert!(run(dir.path(), &["node", "new", "slice", "Same"]).ok);
+    let r = run(dir.path(), &["node", "new", "slice", "Same"]);
     assert!(r.ok);
-    assert!(r.err.contains("exists: slice #1"), "stderr: {}", r.err);
+    // RH F-10: a warning, not info, and a pointer rather than a dump.
+    assert!(r.err.contains("slice exists: #1"), "stderr: {}", r.err);
+    assert!(r.err.contains("odm project --name="), "points at the detail command: {}", r.err);
     assert_eq!(md_paths(dir.path()).len(), 1, "re-running new must not duplicate");
 }
 
@@ -108,13 +110,13 @@ fn new_idempotent_does_not_duplicate() {
 #[test]
 fn list_filters_by_type_tag_component() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "A slice"]);
-    run(dir.path(), &["new", "arc", "An arc"]);
+    run(dir.path(), &["node", "new", "slice", "A slice"]);
+    run(dir.path(), &["node", "new", "arc", "An arc"]);
 
-    let all = run(dir.path(), &["list"]);
+    let all = run(dir.path(), &["node", "list"]);
     assert!(all.out.contains("A slice") && all.out.contains("An arc"));
 
-    let arcs = run(dir.path(), &["list", "--type", "arc"]);
+    let arcs = run(dir.path(), &["node", "list", "--type", "arc"]);
     assert!(arcs.out.contains("An arc") && !arcs.out.contains("A slice"));
 }
 
@@ -123,8 +125,8 @@ fn list_filters_by_type_tag_component() {
 #[test]
 fn show_node_renders_details() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "arc", "Parent arc"]);
-    let r = run(dir.path(), &["show", "1"]);
+    run(dir.path(), &["node", "new", "arc", "Parent arc"]);
+    let r = run(dir.path(), &["node", "show", "1"]);
     assert!(r.ok);
     assert!(r.out.contains("arc #1 Parent arc") && r.out.contains("id:"));
     assert!(r.out.contains("children:  (none)"));
@@ -135,21 +137,21 @@ fn show_node_renders_details() {
 #[test]
 fn rename_keeps_id_and_path() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Before"]);
+    run(dir.path(), &["node", "new", "slice", "Before"]);
 
     let before = md_paths(dir.path());
     assert_eq!(before.len(), 1);
     let path = before[0].clone();
     let id = path.file_stem().unwrap().to_string_lossy().to_string();
 
-    assert!(run(dir.path(), &["rename", "1", "After"]).ok);
+    assert!(run(dir.path(), &["node", "rename", "1", "After"]).ok);
 
     let after = md_paths(dir.path());
     assert_eq!(after.len(), 1, "rename must not create a new file");
     assert_eq!(after[0], path, "the on-disk path is unchanged");
 
     // Resolving by the original id still works and shows the new name.
-    let shown = run(dir.path(), &["show", &id]);
+    let shown = run(dir.path(), &["node", "show", &id]);
     assert!(shown.out.contains("After") && shown.out.contains(&id));
 }
 
@@ -158,10 +160,10 @@ fn rename_keeps_id_and_path() {
 #[test]
 fn retire_preserves_file_not_deleted() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "design", "Old design"]);
+    run(dir.path(), &["node", "new", "design", "Old design"]);
     let path = md_paths(dir.path())[0].clone();
 
-    let r = run(dir.path(), &["retire", "1", "--because", "superseded by 0013"]);
+    let r = run(dir.path(), &["node", "retire", "1", "--because", "superseded by 0013"]);
     assert!(r.ok && r.err.contains("retired #1"));
 
     assert!(path.exists(), "retire must not delete the file");
@@ -175,14 +177,14 @@ fn retire_preserves_file_not_deleted() {
 #[test]
 fn supersede_with_kind_records_edge() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "design", "Old"]);
-    run(dir.path(), &["new", "design", "New"]);
+    run(dir.path(), &["node", "new", "design", "Old"]);
+    run(dir.path(), &["node", "new", "design", "New"]);
 
-    let r = run(dir.path(), &["supersede", "1", "--with", "2", "--kind", "obsoletes"]);
+    let r = run(dir.path(), &["node", "supersede", "1", "--with", "2", "--kind", "obsoletes"]);
     assert!(r.ok && r.err.contains("#2 supersedes #1"));
 
     // The edge is on the newer node (#2), pointing at the old one, with kind.
-    let shown = run(dir.path(), &["show", "2", "--json"]);
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
     assert!(shown.out.contains("\"supersedes\"") && shown.out.contains("obsoletes"));
 }
 
@@ -191,13 +193,13 @@ fn supersede_with_kind_records_edge() {
 #[test]
 fn context_use_and_show() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "project", "Odm"]);
-    run(dir.path(), &["new", "arc", "Substrate"]);
+    run(dir.path(), &["node", "new", "project", "Odm"]);
+    run(dir.path(), &["node", "new", "arc", "Substrate"]);
 
     assert!(run(dir.path(), &["use", "project", "1"]).ok);
     assert!(run(dir.path(), &["use", "arc", "2"]).ok);
 
-    let ctx = run(dir.path(), &["context"]);
+    let ctx = run(dir.path(), &["project"]);
     assert!(ctx.out.contains("project: #1 Odm") && ctx.out.contains("arc:     #2 Substrate"));
 
     // `use project` on an arc is rejected.
@@ -210,22 +212,26 @@ fn context_use_and_show() {
 fn dry_run_and_yes() {
     let dir = TempDir::new().unwrap();
 
-    let dry = run(dir.path(), &["new", "slice", "Ghost", "--dry-run"]);
+    let dry = run(dir.path(), &["node", "new", "slice", "Ghost", "--dry-run"]);
     assert!(dry.ok && dry.err.contains("would create"));
     assert_eq!(md_paths(dir.path()).len(), 0, "--dry-run must not persist");
 
-    assert!(run(dir.path(), &["new", "slice", "Real", "--yes"]).ok);
+    assert!(run(dir.path(), &["node", "new", "slice", "Real", "--yes"]).ok);
     assert_eq!(md_paths(dir.path()).len(), 1);
 
     // Dry-run mutators on existing nodes also write nothing.
-    run(dir.path(), &["new", "design", "A"]);
-    run(dir.path(), &["new", "design", "B"]);
-    assert!(run(dir.path(), &["retire", "2", "--because", "x", "--dry-run"]).ok);
+    run(dir.path(), &["node", "new", "design", "A"]);
+    run(dir.path(), &["node", "new", "design", "B"]);
+    assert!(run(dir.path(), &["node", "retire", "2", "--because", "x", "--dry-run"]).ok);
     assert!(
-        run(dir.path(), &["supersede", "2", "--with", "3", "--kind", "updates", "--dry-run"]).ok
+        run(
+            dir.path(),
+            &["node", "supersede", "2", "--with", "3", "--kind", "updates", "--dry-run"]
+        )
+        .ok
     );
-    assert!(run(dir.path(), &["show", "2", "--json"]).out.contains("\"retired\": null"));
-    assert!(run(dir.path(), &["show", "3", "--json"]).out.contains("\"supersedes\": null"));
+    assert!(run(dir.path(), &["node", "show", "2", "--json"]).out.contains("\"retired\": null"));
+    assert!(run(dir.path(), &["node", "show", "3", "--json"]).out.contains("\"supersedes\": null"));
 }
 
 // ----- K-10: --json stable schema -------------------------------------------
@@ -233,9 +239,9 @@ fn dry_run_and_yes() {
 #[test]
 fn json_schema_crud_is_stable() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Schema check"]);
+    run(dir.path(), &["node", "new", "slice", "Schema check"]);
 
-    let r = run(dir.path(), &["show", "1", "--json"]);
+    let r = run(dir.path(), &["node", "show", "1", "--json"]);
     assert!(r.ok);
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
     let obj = value.as_object().expect("JSON object");
@@ -270,38 +276,38 @@ fn json_schema_crud_is_stable() {
 #[test]
 fn new_rejects_unknown_type() {
     let dir = TempDir::new().unwrap();
-    let r = run(dir.path(), &["new", "widget", "X"]);
+    let r = run(dir.path(), &["node", "new", "widget", "X"]);
     assert!(!r.ok && r.err.contains("unknown type"));
 }
 
 #[test]
 fn list_rejects_unknown_type_filter() {
     let dir = TempDir::new().unwrap();
-    assert!(!run(dir.path(), &["list", "--type", "widget"]).ok);
+    assert!(!run(dir.path(), &["node", "list", "--type", "widget"]).ok);
 }
 
 #[test]
 fn show_missing_reference_fails() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Only"]);
-    assert!(run(dir.path(), &["show", "99"]).err.contains("no node with number 99"));
-    assert!(run(dir.path(), &["show", "Nonexistent"]).err.contains("no node matching"));
+    run(dir.path(), &["node", "new", "slice", "Only"]);
+    assert!(run(dir.path(), &["node", "show", "99"]).err.contains("no node with number 99"));
+    assert!(run(dir.path(), &["node", "show", "Nonexistent"]).err.contains("no node matching"));
     // A well-formed but absent ULID resolves via the id branch and fails.
-    assert!(!run(dir.path(), &["show", "01ARZ3NDEKTSV4RRFFQ69G5FAV"]).ok);
+    assert!(!run(dir.path(), &["node", "show", "01ARZ3NDEKTSV4RRFFQ69G5FAV"]).ok);
 }
 
 #[test]
 fn rename_and_retire_missing_reference_fail() {
     let dir = TempDir::new().unwrap();
-    assert!(!run(dir.path(), &["rename", "5", "x"]).ok);
-    assert!(!run(dir.path(), &["retire", "5", "--because", "x"]).ok);
+    assert!(!run(dir.path(), &["node", "rename", "5", "x"]).ok);
+    assert!(!run(dir.path(), &["node", "retire", "5", "--because", "x"]).ok);
 }
 
 #[test]
 fn supersede_self_is_rejected() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "design", "Doc"]);
-    let r = run(dir.path(), &["supersede", "1", "--with", "1", "--kind", "updates"]);
+    run(dir.path(), &["node", "new", "design", "Doc"]);
+    let r = run(dir.path(), &["node", "supersede", "1", "--with", "1", "--kind", "updates"]);
     assert!(!r.ok && r.err.contains("cannot supersede itself"));
 }
 
@@ -314,10 +320,10 @@ fn use_rejects_unknown_reference() {
 #[test]
 fn ambiguous_name_prefix_is_rejected() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Alpha"]);
-    run(dir.path(), &["new", "slice", "Alpine"]);
-    assert!(run(dir.path(), &["show", "Alp"]).err.contains("ambiguous"));
-    assert!(run(dir.path(), &["show", "Alpha"]).ok); // a unique prefix resolves
+    run(dir.path(), &["node", "new", "slice", "Alpha"]);
+    run(dir.path(), &["node", "new", "slice", "Alpine"]);
+    assert!(run(dir.path(), &["node", "show", "Alp"]).err.contains("ambiguous"));
+    assert!(run(dir.path(), &["node", "show", "Alpha"]).ok); // a unique prefix resolves
 }
 
 // ----- rich-fixture rendering (fields the CLI can't yet set) -----------------
@@ -354,7 +360,7 @@ fn show_renders_all_fields_and_children() {
         Document::new(fm, "body\n")
     });
 
-    let parent = run(dir.path(), &["show", "1"]);
+    let parent = run(dir.path(), &["node", "show", "1"]);
     assert!(
         parent.out.contains("tags:")
             && parent.out.contains("component: odm-core")
@@ -362,20 +368,22 @@ fn show_renders_all_fields_and_children() {
             && parent.out.contains("Store layer")
     );
 
-    let child = run(dir.path(), &["show", "2"]);
+    let child = run(dir.path(), &["node", "show", "2"]);
     assert!(child.out.contains("part_of:") && child.out.contains("supersedes:"));
 
-    let tagged = run(dir.path(), &["list", "--tag", "core"]);
+    let tagged = run(dir.path(), &["node", "list", "--tag", "core"]);
     assert!(tagged.out.contains("Substrate") && !tagged.out.contains("Store layer"));
-    assert!(run(dir.path(), &["list", "--component", "odm-core"]).out.contains("Substrate"));
+    assert!(
+        run(dir.path(), &["node", "list", "--component", "odm-core"]).out.contains("Substrate")
+    );
 }
 
 #[test]
 fn retired_node_renders_in_show_text() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "design", "Old"]);
-    run(dir.path(), &["retire", "1", "--because", "done"]);
-    let r = run(dir.path(), &["show", "1"]);
+    run(dir.path(), &["node", "new", "design", "Old"]);
+    run(dir.path(), &["node", "retire", "1", "--because", "done"]);
+    let r = run(dir.path(), &["node", "show", "1"]);
     assert!(r.out.contains("retired:") && r.out.contains("done"));
 }
 
@@ -384,20 +392,20 @@ fn retired_node_renders_in_show_text() {
 #[test]
 fn list_empty_reports_no_nodes() {
     let dir = TempDir::new().unwrap();
-    assert!(run(dir.path(), &["list"]).out.contains("(no nodes)"));
-    assert!(run(dir.path(), &["list", "--json"]).out.contains("[]"));
+    assert!(run(dir.path(), &["node", "list"]).out.contains("(no nodes)"));
+    assert!(run(dir.path(), &["node", "list", "--json"]).out.contains("[]"));
 }
 
 #[test]
 fn context_empty_then_set_json() {
     let dir = TempDir::new().unwrap();
-    let empty = run(dir.path(), &["context"]);
+    let empty = run(dir.path(), &["project"]);
     assert!(empty.out.contains("project: (none)") && empty.out.contains("arc:     (none)"));
-    assert!(run(dir.path(), &["context", "--json"]).out.contains("\"project\": null"));
+    assert!(run(dir.path(), &["project", "--json"]).out.contains("\"project\": null"));
 
-    run(dir.path(), &["new", "project", "Odm"]);
+    run(dir.path(), &["node", "new", "project", "Odm"]);
     run(dir.path(), &["use", "project", "1"]);
-    assert!(run(dir.path(), &["context", "--json"]).out.contains("\"name\": \"Odm\""));
+    assert!(run(dir.path(), &["project", "--json"]).out.contains("\"name\": \"Odm\""));
 }
 
 #[test]
@@ -405,7 +413,7 @@ fn context_corrupt_file_errors() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join(".odm")).unwrap();
     std::fs::write(dir.path().join(".odm").join("context.json"), b"{ not json").unwrap();
-    assert!(!run(dir.path(), &["context"]).ok);
+    assert!(!run(dir.path(), &["project"]).ok);
 }
 
 // ===========================================================================
@@ -430,7 +438,7 @@ fn seed_slice(root: &Path, number: u32, name: &str, edit: impl FnOnce(&mut Front
 fn check_missing_field_is_flagged() {
     let dir = TempDir::new().unwrap();
     seed_slice(dir.path(), 1, "   ", |_| {}); // whitespace-only name
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("missing-field"), "out: {}", r.out);
 }
@@ -443,7 +451,7 @@ fn check_dangling_part_of_is_flagged() {
     seed_slice(dir.path(), 1, "Orphan", |fm| {
         fm.edges_mut().part_of = Some(Id::from_str(MISSING_ID).unwrap());
     });
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("dangling-part_of"), "out: {}", r.out);
 }
@@ -459,7 +467,7 @@ fn check_dangling_edge_is_flagged() {
             kind: SupersedeKind::Obsoletes,
         });
     });
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("dangling-edge"), "out: {}", r.out);
 }
@@ -476,7 +484,7 @@ fn check_supersession_chain_is_flagged() {
         fm.edges_mut().supersedes = Some(Supersedes { node: id, kind: SupersedeKind::Updates });
         Document::new(fm, "body\n")
     });
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("self-supersede"), "out: {}", r.out);
 }
@@ -505,9 +513,9 @@ fn check_clean_passes() {
     seed_slice(dir.path(), 3, "Child", |fm| {
         fm.edges_mut().part_of = Some(arc_id);
     });
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0));
-    assert!(r.out.contains("check: ok"), "out: {}", r.out);
+    assert!(r.out.contains("validate: ok"), "out: {}", r.out);
 }
 
 // ----- L-6: exit codes 0 / 1 / 2 --------------------------------------------
@@ -516,10 +524,10 @@ fn check_clean_passes() {
 fn check_exit_codes_v1() {
     let dir = TempDir::new().unwrap();
     // 0: clean (empty corpus is clean).
-    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(0));
     // 1: violations.
     seed_slice(dir.path(), 1, "", |_| {});
-    assert_eq!(run(dir.path(), &["check"]).code, Some(1));
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(1));
     // 2: a usage error is clap's domain — it rejects unknown flags before
     // dispatch is ever reached (the binary then exits 2).
     assert!(Cli::try_parse_from(["odm", "check", "--bogus"]).is_err());
@@ -531,7 +539,7 @@ fn check_exit_codes_v1() {
 fn check_errors_name_fix_v1() {
     let dir = TempDir::new().unwrap();
     seed_slice(dir.path(), 1, "", |_| {}); // empty name → fixable with `odm rename`
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("fix:"), "every finding names a fix; out: {}", r.out);
     assert!(r.out.contains("odm rename"), "empty-name fix is a real command; out: {}", r.out);
@@ -545,7 +553,7 @@ fn check_json_v1() {
     seed_slice(dir.path(), 1, "Detached", |fm| {
         fm.edges_mut().part_of = Some(Id::from_str(MISSING_ID).unwrap());
     });
-    let r = run(dir.path(), &["check", "--json"]);
+    let r = run(dir.path(), &["validate", "--json"]);
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
     assert_eq!(value["ok"], false);
@@ -561,7 +569,7 @@ fn check_json_v1() {
 
     // A clean corpus reports ok=true, empty findings.
     let clean = TempDir::new().unwrap();
-    let cr = run(clean.path(), &["check", "--json"]);
+    let cr = run(clean.path(), &["validate", "--json"]);
     assert_eq!(cr.code, Some(0));
     let cv: serde_json::Value = serde_json::from_str(&cr.out).unwrap();
     assert_eq!(cv["ok"], true);
@@ -608,7 +616,7 @@ fn check_stale_doc_is_warning() {
     seed_stale_pair(dir.path());
 
     // Advisory: surfaced, but does not fail the exit without --strict.
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "stale-doc is a warning\nout: {}\nerr: {}", r.out, r.err);
     assert!(r.out.contains("stale-doc"), "finding surfaced:\n{}", r.out);
     assert!(r.out.contains("warning"), "at warning severity:\n{}", r.out);
@@ -620,7 +628,7 @@ fn check_stale_doc_is_warning() {
     );
 
     // --strict promotes the warning to a failing exit.
-    assert_eq!(run(dir.path(), &["check", "--strict"]).code, Some(1));
+    assert_eq!(run(dir.path(), &["validate", "--strict"]).code, Some(1));
 }
 
 #[test]
@@ -628,10 +636,11 @@ fn check_json_includes_stale_doc() {
     let dir = TempDir::new().unwrap();
     seed_stale_pair(dir.path());
 
-    let r = run(dir.path(), &["check", "--json"]);
+    let r = run(dir.path(), &["validate", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
-    // Additive — no schema version bump.
-    assert_eq!(v["schema"], "check/v1");
+    // ODD-0023 §6a: the pure payload is `validate/v1` now — `check` is the
+    // composite, and reusing its old id would misrepresent which one this is.
+    assert_eq!(v["schema"], "validate/v1");
     assert_eq!(v["ok"], true, "warnings don't fail without --strict");
     assert!(v["warnings"].as_u64().unwrap() >= 1);
     let findings = v["findings"].as_array().unwrap();
@@ -706,7 +715,7 @@ fn json_schema_derived_order() {
     assert_eq!(reason["threshold"], "reproduced");
 
     // path 1 2 --json: the dependency path A -> B.
-    let path = run(dir.path(), &["path", "1", "2", "--json"]);
+    let path = run(dir.path(), &["chain", "1", "2", "--json"]);
     assert_eq!(path.code, Some(0));
     let value: serde_json::Value = serde_json::from_str(&path.out).unwrap();
     assert_eq!(value["path"].as_array().unwrap().len(), 2);
@@ -774,7 +783,7 @@ fn check_schema_and_links() {
     dangling.edges_mut().depends_on = vec![Dependency::Bare(Id::from_str(MISSING_ID).unwrap())];
     put(dir.path(), dangling);
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("missing-field"), "schema check aggregated; out: {}", r.out);
     assert!(r.out.contains("dangling-edge"), "link-integrity aggregated; out: {}", r.out);
@@ -805,13 +814,13 @@ fn check_cycle_requires_tear() {
     put(dir.path(), slice_with(x, 3, "X", y, None));
     put(dir.path(), slice_with(y, 4, "Y", x, None));
 
-    let cyclic = run(dir.path(), &["check"]);
+    let cyclic = run(dir.path(), &["validate"]);
     assert_eq!(cyclic.code, Some(1));
     assert!(cyclic.out.contains("cycle"), "cycle reported; out: {}", cyclic.out);
 
     // Tear X -> Y: the cycle is broken, the corpus passes.
     put(dir.path(), slice_with(x, 3, "X", y, Some(y)));
-    let torn = run(dir.path(), &["check"]);
+    let torn = run(dir.path(), &["validate"]);
     assert_eq!(torn.code, Some(0), "torn cycle passes; out: {}", torn.out);
 }
 
@@ -835,7 +844,7 @@ fn check_staleness() {
     x_fm.status_mut().set_gate(&slice_gset(), "built", None, Evidence::Reproduced, day()).unwrap();
     put(dir.path(), x_fm);
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     // Warning-only ⇒ exit 0 in normal mode, but the staleness is reported.
     assert_eq!(r.code, Some(0), "out: {}", r.out);
     assert!(r.out.contains("staleness"), "out: {}", r.out);
@@ -849,7 +858,7 @@ fn check_recomposition() {
     // A slice with no containment parent: an orphan (recomposition not total).
     put(dir.path(), fmn(Id::new(), 1, NodeType::Slice, "Lonely"));
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
     assert!(r.out.contains("orphan"), "recomposition aggregated; out: {}", r.out);
 }
@@ -899,7 +908,7 @@ fn check_recomposition_variants() {
     u_fm.edges_mut().part_of = Some(t);
     put(dir.path(), u_fm);
 
-    let out = run(dir.path(), &["check"]);
+    let out = run(dir.path(), &["validate"]);
     assert_eq!(out.code, Some(1));
     assert!(out.out.contains("undeveloped-stub"), "out: {}", out.out);
     assert!(out.out.contains("advanced-without-decomposition"), "out: {}", out.out);
@@ -931,7 +940,7 @@ fn check_soft_satisfied() {
     let dir = TempDir::new().unwrap();
     seed_soft_tree(dir.path());
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "warning-only ⇒ passes in normal mode; out: {}", r.out);
     assert!(r.out.contains("soft-satisfied"), "out: {}", r.out);
 }
@@ -943,12 +952,12 @@ fn check_exit_codes() {
     let dir = TempDir::new().unwrap();
     // 0: a clean total tree.
     tree(dir.path());
-    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(0));
 
     // 1: an error (an orphan slice).
     let bad = TempDir::new().unwrap();
     put(bad.path(), fmn(Id::new(), 1, NodeType::Slice, "Orphan"));
-    assert_eq!(run(bad.path(), &["check"]).code, Some(1));
+    assert_eq!(run(bad.path(), &["validate"]).code, Some(1));
 
     // 2: a usage error is clap's domain (rejected before dispatch; the binary
     // then exits 2). Verified in-process: odm-cli is library-only, so there is
@@ -965,9 +974,9 @@ fn check_strict_mode() {
     seed_soft_tree(dir.path()); // warning-only corpus (soft-satisfied)
 
     // Normal mode: warnings do not fail.
-    assert_eq!(run(dir.path(), &["check"]).code, Some(0));
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(0));
     // Strict mode: the same warning fails the run.
-    let strict = run(dir.path(), &["check", "--strict"]);
+    let strict = run(dir.path(), &["validate", "--strict"]);
     assert_eq!(strict.code, Some(1), "out: {}", strict.out);
     assert!(strict.out.contains("soft-satisfied"));
 }
@@ -981,7 +990,7 @@ fn check_errors_name_fix() {
     seed_soft_tree(dir.path());
     put(dir.path(), fmn(Id::new(), 9, NodeType::Slice, "Stray")); // orphan
 
-    let r = run(dir.path(), &["check", "--json"]);
+    let r = run(dir.path(), &["validate", "--json"]);
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).unwrap();
     let findings = value["findings"].as_array().unwrap();
@@ -991,7 +1000,7 @@ fn check_errors_name_fix() {
         assert!(!fix.trim().is_empty(), "every finding names a fix: {f}");
     }
     // Human output prints a `fix:` line per finding too.
-    assert!(run(dir.path(), &["check"]).out.contains("fix:"));
+    assert!(run(dir.path(), &["validate"]).out.contains("fix:"));
 }
 
 // ----- M-9: --json report, stable schema ------------------------------------
@@ -1002,7 +1011,7 @@ fn check_json_schema() {
     seed_soft_tree(dir.path()); // a warning
     put(dir.path(), fmn(Id::new(), 9, NodeType::Slice, "Stray")); // an error (orphan)
 
-    let r = run(dir.path(), &["check", "--json"]);
+    let r = run(dir.path(), &["validate", "--json"]);
     assert_eq!(r.code, Some(1));
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
 
@@ -1011,7 +1020,7 @@ fn check_json_schema() {
     let mut top: Vec<&String> = value.as_object().unwrap().keys().collect();
     top.sort();
     assert_eq!(top, ["errors", "findings", "ok", "schema", "tears", "warnings"]);
-    assert_eq!(value["schema"], "check/v1");
+    assert_eq!(value["schema"], "validate/v1");
     assert_eq!(value["ok"], false);
     assert!(value["errors"].as_u64().unwrap() >= 1);
     assert!(value["warnings"].as_u64().unwrap() >= 1);
@@ -1050,13 +1059,13 @@ fn check_lists_tear_rationale() {
     put(dir.path(), y_fm);
 
     // The torn cycle passes, and the active tear is listed with its rationale.
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "torn cycle passes; out: {}", r.out);
     assert!(r.out.contains("active tears"), "lists active tears; out: {}", r.out);
     assert!(r.out.contains("Y assumed ready"), "surfaces rationale; out: {}", r.out);
 
     // The JSON report carries the rationale too.
-    let j = run(dir.path(), &["check", "--json"]);
+    let j = run(dir.path(), &["validate", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&j.out).unwrap();
     let tears = v["tears"].as_array().expect("tears array");
     assert_eq!(tears.len(), 1, "one active tear: {}", j.out);
@@ -1111,7 +1120,7 @@ fn check_recomposition_severities() {
     u_fm.edges_mut().part_of = Some(t);
     put(dir.path(), u_fm);
 
-    let out = run(dir.path(), &["check", "--json"]);
+    let out = run(dir.path(), &["validate", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&out.out).unwrap();
     let severity_of = |code: &str| -> String {
         v["findings"]
@@ -1153,11 +1162,11 @@ fn stub_warns_default_fails_strict() {
     put(dir.path(), q_fm);
 
     // Default: an undeveloped-stub is advisory — warning only, exit 0.
-    let normal = run(dir.path(), &["check"]);
+    let normal = run(dir.path(), &["validate"]);
     assert_eq!(normal.code, Some(0), "stub does not fail default; out: {}", normal.out);
     assert!(normal.out.contains("undeveloped-stub"), "out: {}", normal.out);
     // Strict: the same warning fails the run.
-    let strict = run(dir.path(), &["check", "--strict"]);
+    let strict = run(dir.path(), &["validate", "--strict"]);
     assert_eq!(strict.code, Some(1), "out: {}", strict.out);
 }
 
@@ -1178,7 +1187,7 @@ fn file_for(root: &Path, number: u32) -> String {
 
 /// The ULID of the node with the given human `number` (via `show --json`).
 fn id_of(root: &Path, number: u32) -> String {
-    let r = run(root, &["show", &number.to_string(), "--json"]);
+    let r = run(root, &["node", "show", &number.to_string(), "--json"]);
     let v: serde_json::Value = serde_json::from_str(&r.out).expect("show --json");
     v["id"].as_str().unwrap().to_string()
 }
@@ -1188,10 +1197,10 @@ fn id_of(root: &Path, number: u32) -> String {
 #[test]
 fn link_adds_edge() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
 
-    let r = run(dir.path(), &["link", "1", "depends_on", "2"]);
+    let r = run(dir.path(), &["node", "link", "1", "depends_on", "2"]);
     assert!(r.ok && r.err.contains("linked"), "err: {}", r.err);
 
     // The edge is written on the source A (#1)...
@@ -1217,15 +1226,17 @@ fn link_edge_kinds() {
         (7, "arc", "Parent"),
     ] {
         let _ = n;
-        run(dir.path(), &["new", ty, name]);
+        run(dir.path(), &["node", "new", ty, name]);
     }
 
-    assert!(run(dir.path(), &["link", "1", "depends_on", "2", "--satisfied-at", "tested"]).ok);
-    assert!(run(dir.path(), &["link", "1", "blocked_by", "3"]).ok);
-    assert!(run(dir.path(), &["link", "1", "consumes", "4"]).ok);
-    assert!(run(dir.path(), &["link", "1", "verifies", "5"]).ok);
-    assert!(run(dir.path(), &["link", "1", "affects", "6"]).ok);
-    assert!(run(dir.path(), &["link", "1", "part_of", "7"]).ok);
+    assert!(
+        run(dir.path(), &["node", "link", "1", "depends_on", "2", "--satisfied-at", "tested"]).ok
+    );
+    assert!(run(dir.path(), &["node", "link", "1", "blocked_by", "3"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "consumes", "4"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "verifies", "5"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "affects", "6"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "part_of", "7"]).ok);
 
     let src = file_for(dir.path(), 1);
     for field in ["depends_on", "blocked_by", "consumes", "verifies", "affects", "part_of"] {
@@ -1240,15 +1251,15 @@ fn link_edge_kinds() {
 #[test]
 fn link_part_of_single_parent() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Child"]);
-    run(dir.path(), &["new", "arc", "P1"]);
-    run(dir.path(), &["new", "arc", "P2"]);
+    run(dir.path(), &["node", "new", "slice", "Child"]);
+    run(dir.path(), &["node", "new", "arc", "P1"]);
+    run(dir.path(), &["node", "new", "arc", "P2"]);
 
-    assert!(run(dir.path(), &["link", "1", "part_of", "2"]).ok);
-    assert!(run(dir.path(), &["link", "1", "part_of", "3"]).ok); // replaces
+    assert!(run(dir.path(), &["node", "link", "1", "part_of", "2"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "part_of", "3"]).ok); // replaces
 
     // show --json exposes a single parent; it is P2 (#3), not P1 (#2).
-    let r = run(dir.path(), &["show", "1", "--json"]);
+    let r = run(dir.path(), &["node", "show", "1", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&r.out).unwrap();
     assert_eq!(v["part_of"], id_of(dir.path(), 3));
     // The old parent's id is gone from the file (replaced, not appended).
@@ -1260,16 +1271,16 @@ fn link_part_of_single_parent() {
 #[test]
 fn unlink_removes_edge() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
-    run(dir.path(), &["link", "1", "depends_on", "2"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
+    run(dir.path(), &["node", "link", "1", "depends_on", "2"]);
 
-    let r = run(dir.path(), &["unlink", "1", "depends_on", "2"]);
+    let r = run(dir.path(), &["node", "unlink", "1", "depends_on", "2"]);
     assert!(r.ok && r.err.contains("unlinked"));
     assert!(!file_for(dir.path(), 1).contains("depends_on"));
 
     // Unlinking again is a clear no-op (not an error).
-    let again = run(dir.path(), &["unlink", "1", "depends_on", "2"]);
+    let again = run(dir.path(), &["node", "unlink", "1", "depends_on", "2"]);
     assert!(again.ok && again.err.contains("no-op"), "err: {}", again.err);
 }
 
@@ -1278,17 +1289,17 @@ fn unlink_removes_edge() {
 #[test]
 fn mutator_ref_resolution() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "Alpha"]);
-    run(dir.path(), &["new", "slice", "Beta"]);
+    run(dir.path(), &["node", "new", "slice", "Alpha"]);
+    run(dir.path(), &["node", "new", "slice", "Beta"]);
 
     // By unique name-prefix, by number, and by full id — all resolve.
-    assert!(run(dir.path(), &["link", "Alph", "depends_on", "Bet"]).ok);
-    assert!(run(dir.path(), &["unlink", "1", "depends_on", "2"]).ok);
+    assert!(run(dir.path(), &["node", "link", "Alph", "depends_on", "Bet"]).ok);
+    assert!(run(dir.path(), &["node", "unlink", "1", "depends_on", "2"]).ok);
     let id2 = id_of(dir.path(), 2);
-    assert!(run(dir.path(), &["link", &id_of(dir.path(), 1), "depends_on", &id2]).ok);
+    assert!(run(dir.path(), &["node", "link", &id_of(dir.path(), 1), "depends_on", &id2]).ok);
 
     // An unresolvable endpoint fails with an affordance.
-    let bad = run(dir.path(), &["link", "1", "depends_on", "99"]);
+    let bad = run(dir.path(), &["node", "link", "1", "depends_on", "99"]);
     assert!(!bad.ok && bad.err.contains("no node with number 99") && bad.err.contains("odm list"));
 }
 
@@ -1298,23 +1309,27 @@ fn mutator_ref_resolution() {
 fn set_gate_cli() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
 
     // Default evidence is `asserted`; the first-reach date is recorded.
-    let r = run(dir.path(), &["set-gate", "1", "built"]);
+    let r = run(dir.path(), &["node", "set-gate", "1", "built"]);
     assert!(r.ok && r.err.contains("set gate \"built\"=asserted"), "err: {}", r.err);
     let f = file_for(dir.path(), 1);
     assert!(f.contains("built:") && f.contains("evidence: asserted"));
     assert!(f.contains("evidence_dates"), "slice05.1 first-reach recorded; file:\n{f}");
 
     // An out-of-set gate is rejected with an affordance.
-    let bad = run(dir.path(), &["set-gate", "1", "deployed"]);
+    let bad = run(dir.path(), &["node", "set-gate", "1", "deployed"]);
     assert!(!bad.ok && bad.err.contains("unknown gate"));
     assert!(bad.err.contains("allowed") && bad.err.contains("odm set-gate"));
 
     // Explicit evidence + actor are recorded.
     assert!(
-        run(dir.path(), &["set-gate", "1", "tested", "--evidence", "reproduced", "--by", "ci"]).ok
+        run(
+            dir.path(),
+            &["node", "set-gate", "1", "tested", "--evidence", "reproduced", "--by", "ci"]
+        )
+        .ok
     );
     let f = file_for(dir.path(), 1);
     assert!(f.contains("evidence: reproduced") && f.contains("ci"));
@@ -1325,15 +1340,16 @@ fn set_gate_cli() {
 #[test]
 fn tear_cli() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
 
-    let r = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "assumed for now"]);
+    let r =
+        run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "assumed for now"]);
     assert!(r.ok && r.err.contains("tore"), "err: {}", r.err);
     assert!(file_for(dir.path(), 1).contains("tears:"));
 
     // An empty rationale is rejected with an affordance.
-    let bad = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "   "]);
+    let bad = run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "   "]);
     assert!(!bad.ok && bad.err.contains("needs a rationale") && bad.err.contains("--because"));
 }
 
@@ -1342,10 +1358,10 @@ fn tear_cli() {
 #[test]
 fn tear_persists_rationale() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
 
-    run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "B ships first"]);
+    run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "B ships first"]);
 
     // The rationale is persisted on the source (#1), not dropped after validation.
     let on_disk = file_for(dir.path(), 1);
@@ -1355,7 +1371,7 @@ fn tear_persists_rationale() {
     assert_eq!(on_disk.matches("because:").count(), 1, "exactly one tear:\n{on_disk}");
 
     // Re-tearing the same target refreshes the rationale (no duplicate entry).
-    run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "revised reason"]);
+    run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "revised reason"]);
     let updated = file_for(dir.path(), 1);
     assert!(updated.contains("revised reason"), "refreshed:\n{updated}");
     assert!(!updated.contains("B ships first"), "old rationale replaced:\n{updated}");
@@ -1367,11 +1383,11 @@ fn tear_persists_rationale() {
 #[test]
 fn new_with_parent() {
     let dir = TempDir::new().unwrap();
-    run(dir.path(), &["new", "project", "Odm"]);
-    let r = run(dir.path(), &["new", "arc", "Substrate", "--parent", "1"]);
+    run(dir.path(), &["node", "new", "project", "Odm"]);
+    let r = run(dir.path(), &["node", "new", "arc", "Substrate", "--parent", "1"]);
     assert!(r.ok && r.err.contains("part_of"), "err: {}", r.err);
 
-    let shown = run(dir.path(), &["show", "2", "--json"]);
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
     assert_eq!(v["part_of"], id_of(dir.path(), 1));
 }
@@ -1382,26 +1398,28 @@ fn new_with_parent() {
 fn decomposed_cli() {
     let dir = TempDir::new().unwrap();
     // project P(1) <- arc Q(2) <- slice S(3).
-    run(dir.path(), &["new", "project", "P"]);
-    run(dir.path(), &["new", "arc", "Q", "--parent", "1"]);
-    run(dir.path(), &["new", "slice", "S", "--parent", "2"]);
+    run(dir.path(), &["node", "new", "project", "P"]);
+    run(dir.path(), &["node", "new", "arc", "Q", "--parent", "1"]);
+    run(dir.path(), &["node", "new", "slice", "S", "--parent", "2"]);
 
     // Affirm Q's decomposition against an explicit child set; records + persists.
-    let r = run(dir.path(), &["decomposed", "2", "--children", "3"]);
+    let r = run(dir.path(), &["node", "decomposed", "2", "--children", "3"]);
     assert!(r.ok && r.err.contains("affirmed decomposition"), "err: {}", r.err);
     let q = file_for(dir.path(), 2);
     assert!(q.contains("decomposed:") && q.contains(&id_of(dir.path(), 3)));
 
     // With no --children, it affirms against the current containment children.
-    run(dir.path(), &["new", "slice", "S2", "--parent", "2"]); // #4, a second child
-    let r2 = run(dir.path(), &["decomposed", "2"]);
+    run(dir.path(), &["node", "new", "slice", "S2", "--parent", "2"]); // #4, a second child
+    let r2 = run(dir.path(), &["node", "decomposed", "2"]);
     assert!(r2.ok && r2.err.contains("2 child(ren)"), "err: {}", r2.err);
 
     // --dry-run announces but writes nothing new.
-    assert!(run(dir.path(), &["decomposed", "2", "--dry-run"]).err.contains("would affirm"));
+    assert!(
+        run(dir.path(), &["node", "decomposed", "2", "--dry-run"]).err.contains("would affirm")
+    );
 
     // A non-parent-capable node (a slice) cannot be decomposed.
-    let bad = run(dir.path(), &["decomposed", "3"]);
+    let bad = run(dir.path(), &["node", "decomposed", "3"]);
     assert!(!bad.ok && bad.err.contains("only a project or arc"));
 }
 
@@ -1411,22 +1429,25 @@ fn decomposed_cli() {
 fn mutators_dry_run_and_yes() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
 
     // link --dry-run: announced, but nothing written.
-    let dry = run(dir.path(), &["link", "1", "depends_on", "2", "--dry-run"]);
+    let dry = run(dir.path(), &["node", "link", "1", "depends_on", "2", "--dry-run"]);
     assert!(dry.ok && dry.err.contains("would link"));
     assert!(!file_for(dir.path(), 1).contains("depends_on"));
 
     // --yes runs (non-interactive); the edge is written.
-    assert!(run(dir.path(), &["link", "1", "depends_on", "2", "--yes"]).ok);
+    assert!(run(dir.path(), &["node", "link", "1", "depends_on", "2", "--yes"]).ok);
     assert!(file_for(dir.path(), 1).contains("depends_on"));
 
     // set-gate / tear --dry-run write nothing either.
-    assert!(run(dir.path(), &["set-gate", "1", "built", "--dry-run"]).ok);
+    assert!(run(dir.path(), &["node", "set-gate", "1", "built", "--dry-run"]).ok);
     assert!(!file_for(dir.path(), 1).contains("built:"));
-    assert!(run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "x", "--dry-run"]).ok);
+    assert!(
+        run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "x", "--dry-run"])
+            .ok
+    );
     assert!(!file_for(dir.path(), 1).contains("tears:"));
 }
 
@@ -1436,21 +1457,21 @@ fn mutators_dry_run_and_yes() {
 fn mutation_roundtrip() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
-    run(dir.path(), &["new", "arc", "Parent"]);
-    run(dir.path(), &["new", "slice", "Leaf"]);
+    run(dir.path(), &["node", "new", "arc", "Parent"]);
+    run(dir.path(), &["node", "new", "slice", "Leaf"]);
 
-    run(dir.path(), &["link", "2", "part_of", "1"]);
-    run(dir.path(), &["link", "2", "depends_on", "1", "--satisfied-at", "complete"]);
-    run(dir.path(), &["set-gate", "2", "built", "--evidence", "reproduced"]);
+    run(dir.path(), &["node", "link", "2", "part_of", "1"]);
+    run(dir.path(), &["node", "link", "2", "depends_on", "1", "--satisfied-at", "complete"]);
+    run(dir.path(), &["node", "set-gate", "2", "built", "--evidence", "reproduced"]);
 
     // A fresh dispatch reloads from disk: every mutation survives the round-trip
     // and the file still parses (queries succeed, `check` does not choke).
-    let shown = run(dir.path(), &["show", "2", "--json"]);
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
     assert_eq!(v["part_of"], id_of(dir.path(), 1));
     let f = file_for(dir.path(), 2);
     assert!(f.contains("satisfied_at: complete") && f.contains("built:"));
-    assert!(run(dir.path(), &["list"]).ok); // reload parses cleanly
+    assert!(run(dir.path(), &["node", "list"]).ok); // reload parses cleanly
 }
 
 // ----- M-11: a CLI-built graph answers next/blocked (self-host smoke) -------
@@ -1461,9 +1482,9 @@ fn cli_built_graph_queries() {
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
 
     // Build the graph purely through the CLI: A depends_on B.
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
-    assert!(run(dir.path(), &["link", "1", "depends_on", "2"]).ok);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
+    assert!(run(dir.path(), &["node", "link", "1", "depends_on", "2"]).ok);
 
     // B is ready (no deps); A is blocked on the unsatisfied B.
     let next1 = run(dir.path(), &["next"]);
@@ -1472,7 +1493,7 @@ fn cli_built_graph_queries() {
     assert!(blocked1.out.contains("unsatisfied dependency"), "blocked: {}", blocked1.out);
 
     // Satisfy B by recording its terminal gate at the threshold evidence.
-    assert!(run(dir.path(), &["set-gate", "2", "tested", "--evidence", "reproduced"]).ok);
+    assert!(run(dir.path(), &["node", "set-gate", "2", "tested", "--evidence", "reproduced"]).ok);
 
     // Now B is complete (out of `next`) and A is ready (its dep is satisfied).
     let next2 = run(dir.path(), &["next"]);
@@ -1487,19 +1508,19 @@ fn cli_built_graph_queries() {
 fn mutator_errors_name_fix() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
 
     // Unresolvable endpoint → names `odm list`.
-    let r1 = run(dir.path(), &["link", "1", "depends_on", "404"]);
+    let r1 = run(dir.path(), &["node", "link", "1", "depends_on", "404"]);
     assert!(!r1.ok && r1.err.contains("odm list"));
 
     // Out-of-set gate → names `odm set-gate`.
-    let r2 = run(dir.path(), &["set-gate", "1", "shipped"]);
+    let r2 = run(dir.path(), &["node", "set-gate", "1", "shipped"]);
     assert!(!r2.ok && r2.err.contains("odm set-gate"));
 
     // Empty tear rationale → names `odm tear ... --because`.
-    run(dir.path(), &["new", "slice", "B"]);
-    let r3 = run(dir.path(), &["tear", "1", "depends_on", "2", "--because", ""]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
+    let r3 = run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", ""]);
     assert!(!r3.ok && r3.err.contains("--because"));
 }
 
@@ -1509,23 +1530,28 @@ fn mutator_errors_name_fix() {
 fn mutator_edge_cases() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
-    run(dir.path(), &["new", "slice", "A"]);
-    run(dir.path(), &["new", "slice", "B"]);
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    run(dir.path(), &["node", "new", "slice", "B"]);
 
     // Self-link is rejected (both the generic and the `part_of` phrasings).
     assert!(
-        run(dir.path(), &["link", "1", "depends_on", "1"]).err.contains("cannot link to itself")
+        run(dir.path(), &["node", "link", "1", "depends_on", "1"])
+            .err
+            .contains("cannot link to itself")
     );
-    assert!(run(dir.path(), &["link", "1", "part_of", "1"]).err.contains("be `part_of` itself"));
+    assert!(
+        run(dir.path(), &["node", "link", "1", "part_of", "1"]).err.contains("be `part_of` itself")
+    );
 
     // `--satisfied-at` only applies to `depends_on`.
-    let bad = run(dir.path(), &["link", "1", "blocked_by", "2", "--satisfied-at", "tested"]);
+    let bad =
+        run(dir.path(), &["node", "link", "1", "blocked_by", "2", "--satisfied-at", "tested"]);
     assert!(!bad.ok && bad.err.contains("--satisfied-at"));
 
     // unlink --dry-run announces but writes nothing.
-    run(dir.path(), &["link", "1", "depends_on", "2"]);
+    run(dir.path(), &["node", "link", "1", "depends_on", "2"]);
     assert!(
-        run(dir.path(), &["unlink", "1", "depends_on", "2", "--dry-run"])
+        run(dir.path(), &["node", "unlink", "1", "depends_on", "2", "--dry-run"])
             .err
             .contains("would unlink")
     );
@@ -1533,23 +1559,25 @@ fn mutator_edge_cases() {
 
     // set-gate / tear dry-run messages.
     assert!(
-        run(dir.path(), &["set-gate", "1", "built", "--dry-run"]).err.contains("would set gate")
+        run(dir.path(), &["node", "set-gate", "1", "built", "--dry-run"])
+            .err
+            .contains("would set gate")
     );
     assert!(
-        run(dir.path(), &["tear", "1", "depends_on", "2", "--because", "x", "--dry-run"])
+        run(dir.path(), &["node", "tear", "1", "depends_on", "2", "--because", "x", "--dry-run"])
             .err
             .contains("would tear")
     );
 
     // new --parent --dry-run notes the parent and writes nothing.
-    let np = run(dir.path(), &["new", "slice", "Z", "--parent", "2", "--dry-run"]);
+    let np = run(dir.path(), &["node", "new", "slice", "Z", "--parent", "2", "--dry-run"]);
     assert!(np.err.contains("would create") && np.err.contains("part_of"));
 
     // set-gate on a type with no configured gate-set → affordance.
-    run(dir.path(), &["new", "note", "N"]);
-    let ng = run(dir.path(), &["set-gate", "3", "anything"]);
+    run(dir.path(), &["node", "new", "note", "N"]);
+    let ng = run(dir.path(), &["node", "set-gate", "3", "anything"]);
     assert!(!ng.ok && ng.err.contains("no gate-set"));
 
     // new --parent with an unresolvable parent fails before writing.
-    assert!(!run(dir.path(), &["new", "slice", "Orphan", "--parent", "404"]).ok);
+    assert!(!run(dir.path(), &["node", "new", "slice", "Orphan", "--parent", "404"]).ok);
 }

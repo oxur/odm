@@ -27,7 +27,31 @@ use crate::commands;
 use crate::json::RollupJson;
 
 /// The generated rollup file, written at the store root.
-const ROLLUP_FILE: &str = "ROLLUP.md";
+/// The default output stem — the filename without its extension.
+///
+/// A *default*, not a law (RH F-13): `--out` renames it and `--format` decides
+/// the extension, so the json rollup lands at `ROLLUP.json`. The help text must
+/// not present `ROLLUP.md` as fixed.
+pub const DEFAULT_STEM: &str = "ROLLUP";
+
+/// How and where a rollup run should emit (RH F-13).
+pub struct Options<'a> {
+    /// Render to `out` and write no file.
+    pub dry_run: bool,
+    /// The output file extension, from `--format`.
+    pub extension: &'a str,
+    /// The output file stem, from `--out`.
+    pub stem: &'a str,
+    /// Serialize the model as JSON rather than rendering Markdown.
+    pub json: bool,
+}
+
+impl Options<'_> {
+    /// The file this run would write.
+    fn file_name(&self) -> String {
+        format!("{}.{}", self.stem, self.extension)
+    }
+}
 
 /// The token in the generated header that carries the corpus meta-fingerprint
 /// (slice07). `odm rollup` compares the current corpus's fingerprint against the
@@ -77,7 +101,7 @@ fn content_fingerprint(model: &Rollup) -> String {
     to_hex(&digest)
 }
 
-/// `rollup` — regenerate `ROLLUP.md` at the repo root (with slice07 early cutoff).
+/// `rollup` — regenerate the plan rollup at the repo root (slice07 early cutoff).
 ///
 /// Reads the corpus through the `.odm/` index (`reconcile`-then-read, slice06 —
 /// no full parse), assembles the [`Rollup`] model, renders it to Markdown, and
@@ -102,8 +126,7 @@ fn content_fingerprint(model: &Rollup) -> String {
 pub fn rollup(
     store: &Store,
     root: &Path,
-    dry_run: bool,
-    json: bool,
+    options: Options<'_>,
     out: &mut dyn std::io::Write,
     err: &mut dyn std::io::Write,
 ) -> anyhow::Result<()> {
@@ -129,40 +152,46 @@ pub fn rollup(
     // is stable across wall-clock ticks (only a re-check or outcome change moves it).
     let fingerprint = content_fingerprint(&model);
 
-    // `--json` is a non-writing output mode: serialize the same model to stdout.
-    if json {
+    let path = root.join(options.file_name());
+
+    // JSON is a rendering of the same model (D-3), so it is written like one:
+    // to the file by default, to stdout under `--dry-run`. The bare `--json`
+    // flag implies `--dry-run` at the dispatch layer, preserving the
+    // long-standing "give me json on stdout" spelling.
+    let rendered = if options.json {
         let view = RollupJson::from(&model);
-        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
-        return Ok(());
-    }
+        serde_json::to_string_pretty(&view)? + "\n"
+    } else {
+        render(&model, &fingerprint)
+    };
 
-    let markdown = render(&model, &fingerprint);
-
-    let path = root.join(ROLLUP_FILE);
-    if dry_run {
-        write!(out, "{markdown}")?;
+    if options.dry_run {
+        write!(out, "{rendered}")?;
         writeln!(
             err,
             "dry-run: would write {} ({} bytes); nothing written",
             path.display(),
-            markdown.len()
+            rendered.len()
         )?;
         return Ok(());
     }
 
     // Early cutoff: the existing file already reflects this exact semantic state.
-    if let Ok(existing) = std::fs::read_to_string(&path) {
-        if stamped_fingerprint(&existing).as_deref() == Some(fingerprint.as_str()) {
-            writeln!(
-                err,
-                "{} unchanged (corpus semantically unchanged); skipped regeneration",
-                path.display()
-            )?;
-            return Ok(());
-        }
+    // Markdown only — the fingerprint is stamped in the generated header, and
+    // the JSON rendering has nowhere to carry one.
+    if !options.json
+        && let Ok(existing) = std::fs::read_to_string(&path)
+        && stamped_fingerprint(&existing).as_deref() == Some(fingerprint.as_str())
+    {
+        writeln!(
+            err,
+            "{} unchanged (corpus semantically unchanged); skipped regeneration",
+            path.display()
+        )?;
+        return Ok(());
     }
 
-    odm_store::atomic::write(&path, markdown.as_bytes())
+    odm_store::atomic::write(&path, rendered.as_bytes())
         .with_context(|| format!("writing {}", path.display()))?;
     crate::term::success(
         err,

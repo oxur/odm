@@ -68,10 +68,10 @@ fn persist(
 
 /// Seeds a small corpus through the CLI (each `new` is its own process-less run).
 fn seed(root: &Path) {
-    run(root, &["new", "project", "Proj"]);
-    run(root, &["new", "arc", "Arc one", "--parent", "1"]);
-    run(root, &["new", "slice", "Early", "--parent", "2"]);
-    run(root, &["new", "slice", "Late", "--parent", "2"]);
+    run(root, &["node", "new", "project", "Proj"]);
+    run(root, &["node", "new", "arc", "Arc one", "--parent", "1"]);
+    run(root, &["node", "new", "slice", "Early", "--parent", "2"]);
+    run(root, &["node", "new", "slice", "Late", "--parent", "2"]);
 }
 
 /// Writes a gate config so satisfaction has gate-sets to work with.
@@ -90,7 +90,7 @@ fn derived_order_index_backed_match_baseline() {
     let root = dir.path();
     write_config(root);
     seed(root); // P(1) <- A(2) <- Early(3), Late(4)
-    run(root, &["link", "Late", "depends_on", "Early"]);
+    run(root, &["node", "link", "Late", "depends_on", "Early"]);
 
     // `next`: Early (no deps) is ready; Late (unsatisfied dep) is not.
     let next = run(root, &["next"]);
@@ -106,7 +106,7 @@ fn derived_order_index_backed_match_baseline() {
     );
 
     // `path Late`: the dependency chain Late → Early.
-    let path = run(root, &["path", "Late"]);
+    let path = run(root, &["chain", "Late"]);
     assert!(path.out.contains("Late") && path.out.contains("Early"), "path chain:\n{}", path.out);
 }
 
@@ -125,7 +125,7 @@ fn graph_consumers_reconcile_before_read() {
 
     // Add a ready node, then `next` again with no manual rebuild: the reconcile
     // inside the graph reader must surface it.
-    run(root, &["new", "slice", "Fresh ready", "--parent", "2"]);
+    run(root, &["node", "new", "slice", "Fresh ready", "--parent", "2"]);
     let after = run(root, &["next"]);
     assert!(after.out.contains("Fresh ready"), "freshly-added ready node appears:\n{}", after.out);
 }
@@ -142,10 +142,10 @@ fn list_index_backed_matches_baseline() {
     seed(dir.path());
 
     // First `list` builds the index and renders the table.
-    let first = run(dir.path(), &["list"]);
+    let first = run(dir.path(), &["node", "list"]);
     assert!(first.ok);
     // Second `list` reads the (now-warm) index and renders the same table.
-    let second = run(dir.path(), &["list"]);
+    let second = run(dir.path(), &["node", "list"]);
     assert_eq!(first.out, second.out, "warm read matches cold-built read");
 
     // The table has every node, in containment order, with the C-3 columns
@@ -161,7 +161,7 @@ fn list_index_backed_matches_baseline() {
     assert!(first.out.find("Proj").unwrap() < first.out.find("Late").unwrap());
 
     // A type filter narrows the table (index-backed).
-    let slices = run(dir.path(), &["list", "--type", "slice"]);
+    let slices = run(dir.path(), &["node", "list", "--type", "slice"]);
     assert!(slices.out.contains("Early") && slices.out.contains("Late"));
     assert!(!slices.out.contains("Proj"), "type filter excludes the project:\n{}", slices.out);
 }
@@ -175,13 +175,13 @@ fn consumers_reconcile_before_read() {
     seed(dir.path());
 
     // Build the index via a first read.
-    let before = run(dir.path(), &["list"]);
+    let before = run(dir.path(), &["node", "list"]);
     assert!(before.ok && !before.out.contains("Fresh slice"));
 
     // Add a node, then list again WITHOUT any explicit rebuild: the reconcile
     // inside `list` must pick it up.
-    run(dir.path(), &["new", "slice", "Fresh slice", "--parent", "2"]);
-    let after = run(dir.path(), &["list"]);
+    run(dir.path(), &["node", "new", "slice", "Fresh slice", "--parent", "2"]);
+    let after = run(dir.path(), &["node", "list"]);
     assert!(after.out.contains("Fresh slice"), "the freshly-added node appears:\n{}", after.out);
 }
 
@@ -200,14 +200,14 @@ fn check_index_backed_matches_baseline() {
     let a = persist(root, 2, NodeType::Arc, "Arc one", Origin::Planned, Some(p), "# A\n");
     persist(root, 3, NodeType::Slice, "Early", Origin::Planned, Some(a), "# E\n");
     persist(root, 4, NodeType::Slice, "Late", Origin::Planned, Some(a), "# L\n");
-    run(root, &["decomposed", "Arc one"]); // affirms {Early, Late}
+    run(root, &["node", "decomposed", "Arc one"]); // affirms {Early, Late}
 
     // … then drift A's child-set (a NEW child) and add an orphan slice.
     persist(root, 5, NodeType::Slice, "Newcomer", Origin::Planned, Some(a), "# N\n");
     persist(root, 6, NodeType::Slice, "Orphan", Origin::Planned, None, "# O\n");
 
-    let first = run(root, &["check"]);
-    let second = run(root, &["check"]);
+    let first = run(root, &["validate"]);
+    let second = run(root, &["validate"]);
     assert_eq!(first.out, second.out, "warm read == cold-built read:\n{}", first.out);
 
     // decomposition-drift proves `decomposed` flows through the index (V-4) …
@@ -294,7 +294,7 @@ fn view_consumers_reconcile_before_read() {
     run(root, &["use", "arc", "Arc one"]);
 
     // Warm the index via a first read of each view.
-    run(root, &["check"]);
+    run(root, &["validate"]);
     run(root, &["rollup", "--dry-run"]);
     run(root, &["orient"]);
 
@@ -310,7 +310,7 @@ fn view_consumers_reconcile_before_read() {
     );
 
     persist(root, 4, NodeType::Slice, "Fresh orphan", Origin::Planned, None, "# FO\n");
-    assert!(run(root, &["check"]).out.contains("orphan"), "check reconciles before read");
+    assert!(run(root, &["validate"]).out.contains("orphan"), "check reconciles before read");
 }
 
 // ===== slice07: `odm rollup` early-cutoff ===================================
@@ -360,7 +360,7 @@ fn rollup_regenerates_on_meta_change() {
     let mut prev = std::fs::read(&rollup_path).unwrap();
 
     // (a) a gate/evidence change is a meaning-change → regenerate.
-    let gate = run(root, &["set-gate", "Slice one", "built"]);
+    let gate = run(root, &["node", "set-gate", "Slice one", "built"]);
     assert!(gate.ok, "set-gate:\n{}", gate.err);
     let after_gate = run(root, &["rollup"]);
     assert!(after_gate.err.contains("wrote"), "regenerates on gate change:\n{}", after_gate.err);

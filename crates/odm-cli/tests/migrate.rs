@@ -95,6 +95,6 @@ fn check_green_on_migrated_odm_docs() {
     assert!(ok, "migrate real docs dispatches cleanly:\n{err}");
     assert!(err.contains("created"), "some ODDs imported:\n{err}");
 
-    let (code, out) = run_code(store_dir.path(), &["check"]);
+    let (code, out) = run_code(store_dir.path(), &["validate"]);
     assert_eq!(code, Some(0), "check is green on the imported odd corpus:\n{out}");
 }

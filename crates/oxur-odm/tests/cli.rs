@@ -19,9 +19,9 @@ fn odm(dir: &TempDir) -> Command {
 
 /// Seeds a clean total tree: `project P(1) <- arc A(2) <- slice S(3)`.
 fn seed_clean(dir: &TempDir) {
-    odm(dir).args(["new", "project", "P"]).assert().success();
-    odm(dir).args(["new", "arc", "A", "--parent", "1"]).assert().success();
-    odm(dir).args(["new", "slice", "S", "--parent", "2"]).assert().success();
+    odm(dir).args(["node", "new", "project", "P"]).assert().success();
+    odm(dir).args(["node", "new", "arc", "A", "--parent", "1"]).assert().success();
+    odm(dir).args(["node", "new", "slice", "S", "--parent", "2"]).assert().success();
 }
 
 // ----- C-7: clean graph exits EXIT_OK (0) -----------------------------------
@@ -40,7 +40,7 @@ fn check_exit_ok_on_clean_graph() {
 fn check_exit_violations_on_dirty_graph() {
     let dir = TempDir::new().unwrap();
     // A parentless slice is an orphan (a hard error).
-    odm(&dir).args(["new", "slice", "Orphan"]).assert().success();
+    odm(&dir).args(["node", "new", "slice", "Orphan"]).assert().success();
     // The real process maps EXIT_VIOLATIONS → ExitCode(1).
     odm(&dir).arg("check").assert().failure().code(1);
 }
@@ -51,14 +51,15 @@ fn check_exit_violations_on_dirty_graph() {
 fn check_json_shape_on_real_binary() {
     let dir = TempDir::new().unwrap();
     seed_clean(&dir);
-    let output = odm(&dir).args(["check", "--json"]).assert().success().get_output().stdout.clone();
+    let output =
+        odm(&dir).args(["validate", "--json"]).assert().success().get_output().stdout.clone();
     let value: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON on stdout");
 
-    // The stable v2 envelope (with the additive `tears` array + `schema` marker).
+    // The stable envelope (with the additive `tears` array + `schema` marker).
     let mut keys: Vec<&String> = value.as_object().unwrap().keys().collect();
     keys.sort();
     assert_eq!(keys, ["errors", "findings", "ok", "schema", "tears", "warnings"]);
-    assert_eq!(value["schema"], "check/v1");
+    assert_eq!(value["schema"], "validate/v1");
     assert_eq!(value["ok"], true);
     assert_eq!(value["errors"], 0);
 }
@@ -69,13 +70,13 @@ fn check_json_shape_on_real_binary() {
 fn tear_rationale_surfaces_in_real_check() {
     let dir = TempDir::new().unwrap();
     seed_clean(&dir); // P(1) <- A(2) <- S(3)
-    odm(&dir).args(["new", "slice", "T", "--parent", "2"]).assert().success(); // T(4)
+    odm(&dir).args(["node", "new", "slice", "T", "--parent", "2"]).assert().success(); // T(4)
 
     // Create an ordering cycle S(3) <-> T(4), then tear S->T to break it.
-    odm(&dir).args(["link", "3", "depends_on", "4"]).assert().success();
-    odm(&dir).args(["link", "4", "depends_on", "3"]).assert().success();
+    odm(&dir).args(["node", "link", "3", "depends_on", "4"]).assert().success();
+    odm(&dir).args(["node", "link", "4", "depends_on", "3"]).assert().success();
     odm(&dir)
-        .args(["tear", "3", "depends_on", "4", "--because", "T assumed ready"])
+        .args(["node", "tear", "3", "depends_on", "4", "--because", "T assumed ready"])
         .assert()
         .success();
 
@@ -85,7 +86,8 @@ fn tear_rationale_surfaces_in_real_check() {
     assert!(human.contains("active tears"), "lists active tears:\n{human}");
     assert!(human.contains("T assumed ready"), "surfaces rationale:\n{human}");
 
-    let json = odm(&dir).args(["check", "--json"]).assert().success().get_output().stdout.clone();
+    let json =
+        odm(&dir).args(["validate", "--json"]).assert().success().get_output().stdout.clone();
     let value: serde_json::Value = serde_json::from_slice(&json).unwrap();
     let tears = value["tears"].as_array().expect("tears array");
     assert_eq!(tears.len(), 1);
@@ -98,7 +100,7 @@ fn tear_rationale_surfaces_in_real_check() {
 fn usage_error_exits_two() {
     let dir = TempDir::new().unwrap();
     // clap rejects an unknown flag before dispatch → the binary exits 2.
-    odm(&dir).args(["check", "--bogus"]).assert().failure().code(2);
+    odm(&dir).args(["validate", "--bogus"]).assert().failure().code(2);
 }
 
 #[test]

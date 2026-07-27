@@ -27,11 +27,12 @@ It carries two dimensions at once:
   | `[llm-arc]` | **new** node verb from `arc-llm-command-surface` |
   | `[future]` | designed, not yet scheduled |
 
-> **The reorg itself has not landed.** Today's shipped `--help` is still flat;
-> the verbatim current help is preserved in the **Appendix** for traceability
-> until the C-4 reorg pass rewrites `--help`/`--json` to these tiers. Old
-> top-level spellings survive one release as hidden deprecated aliases
-> (ODD-0023 §6).
+> **The reorg landed in RH C-4** (2026-07-26). `--help` now shows the three
+> tiers, and the Appendix carries the **built** help verbatim — this document
+> and the binary agree, which is C-4's acceptance criterion. **There are no
+> deprecation aliases:** ODD-0023 §6 was decided as a **hard cut**, so the old
+> top-level spellings of node verbs (`odm show`, `odm list`, …) simply do not
+> exist. One spelling per command.
 
 ---
 
@@ -45,20 +46,18 @@ versioned schemas (`orient/v1`, `rollup/v1`, `check/v1`, `reconcile/v1`, …).
 | Command | Status | Description |
 |---------|--------|-------------|
 | `orient` (alias `brief`) | `[shipped]` | Vision → current focus → ready/blocked → integrity → drift. **The default command** — bare `odm` runs it (cheap incremental drift pass first, no volatile probes; never bare-errors). |
-| `rollup` | `[shipped]` `[C-4]` | Regenerate the plan view. C-4: help must not hardcode `ROLLUP.md`; support md **and** json output + an output-name option (defaults `md` / `ROLLUP`). `--dry-run` renders to stdout. |
+| `rollup` | `[shipped]` `[C-4]` | Regenerate the plan view. Writes `<out>.<ext>` at the invocation root: `--format={md\|json}` decides the extension, `--out <NAME>` the stem (defaults `md` / `ROLLUP` → `ROLLUP.md`). `--dry-run` renders to stdout; bare `--json` still means "json on stdout". |
 | `next` | `[shipped]` | Show the ready frontier (nodes whose dependencies are satisfied). *(LLM arc L-4: ordering/typing improvements planned.)* |
 | `blocked <REF>` | `[shipped]` | Explain why a node is blocked or low-confidence. *(LLM arc L-5: currently blocked-half only.)* |
-| `chain <REF> [TO]` | `[C-4 rename]` | Was `path`. Dependency path: the critical chain from X, or a path X → Y. (Renamed to avoid "filepath" confusion; "chain" chosen over dep/deps/trace/route.) |
-| `check` (alias `validate`) | `[shipped]` | Validate the whole graph: schema, links, cycles, recomposition, order, staleness (`affects`). `--strict` promotes warnings to CI failures. Exit: 0 clean / 1 violations / 2 error. **Pending (ODD-0023 §5):** `validate` alias is trivial; *check-always-reconciles* is a behaviour change (reconcile runs side-effecting probes) — recommend **`check --reconcile`** (opt-in), not every `check` paying probe cost. |
+| `chain <REF> [TO]` | `[shipped]` `[C-4]` | Was `path`. Dependency path: the critical chain from X, or a path X → Y. (Renamed to avoid "filepath" confusion; "chain" chosen over dep/deps/trace/route.) |
+| `validate` | `[shipped]` `[C-4]` | Validate the whole graph: schema, links, cycles, recomposition, order, staleness (`affects`). **Pure** — no probes, no writes. `--strict` promotes warnings to CI failures. Exit: 0 clean / 1 violations / 2 error. `--json` → **`validate/v1`**. *This is what `check` did before C-4* (ODD-0023 §5). |
+| `check` | `[shipped]` `[C-4]` | **The composite:** `validate`, then `reconcile` — "is my plan actually true?". Validation **errors stop the run** (probing a graph with cycles or dangling edges reports on a known-bad state, at probe cost); warnings do not. Exit is the worse of the two phases. `--json` → **`check/v2`**, embedding a `validate` section and a `reconcile` one, with `reconcile: null` + `reconcile_skipped: true` when it stopped early. |
 | `reconcile` | `[shipped]` | Reconcile declared `desired_facts` against reality: re-run volatile probes, report drift, re-stamp `last_checked`. `--strict` fails on "couldn't check". |
-| `migrate <PATH>` | `[shipped]` `[C-5]` | Import a legacy number-/state-directory corpus into the node model (idempotent, keyed on preserved legacy number; never deletes/mutates legacy files). `--dry-run`. **C-5: absorbs `self-host`** as a special case — the two become one verb. |
-| `project [--name=<NAME>]` | `[C-4 rename]` | Was `context`. "Where am I in the plan" query; defaults to the current project, `--name` for others. Stays top-level. |
+| `migrate <PATH>` | `[shipped]` | Import a legacy number-/state-directory corpus into the node model (idempotent, keyed on preserved legacy number; never deletes/mutates legacy files). `--dry-run`. **Absorbed `self-host`** (C-5): the tree's shape selects the derivation, `--plan`/`--legacy` force it. The `self-host` spelling was removed in C-4 — one verb. |
+| `project [--name=<NAME>]` | `[shipped]` `[C-4]` | Was `context`. "Where am I in the plan" query; defaults to the current project, `--name` for others. Stays top-level. |
 | `help` / `--version` | `[shipped]` | `-h/--help`, `-V/--version`. |
 
-**Pending removal — `use <project\|arc> <REF>`** `[shipped]`: sets the active
-project/arc context. With `project` and the store model this may be
-**redundant**; ODD-0023 §5 tentatively **retires** it unless a workflow needs
-it. Decide in ODD-0023.
+| `use <project\|arc> <REF>` | `[shipped]` | Set the current project or arc — the CURRENT FOCUS `orient` reads back. **Kept** (ODD-0023 §5 v1.1, reversing the draft's tentative retire): RH C-5 gave it a real workflow and fixed the use/orient root split so it works. It acts on whole-graph session state, like a cursor. |
 
 **Conventions** (unchanged): refs resolve by id | number | unique name-prefix
 everywhere; data → stdout, diagnostics → stderr; errors-as-affordances (every
@@ -73,9 +72,9 @@ support `--dry-run` and `--yes`.
 
 | Command | Status | Description |
 |---------|--------|-------------|
-| `node new <TYPE> <NAME>` | `[shipped]` `[C-4]` `[C-2]` | Create a node (idempotent: re-running describes rather than duplicating). Types: `project\|arc\|slice\|design\|adr\|note\|research` (`[C-2]`: `odd`→`design`, `+research`). `--parent <REF>` sets `part_of`. **C-4:** on re-run against an existing node, **warn** (not info) — "exists; for details run `odm project --name=…`". |
+| `node new <TYPE> <NAME>` | `[shipped]` `[C-4]` | Create a node (idempotent: re-running describes rather than duplicating). Types: `project\|arc\|slice\|design\|adr\|note\|research` (`[C-2]`: `odd`→`design`, `+research`). `--parent <REF>` sets `part_of`. **C-4 (F-10):** on re-run against an existing node it **warns** (not info) and stays a one-liner — `project exists: #1 "P" — for details run `odm project --name="P"`` — rather than dumping details nobody asked for. |
 | `node show <REF>` | `[shipped]` | Show a node, its edges, and its way-finding (parent + children). |
-| `node list` | `[shipped]` `[C-3]` `[C-2]` | List nodes, filtered (`--type <T>` `--tag <TAG>` `--component <C>`). **C-3 overhaul:** drop the number column; first column = creation date (`--date=updated` switches); "status" column after "type"; numbers removed from titles; branch-and-leaf ASCII tree (project → arcs → slices) replaces name-prefixing; max-display-width config + flag, overflow elided with " …". `[C-2]` type renames show in the UI. |
+| `node list` | `[shipped]` `[C-3]` | List nodes, filtered (`--type <T>` `--tag <TAG>` `--component <C>`). **C-3 overhaul:** drop the number column; first column = creation date (`--date=updated` switches); "status" column after "type"; numbers removed from titles; branch-and-leaf ASCII tree (project → arcs → slices) replaces name-prefixing; max-display-width config + flag, overflow elided with " …". `[C-2]` type renames show in the UI. |
 | `node rename <REF> <NAME>` | `[shipped]` | Rename a node (name only — id and path unchanged). |
 | `node retire <REF> --because <WHY>` | `[shipped]` | Retire a node (withdraw it; file preserved, never deleted). |
 | `node supersede <REF> --with <REF> --kind <obsoletes\|updates>` | `[shipped]` | Record that one node supersedes another. |
@@ -89,10 +88,11 @@ support `--dry-run` and `--yes`.
 | `node info <REF>` | `[llm-arc]` | New — machine-oriented node facts (`--json` contract, F-21 dates ride here). arc-llm-command-surface. |
 | `node search <QUERY>` | `[llm-arc]` | New — content/metadata search over nodes. arc-llm-command-surface. |
 
-> **Open (ODD-0023 §7):** do very common node verbs keep a permanent top-level
-> shortcut (`odm show` ≡ `odm node show`), or only through the deprecation
-> window? Recommendation: `odm node list` for nodes; graph-wide views stay
-> `orient`/`rollup`.
+> **Resolved (ODD-0023 §7 v1.1):** no top-level shortcuts, permanent or
+> transitional — `odm node show` is the only spelling, and `odm show` is an
+> unrecognized subcommand. `odm node list` lists nodes; graph-wide views stay
+> `orient`/`rollup`. Bare `odm node` prints this group's subcommands on stdout
+> and exits `0`, rather than erroring: it is a fair question with a real answer.
 
 ---
 
@@ -104,10 +104,10 @@ Manages the store *container* — the orphan `odm` branch in its worktree
 
 | Command | Status | Description |
 |---------|--------|-------------|
-| `store init` | `[store-home]` | Three-way: **bootstrap** (create the orphan `odm` branch + `.worktrees/odm` worktree + `config.toml`), **attach** (existing remote branch), **sync** (ff-only). Realizes ODD-0022 §4.3; arc-store-home slice 02 (bootstrap) + slice 03 (attach/ff-sync). |
-| `store sync` | `[store-home]` | Fast-forward / rebase the local store to upstream (team sync is plain git push/pull; this is the ergonomic wrapper). arc-store-home slice 03. |
-| `store rename` | `[store-home]` | Rename the store worktree/branch (the one gix operation that shells out — ODD-0022 §5). arc-store-home slice 04. |
-| `store status` | `[store-home]` `[future]` | **Open (ODD-0023 §7):** "where is my store / is it synced" — a `store` verb, or folded into `orient`? Undecided. |
+| `store init` | `[shipped]` | Three arms, chosen from what is already there: **bootstrap** (create the orphan branch + worktree + `config.toml`), **attach** (a remote has it — check out, never re-orphan, never re-scaffold), **ff-sync** (already local; fast-forward only, divergence stops rather than merging). `--worktree`/`--branch` name it; `--dry-run`, `--json`. Realizes ODD-0022 §4.3; arc-store-home slices 02–03. |
+| `store sync` | — | **Not a command.** Verified against the binary in C-4: ff-sync is an *arm of* `store init` (above), chosen when the branch is already local. There is no `odm store sync`; the inventory previously listed one. |
+| `store rename` | `[shipped]` | Rename the store worktree/branch (the one gix operation that shells out — ODD-0022 §5). arc-store-home slice 04. |
+| `store status` | `[future]` | **Still open (ODD-0023 §7):** "where is my store / is it synced" — a `store` verb, or folded into `orient`? Explicitly non-blocking; nothing depends on the answer and no such command exists. |
 
 ---
 
@@ -211,105 +211,93 @@ beyond legacy) → **top-level**; legacy `search` prefigures `node search`
 
 ## 7. Debatable classifications (decided in ODD-0023 §5 — pointer, not re-litigated here)
 
-- **`use`** → retire candidate (redundant with `project` + store model). *(§1
-  Pending removal.)*
-- **`context` → `project`** → RH **C-4** rename; stays **top-level**.
-- **`check` + `reconcile`** → keep `validate` as an alias; make reconcile
-  **opt-in** (`check --reconcile`) rather than every `check` paying probe cost.
-- **`self-host` → `migrate`** → RH **C-5**; does not survive as its own verb.
+All decided in ODD-0023 v1.1 (**Accepted**, 2026-07-26) and shipped in C-4:
+
+- **`use`** → **kept**, top-level (reversal: C-5 gave it the CURRENT FOCUS workflow).
+- **`context` → `project`** → renamed; stays **top-level**; `--name` inspects another project.
+- **`check` + `reconcile`** → **reversal**: `validate` is the *pure* command (not an alias) and
+  `check` is the *composite* `validate`-then-`reconcile`, stopping at validate errors. Schema ids
+  bumped to `validate/v1` / `check/v2` (§6a) because `check` changed meaning under the same name.
+- **`self-host` → `migrate`** → folded in C-5; the spelling **removed** in C-4.
 - **`next` / `blocked` / `chain`** → graph queries; **top-level**.
 - **`list` scope** → `odm node list`; graph-wide views stay `orient`/`rollup`.
+- **Aliases** → **reversal**: hard cut, none at all.
 
 ---
 
-## Appendix — current shipped `--help` (flat; verbatim, pre-reorg)
+## Appendix — the built `--help`, verbatim (three tiers, post-C-4)
 
-Kept for verification traceability until the C-4 reorg pass rewrites
-`--help`/`--json` to the tiers above. This is the actual clap output today.
+Captured from `target/release/odm` on 2026-07-26, after the C-4 reorg. This is
+the parity evidence: the tiers above are what the binary actually prints, not
+what the reorg intended to produce.
+
+### `odm -h`
 
 ```text
-odm 1.0.0
 The Odd Document Manager
 
 Usage: odm [COMMAND]
 
-The subcommand is optional: bare `odm` runs `orient` (it never bare-errors),
-performing the cheap incremental drift pass first (no volatile probes).
-
-Orient / read  (every query supports --json with versioned schemas:
-                orient/v1, rollup/v1, check/v1, reconcile/v1, ...):
-  orient                  Orient: vision → current focus → ready/blocked →
-                          integrity → drift. The default command.
-                          [visible alias: brief]
-  rollup                  Regenerate `ROLLUP.md`: the single cheap view of the
-                          whole plan  [--dry-run renders to stdout]
-  list                    List nodes, optionally filtered
-                          [--type <T>] [--tag <TAG>] [--component <C>]
-  show <REF>              Show a node, its edges, and its way-finding
-                          (parent + children)
-  next                    Show the ready frontier (nodes whose dependencies
-                          are satisfied)
-  blocked <REF>           Explain why a node is blocked or low-confidence
-  path <REF> [TO]         Show a dependency path: the critical chain from X,
-                          or a path X → Y
-
-Context:
-  use <project|arc> <REF> Set the current project or arc context
-  context                 Show the current project/arc context
-
-Create / edit  (every mutator supports --dry-run and --yes):
-  new <TYPE> <NAME>       Create a node (idempotent: re-running describes
-                          rather than duplicating). Types:
-                          project|arc|slice|odd|adr|note
-                          [--parent <REF> sets part_of]
-  rename <REF> <NAME>     Rename a node (name only — id and path unchanged)
-  retire <REF>            Retire a node (withdraw it; the file is preserved,
-      --because <WHY>     never deleted)
-  supersede <REF>         Record that one node supersedes another
-      --with <REF>
-      --kind <obsoletes|updates>
-
-Graph mutators  (--dry-run, --yes):
-  link <X> <EDGE> <Y>     Add an edge on the source node (reverse is derived,
-                          never written). Edges: depends_on [--satisfied-at
-                          <GATE>], blocked_by, consumes, verifies, affects,
-                          part_of (single-parent, replace semantics)
-  unlink <X> <EDGE> <Y>   Remove an edge from the source node (absent edge →
-                          a clear no-op)
-  set-gate <REF> <GATE>   Record that a node has reached a gate (validated
-      [--by <WHO>]        against its type's gate-set)
-      [--evidence <asserted|attested|reproduced|reconciled>]
-  tear <X> depends_on <Y> Declare a deliberately-assumed dependency edge
-      --because <WHY>     (breaks a cycle; rationale required)
-  decomposed <REF>        Affirm that a parent's children fully account for
-      [--children REF...] its scope (§4.5); no --children → current children
-
-Integrity & drift:
-  check                   Validate the whole graph: schema, links, cycles,
-                          recomposition, order, staleness (`affects`)
-                          [--strict promotes warnings to CI failures]
-                          exit codes: 0 clean / 1 violations / 2 error
-  reconcile               Reconcile declared desired_facts against reality:
-                          re-run volatile probes, report drift, re-stamp
-                          last_checked  [--strict fails on "couldn't check"]
-
-Migration:
-  migrate <LEGACY_PATH>   Import a legacy number-/state-directory ODD corpus
-                          into the node model (idempotent, keyed on preserved
-                          legacy number; never deletes/mutates legacy files)
-                          [--dry-run]
-  self-host <PLAN_PATH>   Import odm's own plan set (project + arcs + slices
-                          under a design-vX.Y.Z/ tree) as work nodes
-                          (idempotent; --dry-run)
+Commands:
+  orient     Orient: vision → current focus → ready/blocked → integrity → drift [aliases: brief]
+  rollup     Regenerate the plan rollup: the single cheap view of the whole plan
+  next       Show the ready frontier (nodes whose dependencies are satisfied)
+  blocked    Explain why a node is blocked or low-confidence
+  chain      Show the critical chain from X, or the dependency path X → Y
+  project    Show where you are in the plan: the current project and arc
+  use        Set the current project or arc context
+  validate   Validate the graph: schema, links, cycles, recomposition, order
+  check      Check the plan against reality: `validate`, then `reconcile`
+  reconcile  Reconcile declared `desired_facts` against reality: report drift
+  migrate    Import a document corpus or a plan set into the node model
+  node       Manage nodes: create, inspect, relate, and advance them
+  store      Manage the store itself: where it lives and how it is created
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help              Print help
-  -V, --version           Print version
+  -h, --help     Print help (see more with '--help')
+  -V, --version  Print version
+```
 
-Conventions:
-  * Node refs resolve by id | number | unique name-prefix, everywhere.
-  * Data → stdout, diagnostics → stderr.
-  * Errors-as-affordances: every failure names the command that fixes it.
+### `odm node -h`
+
+```text
+Manage nodes: create, inspect, relate, and advance them
+
+Usage: odm node [COMMAND]
+
+Commands:
+  new         Create a node (idempotent: re-running describes rather than duplicating)
+  list        List nodes as a plan: date, type, status, containment tree
+  show        Show a node, its edges, and its way-finding (parent + children)
+  rename      Rename a node (name only — id and path are unchanged)
+  retire      Retire a node (withdraw it; the file is preserved, never deleted)
+  supersede   Record that one node supersedes another
+  link        Add an edge on the source node (reverse is derived, never written)
+  unlink      Remove an edge from the source node (absent edge → a clear no-op)
+  set-gate    Record that a node has reached a gate (validated against its gate-set)
+  decomposed  Affirm that a parent's children fully account for its scope (§4.5)
+  tear        Declare a deliberately-assumed dependency edge (breaks a cycle)
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help (see more with '--help')
+```
+
+### `odm store -h`
+
+```text
+Manage the store itself: where it lives and how it is created
+
+Usage: odm store [COMMAND]
+
+Commands:
+  init    Create or refresh the store's home: a worktree holding an orphan branch
+  rename  Rename the store's worktree directory and/or its branch
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help (see more with '--help')
 ```
 
 ---

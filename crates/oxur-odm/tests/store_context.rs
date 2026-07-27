@@ -69,8 +69,8 @@ fn repo_with_redirected_store() -> (TempDir, std::path::PathBuf) {
     let dir = repo();
     odm(dir.path()).args(["store", "init"]).assert().success();
     let store = dir.path().join(".worktrees").join("odm");
-    odm(dir.path()).args(["new", "project", "Test project"]).assert().success();
-    odm(dir.path()).args(["new", "arc", "Test arc"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "Test project"]).assert().success();
+    odm(dir.path()).args(["node", "new", "arc", "Test arc"]).assert().success();
     (dir, store)
 }
 
@@ -114,7 +114,7 @@ fn context_and_orient_agree_on_the_selection() {
     // `context` read the store root even before the fix, so it agreeing with
     // `orient` is the actual invariant: the two commands cannot disagree about
     // what is selected.
-    let context = stdout(odm(dir.path()).args(["context"]).assert().success());
+    let context = stdout(odm(dir.path()).args(["project"]).assert().success());
     let focus = focus_block(&stdout(odm(dir.path()).args(["orient"]).assert().success()));
     assert!(context.contains("Test arc"), "context reports the arc; got:\n{context}");
     assert!(focus.contains("Test arc"), "orient's focus reports the same arc; got:\n{focus}");

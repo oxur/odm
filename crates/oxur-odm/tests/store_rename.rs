@@ -34,7 +34,7 @@ fn store_repo() -> TempDir {
     git(dir.path(), &["add", "README.md"]);
     git(dir.path(), &["commit", "-m", "initial"]);
     odm(dir.path()).args(["store", "init"]).assert().success();
-    odm(dir.path()).args(["new", "project", "Kept project"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "Kept project"]).assert().success();
     dir
 }
 
@@ -45,7 +45,7 @@ fn locator(dir: &Path) -> String {
 
 /// Asserts the store resolves and still holds the seeded node.
 fn resolves_with_the_corpus(dir: &Path) {
-    let out = odm(dir).arg("list").assert().success().get_output().stdout.clone();
+    let out = odm(dir).args(["node", "list"]).assert().success().get_output().stdout.clone();
     assert!(
         String::from_utf8_lossy(&out).contains("Kept project"),
         "the corpus is still reachable after the rename"
@@ -325,7 +325,7 @@ fn renaming_without_a_store_section_explains_rather_than_failing_obscurely() {
     git(dir.path(), &["init", "--initial-branch=main"]);
     git(dir.path(), &["config", "user.name", "Test"]);
     git(dir.path(), &["config", "user.email", "test@example.com"]);
-    odm(dir.path()).args(["new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "P"]).assert().success();
 
     odm(dir.path())
         .args(["store", "rename", "planning"])

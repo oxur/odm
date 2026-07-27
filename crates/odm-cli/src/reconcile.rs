@@ -236,6 +236,32 @@ pub(crate) fn reconcile(
     Ok(code)
 }
 
+/// The reconcile report as a JSON value, for the composite `check` to embed
+/// (ODD-0023 §6a) rather than re-deriving or re-parsing printed output.
+///
+/// # Errors
+///
+/// As [`reconcile`].
+pub(crate) fn reconcile_value(
+    store: &Store,
+    strict: bool,
+) -> anyhow::Result<(u8, serde_json::Value)> {
+    let snapshot = reconcile_full(store, &default_drift_path(store.root()))
+        .context("running the full drift reconcile")?;
+    let documents = store.load_all().context("loading the corpus to report drift")?;
+    let drift = project_drift(&snapshot, &documents);
+    let counts =
+        Counts { holds: drift.holds, drifted: drift.drifted.len(), errored: drift.errored.len() };
+    let code = verdict(&counts).exit_code(strict);
+    let report = ReconcileReport {
+        schema: RECONCILE_SCHEMA,
+        ok: code == EXIT_OK,
+        counts: CountsJson::from(&counts),
+        nodes: nodes_json(&snapshot, &documents),
+    };
+    Ok((code, serde_json::to_value(report)?))
+}
+
 /// Renders the reconcile human report: a clean run is one plain "no drift" line
 /// (no fabricated data); otherwise a header plus one entry per drifted / errored
 /// fact (holds are not listed — only findings), with staleness where volatile.

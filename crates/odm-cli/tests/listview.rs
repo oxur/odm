@@ -40,16 +40,16 @@ fn run(root: &Path, args: &[&str]) -> Run {
 /// A project → arc → two slices, one design doc, and one retired slice.
 fn seed(root: &Path) {
     std::fs::write(root.join("odm.toml"), GATES).unwrap();
-    run(root, &["new", "project", "Root project"]);
-    run(root, &["new", "arc", "Arc 01 — First arc", "--parent", "1"]);
-    run(root, &["new", "slice", "Slice 01 — Alpha", "--parent", "2"]);
-    run(root, &["new", "slice", "Slice 02 — Beta", "--parent", "2"]);
-    run(root, &["new", "design", "A design document"]);
-    run(root, &["set-gate", "3", "built"]);
-    run(root, &["set-gate", "5", "draft"]);
+    run(root, &["node", "new", "project", "Root project"]);
+    run(root, &["node", "new", "arc", "Arc 01 — First arc", "--parent", "1"]);
+    run(root, &["node", "new", "slice", "Slice 01 — Alpha", "--parent", "2"]);
+    run(root, &["node", "new", "slice", "Slice 02 — Beta", "--parent", "2"]);
+    run(root, &["node", "new", "design", "A design document"]);
+    run(root, &["node", "set-gate", "3", "built"]);
+    run(root, &["node", "set-gate", "5", "draft"]);
     // #6: retired, so it must not appear in a default listing (F-15).
-    run(root, &["new", "slice", "Slice 03 — Tombstone", "--parent", "2"]);
-    run(root, &["retire", "6", "--because", "created against a stale list"]);
+    run(root, &["node", "new", "slice", "Slice 03 — Tombstone", "--parent", "2"]);
+    run(root, &["node", "retire", "6", "--because", "created against a stale list"]);
 }
 
 /// The visible text of a run, ANSI stripped.
@@ -76,7 +76,7 @@ fn plain(text: &str) -> String {
 fn list_has_no_number_column() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let r = run(dir.path(), &["list"]);
+    let r = run(dir.path(), &["node", "list"]);
     assert!(r.ok);
     let out = plain(&r.out);
     assert!(!out.contains("NUMBER"), "no NUMBER column:\n{out}");
@@ -88,14 +88,14 @@ fn list_has_no_number_column() {
 fn list_leads_with_date_and_honours_the_date_flag() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
     let header = out.lines().nth(1).expect("a header row");
     let columns: Vec<&str> = header.split('│').map(str::trim).collect();
     assert_eq!(columns, ["DATE", "TYPE", "STATUS", "NAME", "ID"], "C-3 column order");
 
     // Both forms dispatch and render a table.
     for which in ["created", "updated"] {
-        let r = run(dir.path(), &["list", "--date", which]);
+        let r = run(dir.path(), &["node", "list", "--date", which]);
         assert!(r.ok, "--date={which} dispatches");
         assert!(plain(&r.out).contains("DATE"), "--date={which} renders");
     }
@@ -107,7 +107,7 @@ fn list_leads_with_date_and_honours_the_date_flag() {
 fn list_status_shows_the_furthest_reached_gate() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
 
     // #3 reached `built` (the second of planned/built/tested).
     let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row");
@@ -123,7 +123,7 @@ fn list_status_shows_the_furthest_reached_gate() {
 fn list_renders_the_containment_tree_and_a_document_group() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
 
     // The arc is a child of the project, the slices children of the arc.
     let arc = out.lines().find(|l| l.contains("First arc")).expect("arc row");
@@ -156,13 +156,13 @@ fn list_renders_the_containment_tree_and_a_document_group() {
 fn list_denumbers_displayed_names() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
     assert!(out.contains("Alpha"), "the name still shows:\n{out}");
     assert!(!out.contains("Slice 01"), "the number-reference is stripped:\n{out}");
     assert!(!out.contains("Arc 01"), "the arc's number-reference is stripped:\n{out}");
 
     // Display-only: the stored name is untouched (`--json` is the raw record).
-    let json = run(dir.path(), &["list", "--json"]).out;
+    let json = run(dir.path(), &["node", "list", "--json"]).out;
     assert!(json.contains("Slice 01 — Alpha"), "the stored name is unchanged:\n{json}");
 }
 
@@ -172,12 +172,12 @@ fn list_denumbers_displayed_names() {
 fn list_elides_names_past_the_width_limit() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list", "--width", "12"]).out);
+    let out = plain(&run(dir.path(), &["node", "list", "--width", "12"]).out);
     assert!(out.contains(" ..."), "a long name is elided:\n{out}");
     assert!(!out.contains("A design document"), "the full name is not shown:\n{out}");
 
     // A generous width leaves everything intact.
-    let wide = plain(&run(dir.path(), &["list", "--width", "200"]).out);
+    let wide = plain(&run(dir.path(), &["node", "list", "--width", "200"]).out);
     assert!(wide.contains("A design document"), "no elision when it fits:\n{wide}");
 }
 
@@ -187,7 +187,7 @@ fn list_elides_names_past_the_width_limit() {
 fn list_excludes_retired_nodes_by_default() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
     assert!(!out.contains("Tombstone"), "retired node hidden by default:\n{out}");
     assert!(out.contains("withdrawn"), "the summary says rows were withheld:\n{out}");
 }
@@ -196,7 +196,7 @@ fn list_excludes_retired_nodes_by_default() {
 fn list_all_shows_retired_nodes_marked_and_dimmed() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let r = run(dir.path(), &["list", "--all"]);
+    let r = run(dir.path(), &["node", "list", "--all"]);
     assert!(r.ok);
     let out = plain(&r.out);
     let row = out.lines().find(|l| l.contains("Tombstone")).expect("the retired row");
@@ -220,13 +220,13 @@ fn hiding_the_last_child_promotes_its_previous_sibling_to_the_closing_glyph() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
 
-    let shown = plain(&run(dir.path(), &["list", "--all"]).out);
+    let shown = plain(&run(dir.path(), &["node", "list", "--all"]).out);
     let beta_all = shown.lines().find(|l| l.contains("Beta")).expect("Beta row");
     let tomb = shown.lines().find(|l| l.contains("Tombstone")).expect("Tombstone row");
     assert!(beta_all.contains("├─"), "with the tombstone shown, Beta is not last: {beta_all}");
     assert!(tomb.contains("└─"), "the tombstone closes the branch: {tomb}");
 
-    let hidden = plain(&run(dir.path(), &["list"]).out);
+    let hidden = plain(&run(dir.path(), &["node", "list"]).out);
     let beta = hidden.lines().find(|l| l.contains("Beta")).expect("Beta row");
     assert!(beta.contains("└─"), "with the tombstone hidden, Beta must close the branch: {beta}");
     assert!(!beta.contains("├─"), "no dangling branch to an absent row: {beta}");
@@ -238,9 +238,9 @@ fn hiding_a_parent_reroots_its_children() {
     // roots of that view rather than staying indented under an absent parent.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    run(dir.path(), &["retire", "2", "--because", "folded into another arc"]);
+    run(dir.path(), &["node", "retire", "2", "--because", "folded into another arc"]);
 
-    let out = plain(&run(dir.path(), &["list"]).out);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
     assert!(!out.contains("First arc"), "the retired arc is hidden:\n{out}");
     let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row");
     assert!(
@@ -257,7 +257,7 @@ fn status_cells_carry_the_legacy_state_colours() {
     // draft yellow (SGR 33), accepted/final green (32) — colour only, no bold.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let raw = run(dir.path(), &["list", "--group", "reference"]).out;
+    let raw = run(dir.path(), &["node", "list", "--group", "reference"]).out;
     let doc = raw.lines().find(|l| l.contains("A design document")).expect("the design row");
     assert!(doc.contains("\u{1b}[33m"), "a `draft` status is yellow: {doc:?}");
     assert!(!doc.contains("\u{1b}[1m"), "the state carries no bold, as in 0.3.5: {doc:?}");
@@ -271,9 +271,9 @@ fn work_gate_statuses_carry_the_matching_palette_slots() {
     // done-at-its-layer / verified-live distinction visible.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    run(dir.path(), &["set-gate", "4", "planned"]);
-    run(dir.path(), &["set-gate", "1", "verified"]);
-    let raw = run(dir.path(), &["list"]).out;
+    run(dir.path(), &["node", "set-gate", "4", "planned"]);
+    run(dir.path(), &["node", "set-gate", "1", "verified"]);
+    let raw = run(dir.path(), &["node", "list"]).out;
 
     let row_for = |name: &str| {
         raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
@@ -289,7 +289,7 @@ fn type_cells_carry_one_hue_per_node_type() {
     // because violet and orange have no basic ANSI slot.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let raw = run(dir.path(), &["list"]).out;
+    let raw = run(dir.path(), &["node", "list"]).out;
     let row_for = |name: &str| {
         raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
     };
@@ -305,7 +305,7 @@ fn date_and_id_are_muted_but_keep_the_alternating_band() {
     // the eye. The muting is per-band, so the alternating stripe survives.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let raw = run(dir.path(), &["list"]).out;
+    let raw = run(dir.path(), &["node", "list"]).out;
     let data: Vec<&str> = raw.lines().skip(2).filter(|l| l.contains("20")).collect();
 
     let first_fg = |line: &str| {
@@ -327,7 +327,7 @@ fn dimming_wins_over_the_state_colour_on_a_withdrawn_row() {
     // A retired row is dimmed whole; the status colour must not fight it.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let raw = run(dir.path(), &["list", "--all"]).out;
+    let raw = run(dir.path(), &["node", "list", "--all"]).out;
     let row = raw.lines().find(|l| l.contains("Tombstone")).expect("the retired row");
     assert!(row.contains("\u{1b}[90m"), "the row is dimmed: {row:?}");
 }
@@ -338,7 +338,7 @@ fn dimming_wins_over_the_state_colour_on_a_withdrawn_row() {
 fn group_plan_shows_only_work_nodes() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list", "--group", "plan"]).out);
+    let out = plain(&run(dir.path(), &["node", "list", "--group", "plan"]).out);
     assert!(out.contains("Root project"), "the plan shows:\n{out}");
     assert!(out.contains("Alpha"), "its slices show:\n{out}");
     assert!(!out.contains("A design document"), "reference material does not:\n{out}");
@@ -349,7 +349,7 @@ fn group_plan_shows_only_work_nodes() {
 fn group_reference_shows_only_document_nodes() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list", "--group", "reference"]).out);
+    let out = plain(&run(dir.path(), &["node", "list", "--group", "reference"]).out);
     assert!(out.contains("A design document"), "reference material shows:\n{out}");
     assert!(!out.contains("Root project"), "the plan does not:\n{out}");
     assert!(!out.contains("Alpha"), "nor its slices:\n{out}");
@@ -362,9 +362,9 @@ fn group_composes_with_the_other_filters() {
     seed(dir.path());
     // The retired node is a work node, so it is in the plan group — and still
     // withheld unless asked for.
-    let plain_plan = plain(&run(dir.path(), &["list", "--group", "plan"]).out);
+    let plain_plan = plain(&run(dir.path(), &["node", "list", "--group", "plan"]).out);
     assert!(!plain_plan.contains("Tombstone"), "still excluded by default:\n{plain_plan}");
-    let with_all = plain(&run(dir.path(), &["list", "--group", "plan", "--all"]).out);
+    let with_all = plain(&run(dir.path(), &["node", "list", "--group", "plan", "--all"]).out);
     assert!(with_all.contains("Tombstone"), "--all still applies within a group:\n{with_all}");
 }
 
@@ -374,7 +374,7 @@ fn group_composes_with_the_other_filters() {
 fn status_filter_shows_only_the_matching_nodes() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list", "--status", "built"]).out);
+    let out = plain(&run(dir.path(), &["node", "list", "--status", "built"]).out);
     assert!(out.contains("Alpha"), "the node at `built` shows:\n{out}");
     assert!(!out.contains("Beta"), "a node at another status does not:\n{out}");
     assert!(!out.contains("A design document"), "documents are filtered too:\n{out}");
@@ -386,7 +386,7 @@ fn status_filter_on_a_withdrawn_value_reveals_the_withheld_rows() {
     // listing hides, without having to pass `--all` and hunt for it.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let out = plain(&run(dir.path(), &["list", "--status", "retired"]).out);
+    let out = plain(&run(dir.path(), &["node", "list", "--status", "retired"]).out);
     assert!(out.contains("Tombstone"), "the retired node shows:\n{out}");
     assert!(!out.contains("Alpha"), "live work does not:\n{out}");
 }
@@ -395,10 +395,10 @@ fn status_filter_on_a_withdrawn_value_reveals_the_withheld_rows() {
 fn status_filter_is_case_insensitive_and_reports_an_empty_result() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let upper = plain(&run(dir.path(), &["list", "--status", "RETIRED"]).out);
+    let upper = plain(&run(dir.path(), &["node", "list", "--status", "RETIRED"]).out);
     assert!(upper.contains("Tombstone"), "the match ignores case:\n{upper}");
 
-    let none = plain(&run(dir.path(), &["list", "--status", "nonesuch"]).out);
+    let none = plain(&run(dir.path(), &["node", "list", "--status", "nonesuch"]).out);
     assert!(none.contains("no nodes with status"), "an empty result says why:\n{none}");
 }
 
@@ -408,6 +408,6 @@ fn list_json_is_unfiltered_by_all() {
     // default-hiding is a human-view affordance.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
-    let json = run(dir.path(), &["list", "--json"]).out;
+    let json = run(dir.path(), &["node", "list", "--json"]).out;
     assert!(json.contains("Tombstone"), "JSON carries the retired node:\n{json}");
 }

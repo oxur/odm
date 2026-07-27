@@ -32,7 +32,7 @@ fn new_node_stamps_schema_v1() {
 
     // Create one node of a few representative types; each must carry <type>/v1.0.
     for (ty, name) in [("project", "Proj"), ("design", "Doc"), ("slice", "Work")] {
-        let (code, _o, _e) = run_code(dir.path(), &["new", ty, name]);
+        let (code, _o, _e) = run_code(dir.path(), &["node", "new", ty, name]);
         assert_eq!(code, Some(0), "`odm new {ty}` dispatches");
     }
 
@@ -75,13 +75,13 @@ fn check_wrong_type_field_is_error() {
     store.persist(&Document::new(fm, "body\n")).unwrap();
 
     // `odm check` is an Error (exit 1), and names the wrong-type-field finding.
-    let (code, out, _e) = run_code(dir.path(), &["check"]);
+    let (code, out, _e) = run_code(dir.path(), &["validate"]);
     assert_eq!(code, Some(1), "wrong-type field fails check:\n{out}");
     assert!(out.contains("wrong-type-field"), "the finding is surfaced:\n{out}");
     assert!(out.contains("desired_facts"), "names the offending field:\n{out}");
 
     // `check --json` marks it an error too.
-    let (_c, jout, _e) = run_code(dir.path(), &["check", "--json"]);
+    let (_c, jout, _e) = run_code(dir.path(), &["validate", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&jout).expect("valid JSON");
     assert_eq!(v["ok"], false);
     assert!(
@@ -117,6 +117,6 @@ fn check_green_when_fields_valid_for_type() {
     store.persist(&Document::new(odd, "body\n")).unwrap();
     store.persist(&Document::new(newer, "body\n")).unwrap();
 
-    let (code, out, _e) = run_code(dir.path(), &["check"]);
+    let (code, out, _e) = run_code(dir.path(), &["validate"]);
     assert_eq!(code, Some(0), "valid per-type fields → check green:\n{out}");
 }

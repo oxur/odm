@@ -48,8 +48,8 @@ fn the_scaffolded_store_ignores_the_index_but_keeps_the_context() {
     let store = dir.path().join(".worktrees").join("odm");
 
     // Make odm produce both kinds of derived state, then ask git what it sees.
-    odm(dir.path()).args(["new", "project", "P"]).assert().success();
-    odm(dir.path()).args(["check"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["validate"]).assert().success();
     assert!(store.join(".odm").is_dir(), "the run produced derived state to ignore");
 
     odm(dir.path()).args(["use", "project", "P"]).assert().success();
@@ -143,8 +143,8 @@ fn nodes_land_in_the_new_home_and_check_is_green() {
     odm(dir.path()).args(["store", "init"]).assert().success();
     let store = dir.path().join(".worktrees").join("odm");
 
-    odm(dir.path()).args(["new", "project", "A project"]).assert().success();
-    odm(dir.path()).args(["new", "arc", "An arc", "--parent", "1"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "A project"]).assert().success();
+    odm(dir.path()).args(["node", "new", "arc", "An arc", "--parent", "1"]).assert().success();
 
     assert!(!dir.path().join("nodes").exists(), "nothing written at the repo root");
     let count = walkdir(&store.join("nodes"));
@@ -177,7 +177,7 @@ fn walkdir(dir: &Path) -> usize {
 fn context_is_written_under_the_store_root() {
     let dir = repo();
     odm(dir.path()).args(["store", "init"]).assert().success();
-    odm(dir.path()).args(["new", "project", "A project"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "A project"]).assert().success();
     odm(dir.path()).args(["use", "project", "1"]).assert().success();
 
     let store = dir.path().join(".worktrees").join("odm");
@@ -191,7 +191,7 @@ fn context_is_written_under_the_store_root() {
     );
     // It reads back through the same resolution.
     odm(dir.path())
-        .arg("context")
+        .arg("project")
         .assert()
         .success()
         .stdout(predicates::str::contains("A project"));
@@ -275,7 +275,7 @@ fn custom_worktree_and_branch_names_are_honoured() {
     assert_eq!(git(&store, &["branch", "--show-current"]), "plan");
 
     // And resolution follows it: a node lands there.
-    odm(dir.path()).args(["new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "P"]).assert().success();
     assert!(store.join("nodes").is_dir());
 }
 
@@ -285,7 +285,7 @@ fn custom_worktree_and_branch_names_are_honoured() {
 fn a_second_init_refuses_rather_than_clobbering() {
     let dir = repo();
     odm(dir.path()).args(["store", "init"]).assert().success();
-    odm(dir.path()).args(["new", "project", "A project"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "A project"]).assert().success();
 
     // The branch now exists locally, so this is a sync — deferred, untouched.
     odm(dir.path()).args(["store", "init"]).assert().success();

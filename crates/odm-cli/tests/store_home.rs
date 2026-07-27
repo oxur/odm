@@ -51,9 +51,9 @@ fn repo_with_worktree_store(locator: &str) -> TempDir {
 
 /// Seeds a project → arc → slice into the store rooted at `root`.
 fn seed(root: &Path) {
-    run(root, &["new", "project", "Root project"]);
-    run(root, &["new", "arc", "An arc", "--parent", "1"]);
-    run(root, &["new", "slice", "A slice", "--parent", "2"]);
+    run(root, &["node", "new", "project", "Root project"]);
+    run(root, &["node", "new", "arc", "An arc", "--parent", "1"]);
+    run(root, &["node", "new", "slice", "A slice", "--parent", "2"]);
 }
 
 // ----- L-6: node reads/writes use the resolved store root --------------------
@@ -73,7 +73,7 @@ fn nodes_are_written_into_the_resolved_store_not_the_repo_root() {
         fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.path()).collect::<Vec<_>>()
     );
 
-    let r = run(dir.path(), &["list"]);
+    let r = run(dir.path(), &["node", "list"]);
     assert_eq!(r.code, Some(0));
     for name in ["Root project", "An arc", "A slice"] {
         assert!(r.out.contains(name), "{name} listed from the resolved store:\n{}", r.out);
@@ -104,7 +104,7 @@ fn check_is_green_against_the_resolved_store() {
     let dir = repo_with_worktree_store("[store]\n");
     seed(dir.path());
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "check green on the worktree store:\n{}", r.out);
     assert!(r.out.contains("3 node(s)"), "it validated the seeded corpus:\n{}", r.out);
 }
@@ -122,7 +122,7 @@ fn without_a_store_section_everything_stays_at_the_repo_root() {
     assert!(dir.path().join("nodes").is_dir(), "nodes stay at the repo root");
     assert!(!dir.path().join(".worktrees").exists(), "no worktree is invented");
 
-    let r = run(dir.path(), &["check"]);
+    let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(0), "check green in the unredirected mode:\n{}", r.out);
     assert!(r.out.contains("3 node(s)"));
 }
@@ -136,10 +136,10 @@ fn gate_sets_are_read_from_the_stores_config_toml() {
     let dir = repo_with_worktree_store("[store]\n");
     seed(dir.path());
 
-    let r = run(dir.path(), &["set-gate", "3", "built"]);
+    let r = run(dir.path(), &["node", "set-gate", "3", "built"]);
     assert_eq!(r.code, Some(0), "the slice gate-set came from config.toml");
 
-    let listed = run(dir.path(), &["list"]);
+    let listed = run(dir.path(), &["node", "list"]);
     assert!(listed.out.contains("built"), "the gate took effect:\n{}", listed.out);
 }
 
@@ -162,8 +162,8 @@ fn the_stores_config_wins_over_the_locator() {
     )
     .unwrap();
 
-    run(dir.path(), &["new", "slice", "A slice"]);
-    let r = run(dir.path(), &["set-gate", "1", "polished"]);
+    run(dir.path(), &["node", "new", "slice", "A slice"]);
+    let r = run(dir.path(), &["node", "set-gate", "1", "polished"]);
     assert_eq!(r.code, Some(0), "the store's config.toml won");
 }
 
@@ -179,7 +179,7 @@ fn operational_config_falls_back_to_the_locator_when_the_store_has_none() {
     fs::create_dir_all(dir.path().join(".worktrees").join("odm")).unwrap();
 
     seed(dir.path());
-    let r = run(dir.path(), &["set-gate", "3", "built"]);
+    let r = run(dir.path(), &["node", "set-gate", "3", "built"]);
     assert_eq!(r.code, Some(0), "gate-sets still came from odm.toml");
-    assert_eq!(run(dir.path(), &["check"]).code, Some(0), "and check is green");
+    assert_eq!(run(dir.path(), &["validate"]).code, Some(0), "and check is green");
 }

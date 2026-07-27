@@ -27,7 +27,7 @@ mod term;
 use std::process::ExitCode;
 
 use anyhow::Context as _;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use odm_core::frontmatter::SupersedeKind;
 use odm_core::status::Evidence;
 use odm_store::{Store, StoreHome};
@@ -190,9 +190,53 @@ impl From<EvidenceArg> for Evidence {
     }
 }
 
+/// The output format for `rollup` (RH F-13).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum FormatArg {
+    /// Markdown — the committed, diffable representation.
+    Md,
+    /// JSON, for a machine consumer.
+    Json,
+}
+
+impl FormatArg {
+    /// The file extension this format writes.
+    fn extension(self) -> &'static str {
+        match self {
+            FormatArg::Md => "md",
+            FormatArg::Json => "json",
+        }
+    }
+}
+
 /// The `odm store …` operations.
 #[derive(Debug, Subcommand)]
 enum StoreCommand {
+    /// Create or refresh the store's home: a worktree holding an orphan branch.
+    ///
+    /// Three arms, chosen from what is already there: **bootstrap** when the
+    /// branch exists nowhere, **attach** when a remote has it (check it out —
+    /// never re-orphan, never re-scaffold, since that would overwrite a
+    /// teammate's store with defaults), and **ff-sync** when it is already
+    /// local. Divergence stops rather than merging or rebasing: odm does not
+    /// rewrite history other clones already hold.
+    Init {
+        /// The worktree directory name (default `odm`).
+        #[arg(long, value_name = "NAME")]
+        worktree: Option<String>,
+        /// The orphan branch name (default `odm`).
+        #[arg(long, value_name = "NAME")]
+        branch: Option<String>,
+        /// Report the plan and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Proceed non-interactively.
+        #[arg(long)]
+        yes: bool,
+        /// Emit JSON describing the created home.
+        #[arg(long)]
+        json: bool,
+    },
     /// Rename the store's worktree directory and/or its branch.
     ///
     /// Distinct from `odm rename`, which renames a *node*: this moves where the
@@ -218,31 +262,11 @@ enum StoreCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Create the store's home: a worktree holding a dedicated orphan branch.
-    ///
-    /// Bootstrap only for now — a repo whose store branch already exists stops
-    /// untouched, since attaching to it is a different operation.
-    Init {
-        /// The worktree directory name (default `odm`).
-        #[arg(long, value_name = "NAME")]
-        worktree: Option<String>,
-        /// The orphan branch name (default `odm`).
-        #[arg(long, value_name = "NAME")]
-        branch: Option<String>,
-        /// Report the plan and write nothing.
-        #[arg(long)]
-        dry_run: bool,
-        /// Proceed non-interactively.
-        #[arg(long)]
-        yes: bool,
-        /// Emit JSON describing the created home.
-        #[arg(long)]
-        json: bool,
-    },
 }
 
+/// The `odm node …` operations — node entity management (ODD-0023 §4).
 #[derive(Debug, Subcommand)]
-enum Command {
+enum NodeCommand {
     /// Create a node (idempotent: re-running describes rather than duplicating).
     New {
         /// Node type: project|arc|slice|design|research|adr|note.
@@ -348,82 +372,6 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Set the current project or arc context.
-    Use {
-        /// Which slot to set.
-        kind: UseKindArg,
-        /// A node id, number, or unique name prefix.
-        reference: String,
-    },
-    /// Show the current project/arc context.
-    Context {
-        /// Emit JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Validate the whole graph: schema, links, cycles, recomposition, order.
-    Check {
-        /// CI mode: promote warnings (staleness, soft-satisfaction) to failures.
-        #[arg(long)]
-        strict: bool,
-        /// Emit JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Reconcile declared `desired_facts` against reality: report drift.
-    ///
-    /// Runs every node's probes. A confirmed drift fails (exit 1); a probe that
-    /// could not run is a warning, surfaced always, failing only under `--strict`.
-    Reconcile {
-        /// CI mode: promote probe errors ("couldn't check") to failures.
-        #[arg(long)]
-        strict: bool,
-        /// Emit JSON (`reconcile/v1`).
-        #[arg(long)]
-        json: bool,
-    },
-    /// Orient: vision → current focus → ready/blocked → integrity → drift.
-    ///
-    /// The default command — bare `odm` runs this. `brief` is an alias.
-    #[command(visible_alias = "brief")]
-    Orient {
-        /// Emit JSON instead of the human-readable view.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Regenerate `ROLLUP.md`: the single cheap view of the whole plan.
-    Rollup {
-        /// Render the rollup to stdout without writing the file.
-        #[arg(long)]
-        dry_run: bool,
-        /// Emit JSON to stdout instead of writing `ROLLUP.md`.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show the ready frontier (nodes whose dependencies are satisfied).
-    Next {
-        /// Emit JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Explain why a node is blocked or low-confidence.
-    Blocked {
-        /// A node id, number, or unique name prefix.
-        reference: String,
-        /// Emit JSON.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show a dependency path: the critical chain from X, or a path X → Y.
-    Path {
-        /// The start node (id, number, or unique name prefix).
-        reference: String,
-        /// Optional destination node.
-        to: Option<String>,
-        /// Emit JSON.
-        #[arg(long)]
-        json: bool,
-    },
     /// Add an edge on the source node (reverse is derived, never written).
     Link {
         /// The source node (id, number, or unique name prefix).
@@ -508,14 +456,127 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Manage the store itself: where it lives and how it is created.
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Orient: vision → current focus → ready/blocked → integrity → drift.
     ///
-    /// The store's own lifecycle, as distinct from the nodes inside it
-    /// (ODD-0023).
-    Store {
-        /// The store operation.
-        #[command(subcommand)]
-        command: StoreCommand,
+    /// The default command — bare `odm` runs this. `brief` is an alias.
+    #[command(visible_alias = "brief")]
+    Orient {
+        /// Emit JSON instead of the human-readable view.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Regenerate the plan rollup: the single cheap view of the whole plan.
+    ///
+    /// Writes `<out>.<ext>` at the invocation root (default `ROLLUP.md`). The
+    /// format decides the extension, so `--format json` writes `ROLLUP.json`
+    /// (RH F-13 — the filename is a default, not a law).
+    Rollup {
+        /// Render to stdout without writing the file.
+        #[arg(long)]
+        dry_run: bool,
+        /// Output format.
+        #[arg(long, value_name = "FORMAT", default_value = "md")]
+        format: FormatArg,
+        /// Output file stem, without extension (default `ROLLUP`).
+        #[arg(long, value_name = "NAME")]
+        out: Option<String>,
+        /// Emit JSON to stdout instead of writing a file (equivalent to
+        /// `--format json --dry-run`; kept because every other query has it).
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the ready frontier (nodes whose dependencies are satisfied).
+    Next {
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Explain why a node is blocked or low-confidence.
+    Blocked {
+        /// A node id, number, or unique name prefix.
+        reference: String,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the critical chain from X, or the dependency path X → Y.
+    ///
+    /// Named `chain` rather than `path` (RH F-12): "path" reads as a filesystem
+    /// path, and the thing this answers is "what has to happen, in order".
+    Chain {
+        /// The start node (id, number, or unique name prefix).
+        reference: String,
+        /// Optional destination node.
+        to: Option<String>,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show where you are in the plan: the current project and arc.
+    ///
+    /// Was `context` (RH F-11) — the question is "which project am I in", and
+    /// `project` names the answer rather than the mechanism. Defaults to the
+    /// current selection; `--name` inspects another project instead.
+    Project {
+        /// Show this project instead of the current one (id, number, or unique
+        /// name prefix).
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+        /// Emit JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Set the current project or arc context.
+    Use {
+        /// Which slot to set.
+        kind: UseKindArg,
+        /// A node id, number, or unique name prefix.
+        reference: String,
+    },
+    /// Validate the graph: schema, links, cycles, recomposition, order.
+    ///
+    /// Pure — reads the corpus and nothing else. This is what `check` used to
+    /// do; ODD-0023 §5 gave the cheap operation its own name so nobody has to
+    /// remember a flag to avoid paying for probes.
+    Validate {
+        /// CI mode: promote warnings (staleness, soft-satisfaction) to failures.
+        #[arg(long)]
+        strict: bool,
+        /// Emit JSON (`validate/v1`).
+        #[arg(long)]
+        json: bool,
+    },
+    /// Check the plan against reality: `validate`, then `reconcile`.
+    ///
+    /// The composite (ODD-0023 §5). `validate` runs first and, if it reports
+    /// **errors**, `check` stops there — probing a graph with dangling edges or
+    /// cycles is noise on top of a known-bad state, and probes cost time and
+    /// have side effects. Warnings do not stop it.
+    ///
+    /// Exit is the worse of the two phases: `0` clean / `1` violations or drift.
+    Check {
+        /// CI mode: promote warnings and probe errors to failures, in both halves.
+        #[arg(long)]
+        strict: bool,
+        /// Emit JSON (`check/v2` — a `validate` section and a `reconcile` one).
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reconcile declared `desired_facts` against reality: report drift.
+    ///
+    /// Runs every node's probes. A confirmed drift fails (exit 1); a probe that
+    /// could not run is a warning, surfaced always, failing only under `--strict`.
+    Reconcile {
+        /// CI mode: promote probe errors ("couldn't check") to failures.
+        #[arg(long)]
+        strict: bool,
+        /// Emit JSON (`reconcile/v1`).
+        #[arg(long)]
+        json: bool,
     },
     /// Import a document corpus or a plan set into the node model.
     ///
@@ -547,19 +608,41 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Self-host odm's own plan set: import the project + arcs + slices under a
-    /// `design-vX.Y.Z/` tree into the node model as work nodes.
+    /// Manage nodes: create, inspect, relate, and advance them.
     ///
-    /// Idempotent (keyed on the work node's `(type, number)`), `--dry-run`-able,
-    /// and never deletes or mutates the plan-set Markdown.
-    #[command(name = "self-host")]
-    SelfHost {
-        /// Path to the plan set (e.g. `docs/design-v1.0.0`).
-        plan_path: String,
-        /// Report the cutover plan and write nothing.
-        #[arg(long)]
-        dry_run: bool,
+    /// The node *entity* tier (ODD-0023 §4) — as distinct from the top-level
+    /// verbs, whose object is the graph as a whole, and `store`, whose object is
+    /// the container.
+    Node {
+        /// The node operation. Omitted, the group lists what it can do.
+        #[command(subcommand)]
+        command: Option<NodeCommand>,
     },
+    /// Manage the store itself: where it lives and how it is created.
+    ///
+    /// The store's own lifecycle, as distinct from the nodes inside it
+    /// (ODD-0023).
+    Store {
+        /// The store operation. Omitted, the group lists what it can do.
+        #[command(subcommand)]
+        command: Option<StoreCommand>,
+    },
+}
+
+/// Renders a command group's own help to `out` and reports success.
+///
+/// Used when a group is invoked bare. clap would treat that as a usage error —
+/// help text on stderr, exit 2 — but "what can I do to a node?" is a fair
+/// question with a real answer, so it is answered on stdout with exit `0`
+/// (ODD-0023 §7; odm's data-to-stdout convention).
+fn group_help(group: &str, out: &mut dyn std::io::Write) -> anyhow::Result<u8> {
+    let mut cli = Cli::command();
+    let help = cli
+        .find_subcommand_mut(group)
+        .with_context(|| format!("the {group} group is missing from the command surface"))?
+        .render_help();
+    writeln!(out, "{help}")?;
+    Ok(EXIT_OK)
 }
 
 /// Parses arguments and dispatches, rooted at the current working directory,
@@ -621,37 +704,6 @@ pub fn dispatch(
 
     match command {
         Command::Orient { json } => orient::orient(&store, root, json, out)?,
-        Command::New { node_type, name, parent, dry_run, yes: _ } => {
-            commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
-        }
-        Command::List { node_type, tag, component, date, width, group, status, all, json } => {
-            // Asking for a withdrawn status is asking to see withheld rows.
-            let withdrawn_status = status.as_deref().is_some_and(|s| {
-                matches!(s.trim().to_ascii_lowercase().as_str(), "retired" | "superseded")
-            });
-            let view = commands::ListView {
-                type_filter: node_type.as_deref(),
-                tag: tag.as_deref(),
-                component: component.as_deref(),
-                date: date.into(),
-                width,
-                status: status.as_deref(),
-                group: group.map(Into::into),
-                include_withdrawn: all || withdrawn_status,
-                json,
-            };
-            commands::list(&store, root, view, out)?;
-        }
-        Command::Show { reference, json } => commands::show(&store, &reference, json, out)?,
-        Command::Rename { reference, name, dry_run, yes: _ } => {
-            commands::rename(&store, &reference, &name, dry_run, err)?;
-        }
-        Command::Retire { reference, because, dry_run, yes: _ } => {
-            commands::retire(&store, &reference, &because, dry_run, err)?;
-        }
-        Command::Supersede { reference, with, kind, dry_run, yes: _ } => {
-            commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)?;
-        }
         // The context names node ids, so it belongs with the nodes: it resolves
         // under the store root, as the `.odm/` index already does (slice-01
         // carried item #1). The path comes off the `Store` handle, so no caller
@@ -660,74 +712,71 @@ pub fn dispatch(
         Command::Use { kind, reference } => {
             commands::use_context(&store, kind.into(), &reference, err)?;
         }
-        Command::Context { json } => commands::context(&store, json, out)?,
-        // `check` returns its own exit code (0 clean / 1 violations).
-        Command::Check { strict, json } => return commands::check(&store, root, strict, json, out),
+        Command::Project { name, json } => {
+            commands::project(&store, name.as_deref(), json, out)?;
+        }
+        // `validate` returns its own exit code (0 clean / 1 violations).
+        Command::Validate { strict, json } => {
+            return commands::validate(&store, root, strict, json, out);
+        }
+        // `check` is the composite: validate, then reconcile unless validate
+        // errored. It returns the worse of the two exit codes.
+        Command::Check { strict, json } => {
+            return commands::check(&store, root, strict, json, out);
+        }
         // `reconcile` likewise returns its own exit code (0 clean / 1 drift).
         Command::Reconcile { strict, json } => {
             return reconcile::reconcile(&store, strict, json, out);
         }
-        Command::Rollup { dry_run, json } => {
-            rollup::rollup(&store, root, dry_run, json, out, err)?;
+        Command::Rollup { dry_run, format, out: stem, json } => {
+            // `--json` is the long-standing spelling of "give me json on
+            // stdout"; it stays equivalent to `--format json --dry-run`.
+            let format = if json { FormatArg::Json } else { format };
+            let options = rollup::Options {
+                dry_run: dry_run || json,
+                extension: format.extension(),
+                stem: stem.as_deref().unwrap_or(rollup::DEFAULT_STEM),
+                json: format == FormatArg::Json,
+            };
+            rollup::rollup(&store, root, options, out, err)?;
         }
         Command::Next { json } => commands::next(&store, root, json, out)?,
         Command::Blocked { reference, json } => {
             commands::blocked(&store, root, &reference, json, out)?;
         }
-        Command::Path { reference, to, json } => {
-            commands::path(&store, root, &reference, to.as_deref(), json, out)?;
-        }
-        Command::Link { source, edge, target, satisfied_at, dry_run, yes: _ } => {
-            commands::link(
-                &store,
-                &source,
-                edge.into(),
-                &target,
-                satisfied_at.as_deref(),
-                dry_run,
-                err,
-            )?;
-        }
-        Command::Unlink { source, edge, target, dry_run, yes: _ } => {
-            commands::unlink(&store, &source, edge.into(), &target, dry_run, err)?;
-        }
-        Command::SetGate { reference, gate, by, evidence, dry_run, yes: _ } => {
-            let reach = commands::GateReach { gate: &gate, by, evidence: evidence.into() };
-            commands::set_gate(&store, root, &reference, reach, dry_run, err)?;
-        }
-        Command::Tear { source, edge: _, target, because, dry_run, yes: _ } => {
-            commands::tear(&store, &source, &target, &because, dry_run, err)?;
-        }
-        Command::Decomposed { reference, children, dry_run, yes: _ } => {
-            commands::decomposed(&store, &reference, &children, dry_run, err)?;
+        Command::Chain { reference, to, json } => {
+            commands::chain(&store, root, &reference, to.as_deref(), json, out)?;
         }
         Command::Store { command } => match command {
-            StoreCommand::Rename { new, worktree, branch, dry_run, yes: _, json } => {
-                // The bare positional renames both halves; the flags override
-                // it per half, so `rename plan --branch keep` is expressible.
-                let new_worktree = worktree.or_else(|| new.clone());
-                let new_branch = branch.or(new);
-                store_cmd::rename(
-                    root,
-                    new_worktree.as_deref(),
-                    new_branch.as_deref(),
-                    dry_run,
-                    json,
-                    out,
-                    err,
-                )?;
-            }
-            StoreCommand::Init { worktree, branch, dry_run, yes: _, json } => {
-                store_cmd::init(
-                    root,
-                    worktree.as_deref(),
-                    branch.as_deref(),
-                    dry_run,
-                    json,
-                    out,
-                    err,
-                )?;
-            }
+            None => return group_help("store", out),
+            Some(command) => match command {
+                StoreCommand::Rename { new, worktree, branch, dry_run, yes: _, json } => {
+                    // The bare positional renames both halves; the flags override
+                    // it per half, so `rename plan --branch keep` is expressible.
+                    let new_worktree = worktree.or_else(|| new.clone());
+                    let new_branch = branch.or(new);
+                    store_cmd::rename(
+                        root,
+                        new_worktree.as_deref(),
+                        new_branch.as_deref(),
+                        dry_run,
+                        json,
+                        out,
+                        err,
+                    )?;
+                }
+                StoreCommand::Init { worktree, branch, dry_run, yes: _, json } => {
+                    store_cmd::init(
+                        root,
+                        worktree.as_deref(),
+                        branch.as_deref(),
+                        dry_run,
+                        json,
+                        out,
+                        err,
+                    )?;
+                }
+            },
         },
         Command::Migrate { legacy_path, plan, legacy, replan, dry_run } => {
             let forced = if plan {
@@ -746,9 +795,81 @@ pub fn dispatch(
                 err,
             )?;
         }
-        Command::SelfHost { plan_path, dry_run } => {
-            migrate::self_host(&store, root, &plan_path, dry_run, out, err)?;
-        }
+        Command::Node { command } => match command {
+            // A bare group name is a question — "what can I do to a node?" —
+            // and clap's default answer is a usage *error* on stderr, exit 2.
+            // Answering it properly (ODD-0023 §7) means help on stdout, exit 0.
+            None => return group_help("node", out),
+            Some(command) => match command {
+                NodeCommand::New { node_type, name, parent, dry_run, yes: _ } => {
+                    commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
+                }
+                NodeCommand::List {
+                    node_type,
+                    tag,
+                    component,
+                    date,
+                    width,
+                    group,
+                    status,
+                    all,
+                    json,
+                } => {
+                    // Asking for a withdrawn status is asking to see withheld rows.
+                    let withdrawn_status = status.as_deref().is_some_and(|s| {
+                        matches!(s.trim().to_ascii_lowercase().as_str(), "retired" | "superseded")
+                    });
+                    let view = commands::ListView {
+                        type_filter: node_type.as_deref(),
+                        tag: tag.as_deref(),
+                        component: component.as_deref(),
+                        date: date.into(),
+                        width,
+                        status: status.as_deref(),
+                        group: group.map(Into::into),
+                        include_withdrawn: all || withdrawn_status,
+                        json,
+                    };
+                    commands::list(&store, root, view, out)?;
+                }
+                NodeCommand::Show { reference, json } => {
+                    commands::show(&store, &reference, json, out)?
+                }
+                NodeCommand::Rename { reference, name, dry_run, yes: _ } => {
+                    commands::rename(&store, &reference, &name, dry_run, err)?;
+                }
+                NodeCommand::Retire { reference, because, dry_run, yes: _ } => {
+                    commands::retire(&store, &reference, &because, dry_run, err)?;
+                }
+                NodeCommand::Supersede { reference, with, kind, dry_run, yes: _ } => {
+                    commands::supersede(&store, &reference, &with, kind.into(), dry_run, err)?;
+                }
+                NodeCommand::Link { source, edge, target, satisfied_at, dry_run, yes: _ } => {
+                    commands::link(
+                        &store,
+                        &source,
+                        edge.into(),
+                        &target,
+                        satisfied_at.as_deref(),
+                        dry_run,
+                        err,
+                    )?;
+                }
+                NodeCommand::Unlink { source, edge, target, dry_run, yes: _ } => {
+                    commands::unlink(&store, &source, edge.into(), &target, dry_run, err)?;
+                }
+                NodeCommand::SetGate { reference, gate, by, evidence, dry_run, yes: _ } => {
+                    let reach = commands::GateReach { gate: &gate, by, evidence: evidence.into() };
+                    commands::set_gate(&store, root, &reference, reach, dry_run, err)?;
+                }
+                NodeCommand::Tear { source, edge: _, target, because, dry_run, yes: _ } => {
+                    commands::tear(&store, &source, &target, &because, dry_run, err)?;
+                }
+                NodeCommand::Decomposed { reference, children, dry_run, yes: _ } => {
+                    commands::decomposed(&store, &reference, &children, dry_run, err)?;
+                }
+            },
+        },
     }
     Ok(EXIT_OK)
 }

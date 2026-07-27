@@ -166,7 +166,7 @@ fn orient_uses_context() {
     write_config(root);
     seed_full(root);
     run(root, &["use", "arc", "Arc one"]);
-    run(root, &["set-gate", "Arc one", "in-progress", "--evidence", "reproduced"]);
+    run(root, &["node", "set-gate", "Arc one", "in-progress", "--evidence", "reproduced"]);
 
     let r = run(root, &["orient"]);
     assert!(r.ok);
@@ -201,7 +201,7 @@ fn orient_ready_blocked_softsat() {
     easy.edges_mut().depends_on.push(Dependency::Bare(id('S')));
     persist(root, Document::new(easy, "# Easy\n"));
 
-    run(root, &["set-gate", "Softdep", "tested", "--evidence", "attested"]);
+    run(root, &["node", "set-gate", "Softdep", "tested", "--evidence", "attested"]);
 
     let r = run(root, &["orient"]);
     assert!(r.ok);
@@ -260,7 +260,7 @@ fn orient_ready_blocked_softsat_all_block_reasons() {
     reader.edges_mut().blocked_by.push(id('X'));
     persist(root, Document::new(reader, "# Reader\n"));
 
-    run(root, &["set-gate", "Softdep", "tested", "--evidence", "attested"]);
+    run(root, &["node", "set-gate", "Softdep", "tested", "--evidence", "attested"]);
 
     let r = run(root, &["orient"]);
     assert!(r.ok);

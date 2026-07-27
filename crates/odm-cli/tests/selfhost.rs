@@ -53,7 +53,7 @@ fn self_hosted_store(with_gates: bool) -> TempDir {
     let plan = repo().join("docs/design-v1.0.0");
     let (m, _o, _e) = run(dir.path(), &["migrate", docs.to_str().unwrap()]);
     assert_eq!(m, Some(0), "migrate the document corpus");
-    let (s, _o, _e) = run(dir.path(), &["self-host", plan.to_str().unwrap()]);
+    let (s, _o, _e) = run(dir.path(), &["migrate", plan.to_str().unwrap()]);
     assert_eq!(s, Some(0), "self-host plan set");
     dir
 }
@@ -64,7 +64,7 @@ fn self_hosted_store(with_gates: bool) -> TempDir {
 fn check_green_on_self_hosted_corpus() {
     let dir = self_hosted_store(true);
     let (code, out) = {
-        let (c, o, _e) = run(dir.path(), &["check"]);
+        let (c, o, _e) = run(dir.path(), &["validate"]);
         (c, o)
     };
     assert_eq!(code, Some(0), "check green on the mixed odd+work corpus:\n{out}");
@@ -75,7 +75,7 @@ fn check_green_on_self_hosted_corpus() {
 #[test]
 fn check_no_orphan_work_nodes() {
     let dir = self_hosted_store(true);
-    let (code, out, _e) = run(dir.path(), &["check"]);
+    let (code, out, _e) = run(dir.path(), &["validate"]);
     assert_eq!(code, Some(0));
     assert!(!out.contains("orphan"), "no orphan work nodes (all parented):\n{out}");
 }

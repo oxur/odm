@@ -60,7 +60,7 @@ fn origin_with_pushed_store(remote: &Path) -> TempDir {
 
     odm(a.path()).args(["store", "init"]).assert().success();
     // Give the orphan branch its first commit, so there is a store to share.
-    odm(a.path()).args(["new", "project", "Shared project"]).assert().success();
+    odm(a.path()).args(["node", "new", "project", "Shared project"]).assert().success();
     let store = a.path().join(".worktrees").join("odm");
     git(&store, &["add", "-A"]);
     git(&store, &["commit", "-m", "store: initial"]);
@@ -100,7 +100,8 @@ fn attach_checks_out_the_existing_branch_without_re_orphaning() {
     // L-4: the store rode in with the branch, rather than being scaffolded.
     assert!(store.join("config.toml").is_file());
     assert!(store.join("nodes").is_dir());
-    let listed = odm(b.path()).arg("list").assert().success().get_output().stdout.clone();
+    let listed =
+        odm(b.path()).args(["node", "list"]).assert().success().get_output().stdout.clone();
     assert!(
         String::from_utf8_lossy(&listed).contains("Shared project"),
         "A's node is present in B's attached store"
@@ -150,7 +151,7 @@ fn sync_fast_forwards_when_upstream_is_ahead() {
     odm(b.path()).args(["store", "init"]).assert().success();
 
     // A adds a node and pushes.
-    odm(a.path()).args(["new", "arc", "Later work", "--parent", "1"]).assert().success();
+    odm(a.path()).args(["node", "new", "arc", "Later work", "--parent", "1"]).assert().success();
     let a_store = a.path().join(".worktrees").join("odm");
     git(&a_store, &["add", "-A"]);
     git(&a_store, &["commit", "-m", "store: later work"]);
@@ -159,7 +160,8 @@ fn sync_fast_forwards_when_upstream_is_ahead() {
     // B re-inits: this is the sync arm, and it should fast-forward.
     odm(b.path()).args(["store", "init"]).assert().success();
 
-    let listed = odm(b.path()).arg("list").assert().success().get_output().stdout.clone();
+    let listed =
+        odm(b.path()).args(["node", "list"]).assert().success().get_output().stdout.clone();
     assert!(
         String::from_utf8_lossy(&listed).contains("Later work"),
         "B picked up A's new node by fast-forward"
@@ -194,13 +196,13 @@ fn sync_stops_on_divergence_and_touches_nothing() {
     let b_store = b.path().join(".worktrees").join("odm");
 
     // B commits locally…
-    odm(b.path()).args(["new", "arc", "B's work", "--parent", "1"]).assert().success();
+    odm(b.path()).args(["node", "new", "arc", "B's work", "--parent", "1"]).assert().success();
     git(&b_store, &["add", "-A"]);
     git(&b_store, &["commit", "-m", "store: B's work"]);
     let b_head = git(&b_store, &["rev-parse", "HEAD"]);
 
     // …while A pushes something different. Now the histories have parted.
-    odm(a.path()).args(["new", "arc", "A's work", "--parent", "1"]).assert().success();
+    odm(a.path()).args(["node", "new", "arc", "A's work", "--parent", "1"]).assert().success();
     let a_store = a.path().join(".worktrees").join("odm");
     git(&a_store, &["add", "-A"]);
     git(&a_store, &["commit", "-m", "store: A's work"]);
@@ -214,7 +216,8 @@ fn sync_stops_on_divergence_and_touches_nothing() {
 
     // The invariant: nothing was merged, rebased, or moved.
     assert_eq!(git(&b_store, &["rev-parse", "HEAD"]), b_head, "B's branch did not move");
-    let listed = odm(b.path()).arg("list").assert().success().get_output().stdout.clone();
+    let listed =
+        odm(b.path()).args(["node", "list"]).assert().success().get_output().stdout.clone();
     let listed = String::from_utf8_lossy(&listed);
     assert!(listed.contains("B's work"), "B's own work is intact");
     assert!(!listed.contains("A's work"), "and A's was not merged in behind B's back");
@@ -232,7 +235,7 @@ fn sync_without_an_upstream_warns_and_succeeds() {
     git(dir.path(), &["add", "README.md"]);
     git(dir.path(), &["commit", "-m", "initial"]);
     odm(dir.path()).args(["store", "init"]).assert().success();
-    odm(dir.path()).args(["new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "P"]).assert().success();
 
     odm(dir.path())
         .args(["store", "init"])
@@ -250,7 +253,7 @@ fn sync_reports_local_ahead_without_erroring() {
     odm(b.path()).args(["store", "init"]).assert().success();
     let b_store = b.path().join(".worktrees").join("odm");
 
-    odm(b.path()).args(["new", "arc", "Unpushed", "--parent", "1"]).assert().success();
+    odm(b.path()).args(["node", "new", "arc", "Unpushed", "--parent", "1"]).assert().success();
     git(&b_store, &["add", "-A"]);
     git(&b_store, &["commit", "-m", "store: unpushed"]);
 
@@ -294,7 +297,7 @@ fn dry_run_touches_nothing_on_the_sync_arm() {
     let before = git(&b_store, &["rev-parse", "HEAD"]);
 
     // Upstream advances, so a real run *would* fast-forward.
-    odm(a.path()).args(["new", "arc", "Later", "--parent", "1"]).assert().success();
+    odm(a.path()).args(["node", "new", "arc", "Later", "--parent", "1"]).assert().success();
     let a_store = a.path().join(".worktrees").join("odm");
     git(&a_store, &["add", "-A"]);
     git(&a_store, &["commit", "-m", "store: later"]);
@@ -320,7 +323,7 @@ fn a_missing_worktree_is_reported_not_silently_repaired() {
     git(dir.path(), &["add", "README.md"]);
     git(dir.path(), &["commit", "-m", "initial"]);
     odm(dir.path()).args(["store", "init"]).assert().success();
-    odm(dir.path()).args(["new", "project", "P"]).assert().success();
+    odm(dir.path()).args(["node", "new", "project", "P"]).assert().success();
 
     // Commit so the branch exists as a ref, then remove the worktree directory
     // the way an impatient `rm -rf` would.
