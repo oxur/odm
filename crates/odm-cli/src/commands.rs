@@ -20,7 +20,7 @@ use odm_core::check::{Finding, Violation};
 use odm_core::frontmatter::{
     Dependency, Document, Frontmatter, SupersedeKind, Supersedes, TornEdge,
 };
-use odm_core::gates::GateSets;
+use odm_core::gates::{GateSet, GateSets};
 use odm_core::graph::{Block, NodeGraph, Tear};
 use odm_core::recompose::{self, Issue};
 use odm_core::satisfaction::{Satisfaction, staleness_on_advance, threshold_from_toml};
@@ -136,6 +136,25 @@ struct NodeJson {
     retired: Option<RetiredJson>,
     part_of: Option<String>,
     supersedes: Option<SupersedesJson>,
+    /// The normalized, cross-type-comparable state (F-19) — the same token
+    /// `node list` shows. `null` when the caller had no gate config to derive
+    /// it from, since a guess would be worse than an absence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    /// The **raw** gate ladder: every reached gate with its evidence, in the
+    /// order the node's own gate-set defines. The derived `status` above is a
+    /// projection of this; both are emitted so a machine consumer can compare
+    /// across types *and* still see which rung.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    gates: Vec<GateJson>,
+}
+
+/// One reached gate, as `--json` reports it.
+#[derive(Serialize)]
+struct GateJson {
+    gate: String,
+    reached: String,
+    evidence: String,
 }
 
 #[derive(Serialize)]
@@ -151,7 +170,44 @@ struct SupersedesJson {
 }
 
 impl NodeJson {
+    /// The node without a derived state — for callers with no gate config in
+    /// hand. The raw ladder is still emitted; only the projection is omitted.
     fn from(doc: &Document) -> Self {
+        Self::with_gates(doc, None)
+    }
+
+    /// The node including its normalized state, derived against `gates`.
+    fn with_gates(doc: &Document, gates: Option<&GateSets>) -> Self {
+        let mut json = Self::build(doc);
+        let fm = doc.frontmatter();
+        let reached: Vec<&str> = fm.status().reached().map(|(name, _)| name).collect();
+        if let Some(gates) = gates {
+            let sequence = gates.for_type(fm.node_type()).map(GateSet::sequence);
+            json.status = crate::listview::derive_display_status(
+                &reached,
+                sequence,
+                fm.retired().is_some(),
+                false,
+            )
+            .name()
+            .map(str::to_string);
+            // Ladder order, not map order, so the rungs read in sequence.
+            if let Some(sequence) = sequence {
+                json.gates = sequence
+                    .iter()
+                    .filter_map(|gate| fm.status().gate(gate).map(|r| (gate, r)))
+                    .map(|(gate, record)| GateJson {
+                        gate: gate.clone(),
+                        reached: record.reached.to_string(),
+                        evidence: record.evidence.as_str().to_string(),
+                    })
+                    .collect();
+            }
+        }
+        json
+    }
+
+    fn build(doc: &Document) -> Self {
         let fm = doc.frontmatter();
         let edges = fm.edges();
         Self {
@@ -171,6 +227,8 @@ impl NodeJson {
                 node: s.node.to_string(),
                 kind: supersede_kind_str(s.kind).to_string(),
             }),
+            status: None,
+            gates: Vec::new(),
         }
     }
 }
@@ -334,6 +392,9 @@ pub fn list(
         .transpose()?;
 
     if view.json {
+        // The derived state needs the ladder, so `--json` loads the gate config
+        // the human path already loads below.
+        let (gates, _threshold) = load_gate_config(root)?;
         // Full-node serialization stays load_all-backed (see the doc comment).
         let mut nodes = store.load_all()?;
         nodes.retain(|d| {
@@ -343,7 +404,8 @@ pub fn list(
                 && view.component.is_none_or(|c| fm.component() == Some(c))
         });
         nodes.sort_by_key(|d| d.frontmatter().number());
-        let json_view: Vec<NodeJson> = nodes.iter().map(NodeJson::from).collect();
+        let json_view: Vec<NodeJson> =
+            nodes.iter().map(|d| NodeJson::with_gates(d, Some(&gates))).collect();
         writeln!(out, "{}", serde_json::to_string_pretty(&json_view)?)?;
         return Ok(());
     }
@@ -445,15 +507,69 @@ fn display_max_width(root: &Path) -> Option<usize> {
 }
 
 /// `show X` — node + edges + way-finding (parent and children). Data → `out`.
-pub fn show(store: &Store, reference: &str, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+/// Writes the node's gate ladder: the normalized state, then every rung with
+/// whether it is reached and at what evidence.
+///
+/// **This is where the raw ladder lives.** RH C-8 normalized `node list`'s
+/// STATUS column so types compare, which is only safe if the rung a node is
+/// actually on remains reachable — and it was not: before C-8, neither `show`
+/// nor `--json` reported gates at all, so `list` was the only place any of it
+/// surfaced. Normalizing without this would have made the ladder invisible from
+/// the CLI entirely.
+fn write_gate_ladder(
+    out: &mut dyn Write,
+    fm: &Frontmatter,
+    gates: Option<&GateSets>,
+) -> anyhow::Result<()> {
+    let Some(sequence) = gates.and_then(|g| g.for_type(fm.node_type())).map(GateSet::sequence)
+    else {
+        // No ladder for this type (an `adr` has none) — nothing to report, and
+        // an empty "gates:" heading would imply otherwise.
+        return Ok(());
+    };
+    let reached: Vec<&str> = fm.status().reached().map(|(name, _)| name).collect();
+    let state = crate::listview::derive_display_status(
+        &reached,
+        Some(sequence),
+        fm.retired().is_some(),
+        false,
+    );
+    writeln!(out, "  status:    {}", state.label())?;
+    writeln!(out, "  gates:")?;
+    for gate in sequence {
+        match fm.status().gate(gate) {
+            Some(record) => {
+                writeln!(out, "    [x] {gate} — {} ({})", record.reached, record.evidence.as_str())?
+            }
+            None => writeln!(out, "    [ ] {gate}")?,
+        }
+    }
+    Ok(())
+}
+
+pub fn show(
+    store: &Store,
+    root: &Path,
+    reference: &str,
+    json: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     let doc = resolve(store, reference)?;
     let id = doc.frontmatter().id();
     let all = store.load_all()?;
     let children: Vec<&Document> =
         all.iter().filter(|d| d.frontmatter().edges().part_of == Some(id)).collect();
+    // A missing/invalid gate config must not make `show` fail — it is a read,
+    // and the node is still worth printing. Without it the ladder and the
+    // derived state are simply absent rather than guessed.
+    let gates = load_gate_config(root).ok().map(|(gates, _)| gates);
 
     if json {
-        writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&doc))?)?;
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&NodeJson::with_gates(&doc, gates.as_ref()))?
+        )?;
         return Ok(());
     }
 
@@ -463,6 +579,7 @@ pub fn show(store: &Store, reference: &str, json: bool, out: &mut dyn Write) -> 
     writeln!(out, "  origin:    {}", fm.origin().as_str())?;
     writeln!(out, "  created:   {}", fm.created())?;
     writeln!(out, "  updated:   {}", fm.updated())?;
+    write_gate_ladder(out, fm, gates.as_ref())?;
     if !fm.tags().is_empty() {
         writeln!(out, "  tags:      {}", fm.tags().join(", "))?;
     }

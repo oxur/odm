@@ -245,24 +245,34 @@ fn json_schema_crud_is_stable() {
     assert!(r.ok);
     let value: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
     let obj = value.as_object().expect("JSON object");
-    let mut keys: Vec<&String> = obj.keys().collect();
-    keys.sort();
-    assert_eq!(
-        keys,
-        [
-            "component",
-            "id",
-            "name",
-            "number",
-            "origin",
-            "part_of",
-            "reserved",
-            "retired",
-            "supersedes",
-            "tags",
-            "type",
-        ]
-    );
+    // The contract is **additive**: every key a consumer already reads must
+    // still be here. Asserting the exact set as an equality would make any new
+    // field look like a break, so the stability claim is spelled as containment
+    // and the additions are listed separately.
+    let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    for established in [
+        "component",
+        "id",
+        "name",
+        "number",
+        "origin",
+        "part_of",
+        "reserved",
+        "retired",
+        "supersedes",
+        "tags",
+        "type",
+    ] {
+        assert!(keys.contains(&established), "dropped established key {established:?}: {keys:?}");
+    }
+    // C-8 (F-19) added the derived state. `gates` is `skip_serializing_if`
+    // empty, so it is absent on this freshly-created node — which is itself the
+    // contract: no fabricated ladder for a node that has reached nothing.
+    // This fixture configures no gate-sets, so the slice has no ladder to have
+    // a position in — and the field is *absent* rather than carrying the table's
+    // em-dash, which is a display glyph and would be noise to a machine.
+    assert!(!keys.contains(&"status"), "no derived state without a ladder: {keys:?}");
+    assert!(!keys.contains(&"gates"), "and no gates: {keys:?}");
     assert_eq!(obj["type"], "slice");
     assert_eq!(obj["number"], 1);
     assert_eq!(obj["name"], "Schema check");

@@ -24,7 +24,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::NaiveDate;
-use odm_core::gates::GateSets;
+use odm_core::gates::{GateSet, GateSets};
 use odm_core::{Id, NodeType};
 use odm_index::{EdgeKind, IndexRecord};
 use oxur_term::table::{TabledColor, helpers};
@@ -63,7 +63,12 @@ pub(crate) enum DateColumn {
     Updated,
 }
 
-/// The `STATUS` value shown for a node (F-7), in override order.
+/// A node's **raw** status: the furthest gate it reached, with the withdrawal
+/// overlays (F-7).
+///
+/// No longer what the column shows — [`DisplayStatus`] is (F-19). This survives
+/// because `--status` still accepts raw gate spellings (`--status tested`), so
+/// the raw vocabulary has to remain derivable even though it is not rendered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Status {
     /// The node carries a `retired:` marker.
@@ -86,11 +91,104 @@ impl Status {
             Status::None => "—",
         }
     }
+}
 
-    /// Whether this status means the node is not live work — the rows `list`
+/// The **normalized** state shown in the STATUS column (F-19).
+///
+/// The raw furthest-reached gate is not comparable across types: a slice's
+/// `tested` and an arc's `verified` both mean *done* but read differently, and
+/// an arc's `complete` reads like an endpoint though `verified` is still ahead.
+/// This is each node's *position in its own ladder*, so a listing can be scanned
+/// down the column and mean one thing.
+///
+/// A **view** concept only — nothing is stored, no gate is added, and the
+/// underlying gate vector is untouched (see [`Status`], which still carries it
+/// for the raw `--status` filter and for `show`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DisplayStatus {
+    /// At the first rung, or nothing reached yet.
+    Planned,
+    /// Past the first rung, not yet terminal.
+    Active,
+    /// The terminal gate of its own gate-set is reached.
+    Done,
+    /// Withdrawn: the node carries a `retired:` marker.
+    Retired,
+    /// Withdrawn: another node supersedes it.
+    Superseded,
+    /// The node's type has **no gate ladder**, so it has no position to report.
+    ///
+    /// Distinct from [`DisplayStatus::Planned`] on purpose: an `adr` is not
+    /// "planned but not started", it simply has no lifecycle to be at the start
+    /// of. Rendering it as `planned` would assert something about it that no one
+    /// recorded.
+    None,
+}
+
+impl DisplayStatus {
+    /// The machine-facing name, or `None` when there is no ladder to have a
+    /// position in.
+    ///
+    /// Distinct from [`Self::label`] because that returns an em-dash for the
+    /// no-ladder case — a *display* glyph, meaningless to a JSON consumer, which
+    /// should see `null` and know the field does not apply.
+    pub(crate) fn name(&self) -> Option<&'static str> {
+        match self {
+            DisplayStatus::None => None,
+            other => Some(other.label()),
+        }
+    }
+
+    /// The single token shown in the column.
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            DisplayStatus::Planned => "planned",
+            DisplayStatus::Active => "active",
+            DisplayStatus::Done => "done",
+            DisplayStatus::Retired => "retired",
+            DisplayStatus::Superseded => "superseded",
+            DisplayStatus::None => "—",
+        }
+    }
+
+    /// Whether this state means the node is not live work — the rows `list`
     /// hides unless asked for them (F-15).
     pub(crate) fn is_withdrawn(&self) -> bool {
-        matches!(self, Status::Retired | Status::Superseded)
+        matches!(self, DisplayStatus::Retired | DisplayStatus::Superseded)
+    }
+}
+
+/// Derives the normalized state from a node's position in its own gate ladder.
+///
+/// Pure, and deliberately takes the ladder rather than a `GateSets` — every
+/// branch is then testable with two string slices and two flags, with no store,
+/// no config and no corpus.
+///
+/// Withdrawal overlays win: a retired or superseded node reports that whatever
+/// its gates say, because "how far did this get" stops being the interesting
+/// question once it has been withdrawn (preserves C-3/F-15 behaviour exactly).
+pub(crate) fn derive_display_status(
+    reached: &[&str],
+    sequence: Option<&[String]>,
+    retired: bool,
+    superseded: bool,
+) -> DisplayStatus {
+    if retired {
+        return DisplayStatus::Retired;
+    }
+    if superseded {
+        return DisplayStatus::Superseded;
+    }
+    let Some(sequence) = sequence.filter(|s| !s.is_empty()) else {
+        return DisplayStatus::None;
+    };
+    // The furthest rung reached, as an index into this node's own ladder.
+    let furthest =
+        sequence.iter().rposition(|gate| reached.iter().any(|r| r.eq_ignore_ascii_case(gate)));
+    match furthest {
+        Some(i) if i == sequence.len() - 1 => DisplayStatus::Done,
+        Some(0) | None => DisplayStatus::Planned,
+        Some(_) => DisplayStatus::Active,
     }
 }
 
@@ -107,34 +205,37 @@ pub(crate) enum Row {
 
 /// The colour a STATUS token renders in, or `None` to leave it uncoloured.
 ///
-/// The **document** lifecycle keeps `oxur-odm` 0.3.5's palette verbatim — this
-/// calls the very helper the original called, so the colours cannot drift by
-/// being retyped.
+/// Two vocabularies meet here. The **normalized states** (F-19) are what the
+/// column shows and are matched first — `planned` and `active` are *also* raw
+/// gate names, and the derived meaning is the one on screen. The **withdrawal
+/// overlays** (`retired`, `superseded`) fall through to `oxur-odm` 0.3.5's
+/// palette via the very helper the original called, so those colours cannot
+/// drift by being retyped.
 ///
-/// The **work** sequences postdate that palette, so they are mapped onto the
-/// same *slots* rather than given new colours: early is yellow, under way is
-/// cyan, done is green, and the strongest evidence is bright green. Keeping
-/// `complete` green and `verified` bright green is what preserves ODD-0013
-/// §5.1's distinction — "done at its layer" is not "verified live", and
-/// collapsing them is the confusion that gate model exists to prevent.
+/// The per-gate work palette that used to live here retired with the raw-gate
+/// column: once STATUS shows a normalized state, no gate name can reach this
+/// function, and a palette nothing can select is worse than no palette. Its
+/// *slots* survive in [`display_status_color`] — early yellow, under way cyan,
+/// done green — so the tuning outlived the mapping.
 ///
-/// The two palettes are disjoint (no gate name appears in both), so the
-/// document one always wins where it applies.
+/// One distinction is genuinely gone, and deliberately: `complete` was green
+/// and `verified` bright green, keeping ODD-0013 §5.1's "done at its layer" and
+/// "verified live" apart. Normalizing folds both into `done`. The rung is still
+/// exact in `odm node show` and `--json`; it is the *column* that trades that
+/// detail for cross-type comparability, which is the whole of F-19.
 pub(crate) fn status_color(label: &str) -> Option<TabledColor> {
-    helpers::state_to_fg_color(label).or_else(|| work_gate_color(label))
+    display_status_color(label).or_else(|| helpers::state_to_fg_color(label))
 }
 
-/// The work-node half of [`status_color`] — `project`/`arc`/`slice` gates.
-fn work_gate_color(label: &str) -> Option<TabledColor> {
+/// The colour for a **normalized** state token (F-19).
+///
+/// The slots are the ones already tuned for the gate vocabulary rather than new
+/// hues: early is yellow, under way is cyan, done is green.
+fn display_status_color(label: &str) -> Option<TabledColor> {
     match label.trim().to_ascii_lowercase().as_str() {
-        // Recorded, not started — the slot `draft` holds.
         "planned" => Some(TabledColor::FG_YELLOW),
-        // Under way — the slot `under-review` holds.
-        "in-progress" | "in progress" | "built" => Some(TabledColor::FG_CYAN),
-        // Done at its layer, and a slice's terminal gate.
-        "complete" | "tested" => Some(TabledColor::FG_GREEN),
-        // Verified live — the strongest, as `active` is for a document.
-        "verified" => Some(TabledColor::FG_BRIGHT_GREEN),
+        "active" => Some(TabledColor::FG_CYAN),
+        "done" => Some(TabledColor::FG_GREEN),
         _ => None,
     }
 }
@@ -176,8 +277,8 @@ pub(crate) struct NodeRow {
     pub(crate) date: NaiveDate,
     /// The node type.
     pub(crate) node_type: NodeType,
-    /// The status token.
-    pub(crate) status: Status,
+    /// The normalized state token — what the STATUS column shows (F-19).
+    pub(crate) status: DisplayStatus,
     /// The name cell, already tree-prefixed and de-numbered.
     pub(crate) name: String,
     /// The node id.
@@ -212,10 +313,18 @@ pub(crate) fn build_rows(
         .copied()
         .filter(|r| group.is_none_or(|g| g.holds(r.node_type)))
         .filter(|r| {
-            let status = status_of(r, gates, &superseded);
-            let wanted =
-                status_filter.is_none_or(|want| status.label().eq_ignore_ascii_case(want.trim()));
-            wanted && (include_withdrawn || !status.is_withdrawn())
+            let display = display_status_of(r, gates, &superseded);
+            // The filter accepts both vocabularies: the normalized state the
+            // column now shows (`--status done`) and the raw gate underneath
+            // it (`--status tested`). Matching only the derived label would
+            // silently break the raw spellings F-15 shipped; matching only the
+            // raw one would let `--status` and the STATUS cell disagree.
+            let wanted = status_filter.is_none_or(|want| {
+                let want = want.trim();
+                display.label().eq_ignore_ascii_case(want)
+                    || status_of(r, gates, &superseded).label().eq_ignore_ascii_case(want)
+            });
+            wanted && (include_withdrawn || !display.is_withdrawn())
         })
         .collect();
     let shown: HashSet<Id> = visible.iter().map(|r| r.id).collect();
@@ -262,10 +371,21 @@ fn row_for(
             DateColumn::Updated => record.updated,
         },
         node_type: record.node_type,
-        status: status_of(record, gates, superseded),
+        status: display_status_of(record, gates, superseded),
         name: format!("{prefix}{}", denumber(&record.title)),
         id: record.id,
     }
+}
+
+/// The **normalized** state for a node — what the STATUS column shows (F-19).
+fn display_status_of(
+    record: &IndexRecord,
+    gates: &GateSets,
+    superseded: &HashSet<Id>,
+) -> DisplayStatus {
+    let reached: Vec<&str> = record.gates.iter().map(|g| g.gate.as_str()).collect();
+    let sequence = gates.for_type(record.node_type).map(GateSet::sequence);
+    derive_display_status(&reached, sequence, record.retired, superseded.contains(&record.id))
 }
 
 /// The status token for a node, in override order: retired, then superseded,
@@ -475,13 +595,140 @@ mod tests {
 
     #[test]
     fn test_status_labels_and_withdrawn_predicate() {
+        // The raw vocabulary, still reachable through `--status tested`.
         assert_eq!(Status::Retired.label(), "retired");
         assert_eq!(Status::Superseded.label(), "superseded");
         assert_eq!(Status::Gate("tested".into()).label(), "tested");
         assert_eq!(Status::None.label(), "—");
-        assert!(Status::Retired.is_withdrawn());
-        assert!(Status::Superseded.is_withdrawn());
-        assert!(!Status::Gate("tested".into()).is_withdrawn());
-        assert!(!Status::None.is_withdrawn());
+    }
+
+    // ----- F-19: the normalized state -------------------------------------
+
+    /// The real ODD-0013 §5.1 ladders, so the cases below are the ones the
+    /// corpus actually produces rather than invented sequences.
+    fn ladder(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| (*s).to_string()).collect()
+    }
+    fn project_arc() -> Vec<String> {
+        ladder(&["planned", "in-progress", "complete", "verified"])
+    }
+    fn slice() -> Vec<String> {
+        ladder(&["planned", "built", "tested"])
+    }
+    fn document() -> Vec<String> {
+        ladder(&["draft", "under-review", "revised", "accepted", "active", "final"])
+    }
+
+    fn derive(reached: &[&str], seq: &[String]) -> DisplayStatus {
+        derive_display_status(reached, Some(seq), false, false)
+    }
+
+    #[test]
+    fn test_derive_display_status_terminal_gate_is_done() {
+        assert_eq!(derive(&["planned", "built", "tested"], &slice()), DisplayStatus::Done);
+        assert_eq!(derive(&["planned", "verified"], &project_arc()), DisplayStatus::Done);
+        assert_eq!(derive(&["draft", "final"], &document()), DisplayStatus::Done);
+    }
+
+    #[test]
+    fn test_derive_display_status_a_done_slice_and_a_done_arc_agree() {
+        // The whole point of F-19: `tested` and `verified` are different words
+        // for the same position, and the column must not make them look
+        // different.
+        assert_eq!(derive(&["tested"], &slice()), derive(&["verified"], &project_arc()));
+    }
+
+    #[test]
+    fn test_derive_display_status_mid_ladder_is_active() {
+        assert_eq!(derive(&["planned", "built"], &slice()), DisplayStatus::Active);
+        assert_eq!(derive(&["planned", "in-progress"], &project_arc()), DisplayStatus::Active);
+        assert_eq!(derive(&["draft", "accepted"], &document()), DisplayStatus::Active);
+    }
+
+    #[test]
+    fn test_derive_display_status_complete_is_not_the_endpoint() {
+        // `complete` reads like an endpoint but `verified` is still ahead of
+        // it — the specific misreading this chunk exists to fix.
+        assert_eq!(derive(&["planned", "complete"], &project_arc()), DisplayStatus::Active);
+    }
+
+    #[test]
+    fn test_derive_display_status_first_rung_or_nothing_is_planned() {
+        assert_eq!(derive(&["planned"], &slice()), DisplayStatus::Planned);
+        assert_eq!(derive(&["planned"], &project_arc()), DisplayStatus::Planned);
+        assert_eq!(derive(&["draft"], &document()), DisplayStatus::Planned);
+        assert_eq!(derive(&[], &slice()), DisplayStatus::Planned, "nothing reached");
+    }
+
+    #[test]
+    fn test_derive_display_status_position_is_what_counts_not_how_many() {
+        // Reaching the terminal gate is `done` even if rungs were skipped, and
+        // three reached rungs are still `active` if the last one is not
+        // terminal. The state is a position, not a count.
+        assert_eq!(derive(&["tested"], &slice()), DisplayStatus::Done);
+        assert_eq!(
+            derive(&["draft", "under-review", "revised"], &document()),
+            DisplayStatus::Active
+        );
+    }
+
+    #[test]
+    fn test_derive_display_status_withdrawal_overlays_win() {
+        let seq = slice();
+        // Whatever the ladder says — including a fully done node.
+        assert_eq!(
+            derive_display_status(&["tested"], Some(&seq), true, false),
+            DisplayStatus::Retired
+        );
+        assert_eq!(
+            derive_display_status(&["tested"], Some(&seq), false, true),
+            DisplayStatus::Superseded
+        );
+        // Retired wins over superseded when a node is somehow both.
+        assert_eq!(
+            derive_display_status(&["built"], Some(&seq), true, true),
+            DisplayStatus::Retired
+        );
+    }
+
+    #[test]
+    fn test_derive_display_status_no_ladder_reports_nothing() {
+        // An `adr` has no gate-set. It is not "planned but not started" — it
+        // has no lifecycle to be at the start of, so it must not borrow one.
+        assert_eq!(derive_display_status(&[], None, false, false), DisplayStatus::None);
+        assert_eq!(derive_display_status(&[], Some(&[]), false, false), DisplayStatus::None);
+        assert_ne!(derive_display_status(&[], None, false, false), DisplayStatus::Planned);
+        // A withdrawal overlay still applies without a ladder.
+        assert_eq!(derive_display_status(&[], None, true, false), DisplayStatus::Retired);
+    }
+
+    #[test]
+    fn test_derive_display_status_ignores_gates_outside_the_ladder() {
+        // A gate a node carries that its type's set does not define says
+        // nothing about position in *this* ladder.
+        assert_eq!(derive(&["verified"], &slice()), DisplayStatus::Planned);
+    }
+
+    #[test]
+    fn test_display_status_withdrawn_matches_the_raw_status() {
+        assert!(DisplayStatus::Retired.is_withdrawn());
+        assert!(DisplayStatus::Superseded.is_withdrawn());
+        assert!(!DisplayStatus::Done.is_withdrawn());
+        assert!(!DisplayStatus::Active.is_withdrawn());
+        assert!(!DisplayStatus::Planned.is_withdrawn());
+        assert!(!DisplayStatus::None.is_withdrawn());
+    }
+
+    #[test]
+    fn test_normalized_labels_have_distinct_colours() {
+        // The column relies on colour as much as text; two states rendering
+        // identically would defeat it.
+        let done = status_color("done");
+        let active = status_color("active");
+        let planned = status_color("planned");
+        assert!(done.is_some() && active.is_some() && planned.is_some());
+        assert_ne!(done, active);
+        assert_ne!(active, planned);
+        assert_ne!(done, planned);
     }
 }

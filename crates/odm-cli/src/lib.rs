@@ -833,7 +833,7 @@ pub fn dispatch(
                     commands::list(&store, root, view, out)?;
                 }
                 NodeCommand::Show { reference, json } => {
-                    commands::show(&store, &reference, json, out)?
+                    commands::show(&store, root, &reference, json, out)?
                 }
                 NodeCommand::Rename { reference, name, dry_run, yes: _ } => {
                     commands::rename(&store, &reference, &name, dry_run, err)?;

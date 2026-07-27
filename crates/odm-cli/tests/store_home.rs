@@ -139,8 +139,15 @@ fn gate_sets_are_read_from_the_stores_config_toml() {
     let r = run(dir.path(), &["node", "set-gate", "3", "built"]);
     assert_eq!(r.code, Some(0), "the slice gate-set came from config.toml");
 
+    // The column shows the *normalized* state now (F-19), so it proves the
+    // ladder was known — a slice cannot read `active` without one — but not
+    // which gates are in it. `show` prints the ladder itself, which does.
     let listed = run(dir.path(), &["node", "list"]);
-    assert!(listed.out.contains("built"), "the gate took effect:\n{}", listed.out);
+    assert!(listed.out.contains("active"), "the gate took effect:\n{}", listed.out);
+
+    let shown = run(dir.path(), &["node", "show", "3"]);
+    assert!(shown.out.contains("built"), "the raw rung is named:\n{}", shown.out);
+    assert!(shown.out.contains("tested"), "and so is the rest of the ladder:\n{}", shown.out);
 }
 
 #[test]

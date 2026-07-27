@@ -101,20 +101,54 @@ fn list_leads_with_date_and_honours_the_date_flag() {
     }
 }
 
-// ----- F-7: STATUS is the furthest-reached gate -----------------------------
+// ----- F-19: STATUS is the normalized state (was the raw gate, F-7) ---------
 
 #[test]
-fn list_status_shows_the_furthest_reached_gate() {
+fn list_status_shows_the_normalized_state_not_the_raw_gate() {
     let dir = TempDir::new().unwrap();
     seed(dir.path());
     let out = plain(&run(dir.path(), &["node", "list"]).out);
 
-    // #3 reached `built` (the second of planned/built/tested).
+    // #3 reached `built` — the middle of planned/built/tested, so `active`.
     let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row");
-    assert!(alpha.contains("built"), "furthest gate shown: {alpha}");
-    // #4 has reached nothing.
+    assert!(alpha.contains("active"), "mid-ladder reads active: {alpha}");
+    assert!(!alpha.contains("built"), "the raw gate is no longer the column: {alpha}");
+    // #4 has reached nothing, so it sits at the start of its ladder.
     let beta = out.lines().find(|l| l.contains("Beta")).expect("Beta row");
-    assert!(beta.contains('—'), "no gate reached renders as a dash: {beta}");
+    assert!(beta.contains("planned"), "nothing reached reads planned: {beta}");
+}
+
+#[test]
+fn list_status_is_comparable_across_node_types() {
+    // The point of F-19: a done slice and a done arc must read alike, though
+    // their terminal gates are spelled `tested` and `verified`.
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    run(dir.path(), &["node", "set-gate", "3", "tested"]);
+    run(dir.path(), &["node", "set-gate", "2", "verified"]);
+    let out = plain(&run(dir.path(), &["node", "list"]).out);
+
+    let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row");
+    let arc = out.lines().find(|l| l.contains("First arc")).expect("arc row");
+    assert!(alpha.contains("done"), "slice at `tested` reads done: {alpha}");
+    assert!(arc.contains("done"), "arc at `verified` reads done too: {arc}");
+}
+
+#[test]
+fn list_status_filter_accepts_both_vocabularies() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    run(dir.path(), &["node", "set-gate", "3", "tested"]);
+
+    // The derived word the column shows...
+    let derived = plain(&run(dir.path(), &["node", "list", "--status", "done"]).out);
+    assert!(derived.contains("Alpha"), "--status done finds it: {derived}");
+    // ...and the raw gate underneath it, which F-15 shipped and must not break.
+    let raw = plain(&run(dir.path(), &["node", "list", "--status", "tested"]).out);
+    assert!(raw.contains("Alpha"), "--status tested still works: {raw}");
+    // A state it is not in matches neither way.
+    let other = plain(&run(dir.path(), &["node", "list", "--status", "planned"]).out);
+    assert!(!other.contains("Alpha"), "and does not over-match: {other}");
 }
 
 // ----- F-8: containment tree, with documents as their own group -------------
@@ -267,8 +301,10 @@ fn status_cells_carry_the_legacy_state_colours() {
 fn work_gate_statuses_carry_the_matching_palette_slots() {
     // The work sequences postdate the 0.3.5 palette, so they reuse its slots:
     // early yellow, under way cyan, done green, verified-live bright green.
-    // `complete` green and `verified` bright green keep ODD-0013 §5.1's
-    // done-at-its-layer / verified-live distinction visible.
+    // F-19 folded `complete`/`tested`/`verified` into one `done`, so the
+    // bright-green "verified live" shade no longer has a state to itself — the
+    // rung stays exact in `node show` and `--json`. What the column keeps is
+    // one distinct colour per normalized state.
     let dir = TempDir::new().unwrap();
     seed(dir.path());
     run(dir.path(), &["node", "set-gate", "4", "planned"]);
@@ -278,9 +314,11 @@ fn work_gate_statuses_carry_the_matching_palette_slots() {
     let row_for = |name: &str| {
         raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
     };
-    assert!(row_for("Alpha").contains("\u{1b}[36m"), "`built` is cyan (under way)");
+    // The normalized vocabulary reuses the slots the gate palette had tuned:
+    // under way cyan, not started yellow, done green.
+    assert!(row_for("Alpha").contains("\u{1b}[36m"), "`active` is cyan (under way)");
     assert!(row_for("Beta").contains("\u{1b}[33m"), "`planned` is yellow (not started)");
-    assert!(row_for("Root project").contains("\u{1b}[92m"), "`verified` is bright green");
+    assert!(row_for("Root project").contains("\u{1b}[32m"), "`done` is green");
 }
 
 #[test]
