@@ -1,0 +1,87 @@
+# RH C-6 (`validate` hardening) — CDC verification
+
+> **Verifies:** RH-10 (C-6) · G-2 / G-3 / L-3b · **Landed:** `release/1.0.x` @ `839fa26` (linear:
+> `439a58f` → `839fa26`) · **Date:** 2026-07-27 · **Verifier:** CDC, independent of CC — clean clone,
+> store worktree, built binary, exercised on the self-hosted store **and** a scratch store (for the
+> tear + orphan cases the corpus doesn't contain). **The last RH chunk.**
+
+## Verdict
+
+**C-6 verified — clean.** All three rules ship and behave; the two premises CC corrected were both real
+corrections, and CC's two declined/kept sub-decisions are both the right call. No defects. RH now has
+**no chunks left**. **Separately, this chunk is the fourth in a row where my brief carried an unverified
+current-state claim that CC caught by checking reality — and the first *after* I committed to the fix
+for exactly that. I owe a real accounting, below; it is the most important thing in this verification.**
+
+## Reproduced by CDC
+
+| Check | Result |
+|-------|--------|
+| **G-2 — tear rationale persists** | Already true before C-6 (`TornEdge.because` required; round-trips; ODD-0013 §4.3 documents it "required, never dropped"). Confirmed: a scratch `node tear 1 depends_on 2 --because "…"` → `--json` carries `tears: [{depends_on, because}]`. |
+| **G-2 — the real gap (`show` didn't mention tears) is fixed** | `node show 1` now prints `assumed (torn) dependencies:` → `depends_on <id> — <because>` (text) and `--json` carries the `tears` array. *(My first check false-negatived because I grepped for "tear" and the label is "torn/assumed" — noted below; the display is present.)* |
+| **G-3 — undecomposed-parent, blast radius = 2** | `odm validate` warns on **exactly** #1000 (6 children) and #1600 (5 children) — the two parents without a `decomposed` assertion — with a fix affordance (`odm node decomposed 1000`). **Not** the corpus: 8 corpus nodes carry `decomposed`; arcs 1100–1500 all affirm. My brief's "self-host minted none" was wrong; CC's [1000, 1600] prediction is exact. |
+| **G-3 — severity + exclusivity** | `validate --strict` → **exit 1**; plain `validate` → exit 0 (warns don't fail). Exclusive with the existing `advanced-without-decomposition` (one gap never double-counted). |
+| **L-3b — no-vision finding** | odm's own project **passes** (it has a `# Vision`, from L-3a) — no warning. The rule guards against regression (any heading level/case counts; empty section doesn't). |
+| **Static → `check` inherits** | All three are `validate` rules; `check` runs `validate` first, so it gets them. |
+| **Tests** | odm-core 42 + odm-cli 68 + suites — all 0 failed; CC reports 58 binaries / 0 failed, clippy `-D warnings` clean, fmt clean, no `unsafe`, no model change. |
+| **Ledger** | CC appended **RH-9** (C-8) and **RH-10** (C-6) — the class-(a) chunk rows I flagged as missing — and recorded the brief errors candidly in them. Correct hygiene. |
+
+## CC's two sub-decisions — both endorsed
+
+1. **Declined "warn on a rationale-less tear."** `because` is **required** — an unexplained tear won't
+   even parse/load. Warning would mean making the field *optional* to create the case, trading a
+   parse-time impossibility for a runtime nag. CC kept the stronger guarantee and pinned it with a test
+   whose comment says why. Correct — and my brief only asked for the warn because it wrongly assumed
+   rationale-less tears could exist.
+2. **Kept `decomposed`-mismatch an unconditional error** (my brief said "make it a warn"). It already
+   was an error; downgrading a live rule to a warn weakens it — *a wrong `decomposed` assertion is worse
+   than an absent one* (an absent one is the G-3 warn; a wrong one is a lie about scope). Correct.
+
+## The accounting I owe — the pattern, and that I named the fix and didn't apply it
+
+This is the **fourth consecutive chunk** where my brief asserted something about the tool's *current
+state* that was false, and CC caught it by checking before writing: C-4 (a `store sync` command that
+never existed), C-5 (files "relocate to the created-date shard" — the shard is ULID-derived), C-8
+(`show`/`--json` "already carry the ladder" — they carried nothing), and now C-6 with **two** (G-2 is "a
+data-loss bug, amend the schema" — it was already done; and G-3 "self-host minted no `decomposed`
+assertions, the corpus will light up" — 8 nodes carry them, blast radius 2).
+
+The part that matters most: **in the C-8 verification I wrote, verbatim, "any current-state claim a
+brief leans on gets checked against the binary before it ships" — and then the very next brief (C-6) made
+two more.** So this isn't ignorance of the control; it's stating a control and not executing it, which is
+worse than the original error.
+
+The pull, named honestly: when drafting in flow I treat the findings docs and my memory of the code as
+ground truth because they're *right there*, and re-verifying feels redundant. But findings go stale
+(G-2 was logged 2026-07-25 as "rationale dropped"; it has since been made required and documented) and my
+model of the code drifts. The pull is toward the fluent, confident brief over the thirty-second check.
+
+The control that actually works — and that I will run, not just name: **I already have a built binary and
+the live corpus in a clone at all times.** Before a cc-prompt ships, every current-state assertion in it
+gets a command run against that clone, and the brief notes which claims were verified. For C-6 that was
+`grep -n "because" crates/odm-core/src/**` (would have shown `TornEdge.because` required) and `grep -rl
+decomposed .worktrees/odm/nodes` (would have shown 8, blast radius 2) — under a minute, both. The gate is
+mechanical, because the C-8 evidence is that a *resolution* doesn't hold; a *step in the flow* does.
+
+To be clear about what this is and isn't: my briefs' **shape** has been right (the right three concerns,
+the static→`validate` taxonomy), and CC's practice of verifying premises first is exactly why each lands
+well anyway — the collaboration is working. But a planner whose current-state claims are unreliable makes
+the verifier do the planner's homework, and that's mine to fix, not CC's to keep absorbing.
+
+## Forward (actionable — CC flagged)
+
+- **`odm node decomposed 1000` today.** #1000's six arcs are settled, so affirming its decomposition
+  clears that warn **honestly** now.
+- **#1600 should wait.** It's mid-flight (A6 slices still to come); affirming its decomposition now and
+  then adding a slice would trip `decomposition-drift` — which is an **error**, not a warn. Affirm it
+  when A6 closes, not before. (This is the rule nudging correctly: "done enough to claim complete
+  scope?" — and #1600 isn't.)
+
+## Ledger
+
+- **RH-10 (C-6) → attested** (CDC-reproduced on `release/1.0.x`; durable `reproduced` rides push + CI).
+  **G-2/G-3/L-3b done.** RH-9 (C-8) + RH-10 (C-6) rows appended — the class-(a) set now matches the
+  Chunks table. **Silent-drop diff:** none.
+- **RH is chunk-complete** (C-1…C-6 + C-8; C-7 retired into C-5). **Next:** **RH-6/RH-7 compose** (the
+  self-hosted CLI coherent + themed + UAT-validated end-to-end) → **arc close** → **A6 resumes at
+  slice05** (PM-skill) against the settled surface.
