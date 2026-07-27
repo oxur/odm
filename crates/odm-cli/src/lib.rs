@@ -607,6 +607,11 @@ enum Command {
         /// Report the plan and write nothing.
         #[arg(long)]
         dry_run: bool,
+        /// Report the doc-coverage/representation/stub-body/provenance gap
+        /// inventory over `legacy_path` (a docs root) and exit. Read-only: mints
+        /// no node, changes no schema (arc-migration-fidelity slice01).
+        #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "dry_run"])]
+        coverage: bool,
     },
     /// Manage nodes: create, inspect, relate, and advance them.
     ///
@@ -778,7 +783,7 @@ pub fn dispatch(
                 }
             },
         },
-        Command::Migrate { legacy_path, plan, legacy, replan, dry_run } => {
+        Command::Migrate { legacy_path, plan, legacy, replan, dry_run, coverage } => {
             let forced = if plan {
                 Some(odm_migrate::Corpus::Plan)
             } else if legacy {
@@ -790,7 +795,7 @@ pub fn dispatch(
                 &store,
                 root,
                 &legacy_path,
-                migrate::Options { forced, replan, dry_run },
+                migrate::Options { forced, replan, dry_run, coverage },
                 out,
                 err,
             )?;

@@ -36,7 +36,7 @@ const MAX_MVP_ARC: u32 = 6;
 
 /// The project (root) node's number — a high, fixed value disjoint from the document
 /// numbering space (legacy ODDs are `2`, `9`–`20`) and from the arc/slice ranges.
-const PROJECT_NUMBER: u32 = 1000;
+pub(crate) const PROJECT_NUMBER: u32 = 1000;
 
 /// The canonical `project` gate-set (ODD-0013 §5.1). Kept in sync with the
 /// `[gates.project]` written to `odm.toml` at cutover.
@@ -415,7 +415,10 @@ fn closed_arcs_from_pledger(plan_root: &Path) -> BTreeSet<u32> {
 
 /// Parses a `<prefix>NN[.M]-…` directory name into `(major, minor?)`, or `None`
 /// if it does not match (`arc06-…` → `(6, None)`; `slice05.1-…` → `(5, Some(1))`).
-fn parse_prefix(dir_name: &str, prefix: &str) -> Option<(u32, Option<u32>)> {
+///
+/// `pub(crate)`: the coverage detector ([`crate::coverage`]) reuses this rather
+/// than re-deriving the same coordinate parse.
+pub(crate) fn parse_prefix(dir_name: &str, prefix: &str) -> Option<(u32, Option<u32>)> {
     let rest = dir_name.strip_prefix(prefix)?;
     let head = rest.split('-').next().unwrap_or(rest);
     match head.split_once('.') {

@@ -40,6 +40,7 @@
 //! needed. There are no `07-deferred` ODDs, so `deferred → retire` stands as the
 //! interim mapping (revisitable if a real deferred ODD appears).
 
+pub mod coverage;
 pub mod legacy;
 pub mod mapping;
 pub mod replan;

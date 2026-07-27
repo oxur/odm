@@ -1,0 +1,598 @@
+//! **Coverage discovery** (arc-migration-fidelity slice01): a read-only doc-coverage
+//! and gap detector over a docs tree, producing the exact, re-runnable inventory the
+//! rest of the arc plans against.
+//!
+//! Four detectors, each a count + an offending list:
+//!
+//! 1. **doc-coverage** — every source `.md` matched to a node, or reported uncovered.
+//! 2. **representation** — arc/slice directories vs. arc/slice nodes.
+//! 3. **stub-body** — work nodes whose body is a lone synthesized H1 (tombstones excluded).
+//! 4. **provenance-absence** — nodes carrying no `provenance` key.
+//!
+//! Matching is **heuristic** — provenance does not exist yet ([`crate::selfhost`]
+//! discussion), so a source doc is matched to a node structurally (arc/slice
+//! directory coordinates, reusing [`crate::selfhost::parse_prefix`]) or by its
+//! frontmatter `number` (ODDs, reusing [`crate::legacy::parse_file`]). A doc this
+//! run reports uncovered *may* be a matcher miss rather than a true hole — every
+//! [`CoverageEntry`] carries its matching `basis` so the report can say so.
+//!
+//! **Read-only**: [`run`] only reads `docs_root` and `store` — it persists no
+//! document and mutates no file (F-7).
+
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
+use odm_core::NodeType;
+use odm_core::frontmatter::Document;
+use odm_store::{Store, StoreError};
+use walkdir::WalkDir;
+
+use crate::legacy;
+use crate::selfhost::{arc_in_scope, arc_number, parse_prefix, slice_number};
+
+/// A source document's coarse classification (F-2). A closed set matching the
+/// canonical shapes the `1.0.x` corpus (and the general planning-corpus
+/// convention) is known to carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DocClass {
+    /// `project-plan.md` — the project's plan-of-record.
+    ProjectPlan,
+    /// `arc-plan.md` — an arc's plan-of-record.
+    ArcPlan,
+    /// `slice-doc.md` — a slice's plan-of-record.
+    SliceDoc,
+    /// `ledger.md` — a slice's acceptance ledger.
+    Ledger,
+    /// `cc-prompt*.md` — an implementation prompt (a slice's or a chunk's).
+    CcPrompt,
+    /// `*cdc-verification.md` — an independent-verification report.
+    CdcVerification,
+    /// `*closing-report.md` — a slice's or chunk's closing report.
+    ClosingReport,
+    /// A frontmatter design doc under `docs/design/` (an ODD, in the pre-1.0
+    /// vocabulary) — `research`-tagged or not; both live in the same tree.
+    Odd,
+    /// A `docs/dev/` note, excluding the `research` subtree.
+    Dev,
+    /// A `docs/dev/research/` investigation doc.
+    Research,
+    /// Anything else: ADRs, amendments, UAT artifacts, session handoffs, and
+    /// other ad-hoc/cross-scale docs (the audit's "ad-hoc / other" cohort).
+    Other,
+}
+
+impl DocClass {
+    /// The canonical lowercase label (for rendering).
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DocClass::ProjectPlan => "project-plan",
+            DocClass::ArcPlan => "arc-plan",
+            DocClass::SliceDoc => "slice-doc",
+            DocClass::Ledger => "ledger",
+            DocClass::CcPrompt => "cc-prompt",
+            DocClass::CdcVerification => "cdc-verification",
+            DocClass::ClosingReport => "closing-report",
+            DocClass::Odd => "odd",
+            DocClass::Dev => "dev",
+            DocClass::Research => "research",
+            DocClass::Other => "other",
+        }
+    }
+
+    /// Every class, in a stable display order (used to group the report).
+    #[must_use]
+    pub fn all() -> [DocClass; 11] {
+        [
+            DocClass::ProjectPlan,
+            DocClass::ArcPlan,
+            DocClass::SliceDoc,
+            DocClass::Ledger,
+            DocClass::CcPrompt,
+            DocClass::CdcVerification,
+            DocClass::ClosingReport,
+            DocClass::Odd,
+            DocClass::Dev,
+            DocClass::Research,
+            DocClass::Other,
+        ]
+    }
+}
+
+/// A source `.md` file under a docs root, classified.
+#[derive(Debug, Clone)]
+pub struct SourceDoc {
+    /// The path, relative to the docs root.
+    pub path: PathBuf,
+    /// Its classification.
+    pub class: DocClass,
+}
+
+/// One doc-coverage row: a source doc, whether it matched a node, and the basis
+/// for that verdict (F-3's heuristic caveat, carried per-row rather than only in
+/// prose).
+#[derive(Debug, Clone)]
+pub struct CoverageEntry {
+    /// The path, relative to the docs root.
+    pub path: PathBuf,
+    /// Its classification.
+    pub class: DocClass,
+    /// Whether it matched an existing node.
+    pub covered: bool,
+    /// Why (or why not) — the matching basis, always stated (never presented as
+    /// certainty when it is a heuristic).
+    pub basis: &'static str,
+}
+
+/// The doc-coverage detector's result (F-3): every source doc, matched or not.
+#[derive(Debug, Clone)]
+pub struct DocCoverageReport {
+    /// Every classified source doc, in path order.
+    pub entries: Vec<CoverageEntry>,
+}
+
+impl DocCoverageReport {
+    /// The total number of source docs considered.
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// The number matched to an existing node.
+    #[must_use]
+    pub fn covered_count(&self) -> usize {
+        self.entries.iter().filter(|e| e.covered).count()
+    }
+
+    /// The number with no match — the doc-coverage gap.
+    #[must_use]
+    pub fn uncovered_count(&self) -> usize {
+        self.entries.iter().filter(|e| !e.covered).count()
+    }
+
+    /// The unmatched entries, in path order.
+    pub fn uncovered(&self) -> impl Iterator<Item = &CoverageEntry> {
+        self.entries.iter().filter(|e| !e.covered)
+    }
+}
+
+/// The representation detector's result (F-4): arc/slice **directories** on disk
+/// vs. arc/slice **nodes** in the store.
+#[derive(Debug, Clone, Default)]
+pub struct RepresentationGap {
+    /// Every top-level `arc*` directory found.
+    pub total_arc_dirs: usize,
+    /// Arc directory names with no matching arc node, sorted.
+    pub missing_arcs: Vec<String>,
+    /// Every `slice*` directory found under any arc directory.
+    pub total_slice_dirs: usize,
+    /// `"<arc-dir>/<slice-dir>"` for slice directories with no matching slice
+    /// node, sorted.
+    pub missing_slices: Vec<String>,
+}
+
+impl RepresentationGap {
+    /// Arc directories that resolved to an existing node.
+    #[must_use]
+    pub fn represented_arc_dirs(&self) -> usize {
+        self.total_arc_dirs - self.missing_arcs.len()
+    }
+
+    /// Slice directories that resolved to an existing node.
+    #[must_use]
+    pub fn represented_slice_dirs(&self) -> usize {
+        self.total_slice_dirs - self.missing_slices.len()
+    }
+}
+
+/// One stub-body finding (F-5): a work node whose body is effectively empty.
+#[derive(Debug, Clone)]
+pub struct StubEntry {
+    /// The node's number.
+    pub number: u32,
+    /// The node's type (`arc` or `slice`).
+    pub node_type: NodeType,
+    /// The node's name.
+    pub name: String,
+}
+
+/// One provenance-absence finding (F-6): a node carrying no `provenance` key.
+#[derive(Debug, Clone)]
+pub struct ProvenanceEntry {
+    /// The node's number.
+    pub number: u32,
+    /// The node's type.
+    pub node_type: NodeType,
+    /// The node's name.
+    pub name: String,
+}
+
+/// The full coverage/gap inventory (F-1…F-6): the arc's work-list.
+#[derive(Debug, Clone)]
+pub struct CoverageReport {
+    /// The doc-coverage detector's result.
+    pub doc_coverage: DocCoverageReport,
+    /// The representation detector's result.
+    pub representation: RepresentationGap,
+    /// The stub-body detector's result.
+    pub stubs: Vec<StubEntry>,
+    /// The provenance-absence detector's result.
+    pub provenance_missing: Vec<ProvenanceEntry>,
+}
+
+/// A fatal error running the coverage detectors — a store load failure. Per-doc
+/// problems (a malformed ODD, an unparsed template) are heuristic misses
+/// reflected in the report, never raised (mirrors [`crate::MigrateError`]'s
+/// per-doc-vs-fatal split).
+#[derive(Debug, thiserror::Error)]
+pub enum CoverageError {
+    /// The store's corpus could not be loaded.
+    #[error("loading the store corpus")]
+    LoadCorpus(#[source] StoreError),
+}
+
+/// Runs the four coverage/gap detectors over `docs_root`, matching against the
+/// nodes in `store`. Read-only: no node is persisted, no source file is written.
+///
+/// # Errors
+///
+/// [`CoverageError::LoadCorpus`] if the store's corpus cannot be loaded.
+pub fn run(store: &Store, docs_root: &Path) -> Result<CoverageReport, CoverageError> {
+    let corpus = store.load_all().map_err(CoverageError::LoadCorpus)?;
+    let index = NodeIndex::build(&corpus);
+
+    let docs = enumerate_docs(docs_root);
+    let doc_coverage = doc_coverage(&docs, &index, docs_root);
+    let representation = representation(&docs, &index);
+    let stubs = stub_bodies(&corpus);
+    let provenance_missing = provenance_absence(&corpus);
+
+    Ok(CoverageReport { doc_coverage, representation, stubs, provenance_missing })
+}
+
+/// An in-memory index of the store's existing nodes, keyed the way each
+/// detector needs to look them up — built once per [`run`].
+struct NodeIndex {
+    project_exists: bool,
+    arc_numbers: BTreeSet<u32>,
+    slice_numbers: BTreeSet<u32>,
+    doc_numbers: BTreeSet<u32>,
+}
+
+impl NodeIndex {
+    fn build(corpus: &[Document]) -> Self {
+        let mut index = Self {
+            project_exists: false,
+            arc_numbers: BTreeSet::new(),
+            slice_numbers: BTreeSet::new(),
+            doc_numbers: BTreeSet::new(),
+        };
+        for document in corpus {
+            let fm = document.frontmatter();
+            match fm.node_type() {
+                NodeType::Project => index.project_exists = true,
+                NodeType::Arc => {
+                    index.arc_numbers.insert(fm.number());
+                }
+                NodeType::Slice => {
+                    index.slice_numbers.insert(fm.number());
+                }
+                NodeType::Design | NodeType::Research => {
+                    index.doc_numbers.insert(fm.number());
+                }
+                NodeType::Adr | NodeType::Note => {}
+            }
+        }
+        index
+    }
+}
+
+// ----- enumeration + classification (F-2) -----------------------------------
+
+/// Enumerates every `.md` file under `docs_root`, classified, in path order.
+///
+/// Unfiltered — every `.md` file counts, including index pages and templates,
+/// so `enumerate_docs(root).len() == find <root> -name '*.md' | wc -l` (F-2).
+/// Non-document artifacts are simply classified [`DocClass::Other`] (or `Odd`,
+/// for an unparsable file under `docs/design/`) rather than excluded — the
+/// doc-coverage detector then reports them uncovered rather than silently
+/// vanishing them from the count.
+#[must_use]
+pub fn enumerate_docs(docs_root: &Path) -> Vec<SourceDoc> {
+    let mut docs = Vec::new();
+    for entry in WalkDir::new(docs_root).into_iter().flatten() {
+        let path = entry.path();
+        if !entry.file_type().is_file() || path.extension().is_none_or(|ext| ext != "md") {
+            continue;
+        }
+        let relative = path.strip_prefix(docs_root).unwrap_or(path).to_path_buf();
+        let class = classify(&relative);
+        docs.push(SourceDoc { path: relative, class });
+    }
+    docs.sort_by(|a, b| a.path.cmp(&b.path));
+    docs
+}
+
+/// Classifies one source doc path (relative to a docs root) into a
+/// [`DocClass`]. Canonical basenames are checked first (they identify a doc
+/// regardless of which root it sits under); the doc's top-level root directory
+/// decides the rest.
+fn classify(relative: &Path) -> DocClass {
+    let basename = relative.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+    if basename == "project-plan.md" {
+        return DocClass::ProjectPlan;
+    }
+    if basename == "arc-plan.md" {
+        return DocClass::ArcPlan;
+    }
+    if basename == "slice-doc.md" {
+        return DocClass::SliceDoc;
+    }
+    if basename == "ledger.md" {
+        return DocClass::Ledger;
+    }
+    if basename.starts_with("cc-prompt") {
+        return DocClass::CcPrompt;
+    }
+    if basename.ends_with("cdc-verification.md") {
+        return DocClass::CdcVerification;
+    }
+    if basename.ends_with("closing-report.md") {
+        return DocClass::ClosingReport;
+    }
+
+    let mut components =
+        relative.components().map(|c| c.as_os_str().to_string_lossy().into_owned());
+    match components.next().as_deref() {
+        Some("design") => DocClass::Odd,
+        Some("dev") => {
+            if components.next().as_deref() == Some("research") {
+                DocClass::Research
+            } else {
+                DocClass::Dev
+            }
+        }
+        _ => DocClass::Other,
+    }
+}
+
+// ----- doc-coverage detector (F-3) -------------------------------------------
+
+fn doc_coverage(docs: &[SourceDoc], index: &NodeIndex, docs_root: &Path) -> DocCoverageReport {
+    let entries = docs
+        .iter()
+        .map(|doc| {
+            let (covered, basis) = match doc.class {
+                DocClass::ProjectPlan => (index.project_exists, "structural (project root exists)"),
+                DocClass::ArcPlan => match_arc(&doc.path, index),
+                DocClass::SliceDoc => match_slice(&doc.path, index),
+                DocClass::Odd => match_odd(&docs_root.join(&doc.path), index),
+                DocClass::Ledger
+                | DocClass::CcPrompt
+                | DocClass::CdcVerification
+                | DocClass::ClosingReport => {
+                    (false, "no node class yet for supporting docs (lands in arc slice 05)")
+                }
+                DocClass::Dev | DocClass::Research | DocClass::Other => {
+                    (false, "no node class yet for this doc class")
+                }
+            };
+            CoverageEntry { path: doc.path.clone(), class: doc.class, covered, basis }
+        })
+        .collect();
+    DocCoverageReport { entries }
+}
+
+/// Matches an `arc-plan.md` to its arc node via its containing directory's
+/// structural coordinate (reusing [`parse_prefix`]/[`arc_number`] — the same
+/// derivation [`crate::selfhost::self_host`] uses to mint it).
+fn match_arc(relative: &Path, index: &NodeIndex) -> (bool, &'static str) {
+    let Some(arc_dir) = relative.parent().and_then(Path::file_name).and_then(|s| s.to_str()) else {
+        return (false, "unrecognized path shape (no containing directory)");
+    };
+    match arc_coordinate(arc_dir) {
+        Some(major) if index.arc_numbers.contains(&arc_number(major)) => {
+            (true, "structural coordinate (in-scope arc directory number)")
+        }
+        Some(_) => (false, "structural coordinate resolved; no matching arc node"),
+        None => (false, "no numbered in-scope coordinate (named or post-MVP arc directory)"),
+    }
+}
+
+/// Matches a `slice-doc.md` to its slice node via its arc+slice directory
+/// coordinates (reusing [`parse_prefix`]/[`slice_number`]).
+fn match_slice(relative: &Path, index: &NodeIndex) -> (bool, &'static str) {
+    let mut ancestors = relative.components().rev();
+    ancestors.next(); // the file name itself
+    let Some(slice_dir) = ancestors.next().and_then(|c| c.as_os_str().to_str()) else {
+        return (false, "unrecognized path shape (no slice directory)");
+    };
+    let Some(arc_dir) = ancestors.next().and_then(|c| c.as_os_str().to_str()) else {
+        return (false, "unrecognized path shape (no arc directory)");
+    };
+    let Some(arc_major) = arc_coordinate(arc_dir) else {
+        return (false, "parent arc directory has no in-scope numbered coordinate");
+    };
+    match parse_prefix(slice_dir, "slice") {
+        Some((slice_major, slice_minor)) => {
+            let number = slice_number(arc_major, slice_major, slice_minor);
+            if index.slice_numbers.contains(&number) {
+                (true, "structural coordinate (arc+slice directory number)")
+            } else {
+                (false, "structural coordinate resolved; no matching slice node")
+            }
+        }
+        None => (false, "slice directory has no numbered coordinate"),
+    }
+}
+
+/// Matches an ODD-tree doc to a `design`/`research` node by its frontmatter
+/// `number` (reusing [`legacy::parse_file`] — the same read [`crate::mapping`]
+/// uses). Document numbers are a single space shared by both node types (see
+/// the crate-level numbering-space note), so presence in either counts.
+fn match_odd(path: &Path, index: &NodeIndex) -> (bool, &'static str) {
+    match legacy::parse_file(path) {
+        Ok(doc) => match doc.front.number {
+            Some(number) if index.doc_numbers.contains(&number) => {
+                (true, "number match (frontmatter `number`)")
+            }
+            Some(_) => (false, "frontmatter `number` present; no matching document node"),
+            None => (false, "no frontmatter `number` (not an importable ODD)"),
+        },
+        Err(_) => (false, "unparsable frontmatter (an index page or template, not an ODD)"),
+    }
+}
+
+// ----- representation detector (F-4) -----------------------------------------
+
+/// Derives the set of arc/slice **directories** from the already-classified
+/// [`DocClass::ArcPlan`]/[`DocClass::SliceDoc`] docs (one directory per
+/// `arc-plan.md`/`slice-doc.md`, by the corpus convention), and reports which
+/// have no matching node.
+///
+/// Deliberately driven off the classified doc list rather than a second,
+/// independent filesystem walk: `docs_root` is a general docs tree (`docs/`)
+/// whose plan-set root (`design-v1.0.0/`, in odm's case) has no fixed name or
+/// depth this crate should assume — the `arc-plan.md`/`slice-doc.md` locations
+/// *are* the arc/slice directories, wherever they sit.
+///
+/// Every directory counts whether or not it parses as a numbered coordinate —
+/// a named arc (`arc-store-home`) is exactly as real a directory as
+/// `arc01-substrate-node-crud`, and excluding it from the count would hide the
+/// representation gap this detector exists to surface.
+fn representation(docs: &[SourceDoc], index: &NodeIndex) -> RepresentationGap {
+    let mut gap = RepresentationGap::default();
+
+    let arc_dirs: BTreeSet<&Path> = docs
+        .iter()
+        .filter(|d| d.class == DocClass::ArcPlan)
+        .filter_map(|d| d.path.parent())
+        .collect();
+    gap.total_arc_dirs = arc_dirs.len();
+    for arc_dir in &arc_dirs {
+        let name = dir_label(arc_dir);
+        let represented = arc_coordinate(&name)
+            .is_some_and(|major| index.arc_numbers.contains(&arc_number(major)));
+        if !represented {
+            gap.missing_arcs.push(name);
+        }
+    }
+
+    let slice_dirs: BTreeSet<&Path> = docs
+        .iter()
+        .filter(|d| d.class == DocClass::SliceDoc)
+        .filter_map(|d| d.path.parent())
+        .collect();
+    gap.total_slice_dirs = slice_dirs.len();
+    for slice_dir in &slice_dirs {
+        let slice_name = dir_label(slice_dir);
+        let arc_name = slice_dir.parent().map(dir_label).unwrap_or_default();
+        let represented = arc_coordinate(&arc_name).is_some_and(|major| {
+            parse_prefix(&slice_name, "slice").is_some_and(|(smaj, smin)| {
+                index.slice_numbers.contains(&slice_number(major, smaj, smin))
+            })
+        });
+        if !represented {
+            gap.missing_slices.push(format!("{arc_name}/{slice_name}"));
+        }
+    }
+
+    gap
+}
+
+/// A directory's own name (the last path component), as a label for the report.
+fn dir_label(dir: &Path) -> String {
+    dir.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// The in-scope arc major number a directory name resolves to, or `None` if it
+/// carries no numbered coordinate, a fractional one, or is out of MVP scope.
+fn arc_coordinate(dir_name: &str) -> Option<u32> {
+    parse_prefix(dir_name, "arc")
+        .filter(|(major, minor)| minor.is_none() && arc_in_scope(*major))
+        .map(|(major, _)| major)
+}
+
+// ----- stub-body detector (F-5) ----------------------------------------------
+
+/// Work nodes (`arc`/`slice`) whose body is effectively empty (≤ 1 non-blank
+/// line — the lone synthesized `# {name}` H1 [`crate::selfhost::self_host`]
+/// writes). Retired (tombstone) nodes are excluded — a retired node's body is
+/// meant to be a terse marker, not migrated content.
+fn stub_bodies(corpus: &[Document]) -> Vec<StubEntry> {
+    corpus
+        .iter()
+        .filter(|d| matches!(d.frontmatter().node_type(), NodeType::Arc | NodeType::Slice))
+        .filter(|d| d.frontmatter().retired().is_none())
+        .filter(|d| non_blank_line_count(d.body()) <= 1)
+        .map(|d| StubEntry {
+            number: d.frontmatter().number(),
+            node_type: d.frontmatter().node_type(),
+            name: d.frontmatter().name().to_string(),
+        })
+        .collect()
+}
+
+fn non_blank_line_count(body: &str) -> usize {
+    body.lines().filter(|line| !line.trim().is_empty()).count()
+}
+
+// ----- provenance-absence detector (F-6) -------------------------------------
+
+/// Nodes carrying no `provenance` key. Checked against the node's **emitted**
+/// frontmatter YAML rather than a typed accessor — `Frontmatter` has no typed
+/// `provenance` field yet ([`odm_core::frontmatter::Frontmatter`]; it lands in
+/// arc slice 02), but any `provenance:` block would already round-trip through
+/// the untyped `extra` catch-all, so this check is durable across that change:
+/// it will keep working once the field is typed, without modification here.
+fn provenance_absence(corpus: &[Document]) -> Vec<ProvenanceEntry> {
+    corpus
+        .iter()
+        .filter(|d| !has_provenance_key(d))
+        .map(|d| ProvenanceEntry {
+            number: d.frontmatter().number(),
+            node_type: d.frontmatter().node_type(),
+            name: d.frontmatter().name().to_string(),
+        })
+        .collect()
+}
+
+fn has_provenance_key(document: &Document) -> bool {
+    let Ok(text) = document.emit() else { return false };
+    frontmatter_yaml(&text).lines().any(|line| line.starts_with("provenance:"))
+}
+
+/// The YAML block between the opening and closing `---` fences of an emitted
+/// document — mirrors the split [`odm_core::frontmatter::Document::parse`]
+/// performs, so a scan over it sees exactly the frontmatter, never the body.
+fn frontmatter_yaml(text: &str) -> &str {
+    let after_open = text.strip_prefix("---\n").unwrap_or(text);
+    after_open.split("\n---\n").next().unwrap_or(after_open)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doc_class_all_covers_every_variant_once() {
+        let all = DocClass::all();
+        let unique: BTreeSet<_> = all.iter().map(|c| c.as_str()).collect();
+        assert_eq!(unique.len(), all.len(), "DocClass::all() lists no duplicates");
+    }
+
+    #[test]
+    fn frontmatter_yaml_isolates_the_fence_block() {
+        let text = "---\nid: x\nprovenance:\n  a: b\n---\nbody with\n---\nin it\n";
+        let yaml = frontmatter_yaml(text);
+        assert!(yaml.contains("provenance:"));
+        assert!(!yaml.contains("body with"));
+    }
+
+    #[test]
+    fn non_blank_line_count_ignores_whitespace_only_lines() {
+        assert_eq!(non_blank_line_count("# Title\n"), 1);
+        assert_eq!(non_blank_line_count("# Title\n\n   \nBody line\n"), 2);
+        assert_eq!(non_blank_line_count(""), 0);
+    }
+}

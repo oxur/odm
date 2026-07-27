@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
 use odm_core::NodeType;
+use odm_migrate::coverage::{CoverageReport, DocClass};
 use odm_migrate::mapping::{DocGates, canonical_design_gates, canonical_research_gates};
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::{Store, StoreHome};
@@ -32,6 +33,9 @@ pub(crate) struct Options {
     pub replan: bool,
     /// Report and write nothing.
     pub dry_run: bool,
+    /// Report the coverage/gap inventory over `legacy_path` (a docs root) and
+    /// exit — read-only (arc-migration-fidelity slice01).
+    pub coverage: bool,
 }
 
 pub(crate) fn migrate(
@@ -44,6 +48,12 @@ pub(crate) fn migrate(
 ) -> anyhow::Result<()> {
     let dry_run = options.dry_run;
     let legacy = resolve(root, legacy_path);
+
+    // Coverage is a report, not a derivation: it never creates, upgrades, or
+    // re-derives a node, so it short-circuits before any of that machinery.
+    if options.coverage {
+        return coverage(store, &legacy, out, err);
+    }
 
     // The re-stamp is a different operation from an import: it rewrites nodes
     // that already exist rather than creating any, so it short-circuits here.
@@ -155,6 +165,101 @@ fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Res
         report.skipped_count()
     ));
     writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// The `migrate --coverage` arm: runs the read-only coverage/gap detectors
+/// (arc-migration-fidelity slice01) over `docs_root` and prints the report.
+///
+/// The report is Markdown, not a themed table — it is meant to be captured
+/// verbatim as the arc's `coverage-report.md` work-list (`odm migrate <docs>
+/// --coverage > coverage-report.md`), and a 200+ row inventory reads better as
+/// grouped Markdown than as one giant table.
+fn coverage(
+    store: &Store,
+    docs_root: &Path,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let report = odm_migrate::coverage::run(store, docs_root)
+        .with_context(|| format!("running coverage over {}", docs_root.display()))?;
+
+    render_coverage(&report, out)?;
+
+    let status = format!(
+        "coverage: {}/{} docs covered, {} arc dir(s) + {} slice dir(s) unrepresented, \
+         {} stub bod{}, {} node(s) missing provenance",
+        report.doc_coverage.covered_count(),
+        report.doc_coverage.total(),
+        report.representation.missing_arcs.len(),
+        report.representation.missing_slices.len(),
+        report.stubs.len(),
+        if report.stubs.len() == 1 { "y" } else { "ies" },
+        report.provenance_missing.len(),
+    );
+    term::info(err, &status)?;
+    Ok(())
+}
+
+/// Renders the coverage report as Markdown: a summary, then the four detectors
+/// in turn (doc-coverage grouped by class, representation, stub bodies,
+/// provenance-absence).
+fn render_coverage(report: &CoverageReport, out: &mut dyn Write) -> anyhow::Result<()> {
+    let dc = &report.doc_coverage;
+    let rep = &report.representation;
+
+    writeln!(out, "# Coverage report\n")?;
+    writeln!(out, "## Summary\n")?;
+    writeln!(
+        out,
+        "- Source docs: {} total, {} covered, {} uncovered",
+        dc.total(),
+        dc.covered_count(),
+        dc.uncovered_count()
+    )?;
+    writeln!(
+        out,
+        "- Representation: {}/{} arc dirs, {}/{} slice dirs",
+        rep.represented_arc_dirs(),
+        rep.total_arc_dirs,
+        rep.represented_slice_dirs(),
+        rep.total_slice_dirs
+    )?;
+    writeln!(out, "- Stub bodies: {}", report.stubs.len())?;
+    writeln!(out, "- Provenance absent: {}\n", report.provenance_missing.len())?;
+
+    writeln!(out, "## 1. Doc coverage — uncovered by class\n")?;
+    for class in DocClass::all() {
+        let rows: Vec<_> = dc.uncovered().filter(|e| e.class == class).collect();
+        if rows.is_empty() {
+            continue;
+        }
+        writeln!(out, "### {} ({})\n", class.as_str(), rows.len())?;
+        for entry in rows {
+            writeln!(out, "- `{}` — {}", entry.path.display(), entry.basis)?;
+        }
+        writeln!(out)?;
+    }
+
+    writeln!(out, "## 2. Representation gap\n")?;
+    writeln!(out, "### Missing arc directories ({})\n", rep.missing_arcs.len())?;
+    for name in &rep.missing_arcs {
+        writeln!(out, "- `{name}`")?;
+    }
+    writeln!(out, "\n### Missing slice directories ({})\n", rep.missing_slices.len())?;
+    for path in &rep.missing_slices {
+        writeln!(out, "- `{path}`")?;
+    }
+
+    writeln!(out, "\n## 3. Stub bodies ({})\n", report.stubs.len())?;
+    for stub in &report.stubs {
+        writeln!(out, "- #{} {} — {}", stub.number, stub.node_type.as_str(), stub.name)?;
+    }
+
+    writeln!(out, "\n## 4. Provenance absence ({})\n", report.provenance_missing.len())?;
+    for entry in &report.provenance_missing {
+        writeln!(out, "- #{} {} — {}", entry.number, entry.node_type.as_str(), entry.name)?;
+    }
     Ok(())
 }
 
