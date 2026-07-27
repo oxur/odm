@@ -170,6 +170,7 @@ build-release: clean $(BIN_DIR)
 clean:
 	@echo "$(BLUE)Cleaning bin directory...$(RESET)"
 	@rm -rf $(BIN_DIR)
+	@rm .git/index.lock
 	@echo "$(GREEN)✓ Clean complete$(RESET)"
 
 .PHONY: clean-all
