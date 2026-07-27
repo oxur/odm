@@ -15,7 +15,7 @@
 | F-2 (`odd`→`design`), F-3 (add `research`) | C-2 | **done** |
 | F-4…F-9 (`list`: number col, date, status col, tree, de-number, width) | C-3 | **done** |
 | F-15 (retired nodes shown in `list`) | C-3 | **done** |
-| F-10…F-13 (`new` warn, `context`→`project`, `path`→`chain`, `rollup` md/json) | **C-4** | open |
+| F-10…F-13 (`new` warn, `context`→`project`, `path`→`chain`, `rollup` md/json) | **C-4** | **done** (2026-07-26) — folded with the ODD-0023 three-tier reorg; inventory ↔ `--help` parity verified 11/11/2 |
 | F-14 (`self-host`→`migrate`) | **C-5** | **done** (2026-07-26) |
 | F-18 (names embed metadata) | **C-5** (was C-7) | **done** (2026-07-26) — 44/45 work names normalized; one document-title parenthetical stays by design |
 | F-19 (normalized status) | **C-8** | open |
