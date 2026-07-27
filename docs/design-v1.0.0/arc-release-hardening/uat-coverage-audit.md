@@ -44,8 +44,8 @@
 | Row | Route | Status |
 |-----|-------|--------|
 | G-1 (ID-scheme decision) | its own **ODD** — ⚠ gates minting new nodes | pending decision |
-| G-2 (tear-rationale in `check`) | RH **C-6** (reserved) | queued |
-| G-3 (`decomposed`/orphan check rule) | a `check` rule | queued (small) |
+| G-2 (tear-rationale in `check`) | RH **C-6** | **done** (2026-07-27) — was **already implemented**: schema, round-trip and `validate` listing all existed. Real gap closed: `node show` now lists tears + rationale. The rationale-less warn declined (would weaken a parse-time guarantee) |
+| G-3 (`decomposed`/orphan check rule) | RH **C-6** | **done** (2026-07-27) — `undecomposed-parent`, warn by default, `--strict` promotes; 2 nodes affected on odm's corpus (#1000, #1600), not the whole corpus as the brief predicted |
 | G-4 (status read-back) | = L-1, LLM arc slice 01 (pull-forward candidate) | queued |
 | G-5 (foreign-project migration + lykn `--dry-run` = UAT pass 3) | **the long pole** | queued (medium-large) |
 | G-6 (PM-skill straddler) | A6 slice05 | queued (A6) |
@@ -147,7 +147,7 @@ as an **explicit decision + verification**, not a loose "overlaps":
 | Item | Disposition | Home | Ship-blocking? |
 |------|-------------|------|----------------|
 | L-3a (vision not carried) | route | **RH C-5** re-self-host (SH-6 cutover) + author `# Vision` source | **done** (2026-07-26) — project body carries `# Vision` from project-plan §1; focus set via `odm use arc 1600` and committed with the store, so a fresh session gets both from `orient` |
-| L-3b (check: no-vision finding) | route | **RH C-6** check-hardening (with G-2, G-3) | no (fast-follow within RH) |
+| L-3b (check: no-vision finding) | **done** (2026-07-27) | **RH C-6** check-hardening (with G-2, G-3) | no (fast-follow within RH) |
 | L-6 (prebuilt binaries) | route, reclassified | **release-eng** follow-up (ODD-0017 adoption) | **no** (post-1.0 default) |
 | L-8b (reconcile 4 ODDs) | **do now** | **RH release-gate checklist** | **yes — before ship** |
 | L-8a (design-corpus → nodes) | route, follow-on | **`migrate` on `docs/design/`**, post-cutover | no |
