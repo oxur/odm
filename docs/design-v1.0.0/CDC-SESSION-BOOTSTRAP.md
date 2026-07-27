@@ -9,6 +9,14 @@
 
 ---
 
+## 0c. Resume update — 2026-07-27 (Migration Fidelity arc shaped; slice 1 ready — start here)
+
+**A new release-blocking arc is planned: `arc-migration-fidelity/`** — it makes migration faithful and verifiable (1:1 verbatim bodies + a hard body-hash gate; a `provenance` sub-map; frontmatter-fidelity; a **doc-coverage** check) and repairs odm's own self-hosted corpus from skeleton — **44 stub bodies, 6 of 11 arcs, ~211 uncovered docs, 0 provenance** — to **100%**. Shaped from `reconciliation-audit-2026-07-27.md`; decisions in `arc-migration-fidelity/design-notes.md`; roadmap in project-plan §2a + v1.13. **Subsumes L-8b; on the P-12 DoD path.**
+
+**Pick up here:** the arc's **slice 01 (coverage-discovery)** open set is written and CC-ready — `arc-migration-fidelity/slice01-coverage-discovery/{slice-doc,ledger,cc-prompt}.md`. It is **read-only** (build a coverage/gap detector, produce the exact inventory `coverage-report.md`; mints nothing). Hand `cc-prompt.md` to CC. **G-1 is closed** (ODD-0024) so the later minting slices are unblocked.
+
+---
+
 ## 0b. Resume update — 2026-07-27 (G-1 CLOSED — read this first)
 
 **✅ G-1 is CLOSED; the minting freeze is LIFTED.** Per **ODD-0024** (Accepted,
