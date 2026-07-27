@@ -67,12 +67,15 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 > **Added v1.9 (2026-07-26):** a **third** named arc — **Store Home & `init`** — joins them, from
 > **ODD-0022** (Accepted), *not* from UAT. Same treatment (named, number-deferred, v1.0.x, pure
 > expansion). It sequences **before RH C-5**, which re-self-hosts *into* the new store home.
+>
+> **Added v1.13 (2026-07-27):** a **fourth** named arc — **Migration Fidelity** — from the corpus-reconciliation audit (`reconciliation-audit-2026-07-27.md`), *not* UAT. Same treatment (named, number-deferred, v1.0.x, pure expansion). **Unblocked by ODD-0024 (G-1 closed).** It **subsumes the standing L-8b gate** and sits on the **P-12** self-host DoD path.
 
 | Arc | Capability | `depends_on` | Status |
 |-----|-----------|--------------|--------|
 | **Release Hardening (RH)** | UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from `oxur-cli`); type taxonomy `odd`→`design` + new `research`; tree-structured de-numbered `list`; command renames (`context`→`project`, `path`→`chain`, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged **surface** (cc-prompt) vs. **model** (ODD-0013/0020 amendment or ADR). | A6·s04 (the self-hosted corpus UAT runs on) | **CLOSED 2026-07-27** — `arc-release-hardening/closing-report.md`. All chunks done (C-1…C-6, C-8; **C-7 retired into C-5**): theming, type taxonomy, `list` overhaul, the ODD-0023 three-tier command surface + `validate`/`check` split, the fold + real dates + names + vision **+ the SH-6 store cutover**, normalized status, and `validate` hardening. **RH-6 compose reproduced**, **RH-7 reflexive reproduced** (`validate` exit 0 at 60 nodes), RH-8 dispositioned. |
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
 | **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **CLOSED 2026-07-27** — `arc-store-home/closing-report.md`; **SH-1…SH-5 done + SH-6 (dogfood cutover) delivered by RH C-5** — odm now dogfoods its own store (60 nodes on the orphan `odm` branch); an independent fresh-context arc-gate returned PASS-WITH-NOTES |
+| **Migration Fidelity** | Faithful, verifiable, repeatable migration: 1:1 verbatim bodies (**hard body-hash gate**), a `provenance` sub-map on every node, frontmatter-fidelity via schema-mapping, and a **doc-coverage** check (no file left behind). Repairs odm's own self-hosted corpus from skeleton (44 stub bodies, 6/11 arcs, ~211 uncovered docs, 0 provenance) to **100%**; general per project. Synthesis split out as a separate supersede step. | A6·s04; **ODD-0024** (G-1 closed → minting unfrozen) | **shaped, not started** — `arc-migration-fidelity/arc-plan.md`; **subsumes L-8b**; release-blocking (P-12 path) |
 
 **Sequencing (updated 2026-07-27):** Release Hardening **closed** → LLM command surface
 (**next**, and materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
@@ -244,6 +247,10 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.13 — 2026-07-27 — Migration Fidelity arc shaped (corpus reconciliation)
+
+A **fourth** named, number-deferred, **release-blocking** arc — **Migration Fidelity** — is added to §2a (`arc-migration-fidelity/arc-plan.md`), shaped from the corpus-reconciliation audit (2026-07-27). It makes migration faithful and verifiable — 1:1 verbatim bodies + a hard body-hash gate, a `provenance` sub-map, frontmatter-fidelity schema-mapping, and a doc-coverage check — and repairs odm's own self-hosted corpus from skeleton (44 stub bodies, 6 of 11 arcs, ~211 uncovered docs, 0 provenance) to 100%. **Which surfaced it:** the reconciliation audit + the migration/provenance design thread. It **subsumes L-8b** and is on the **P-12** DoD path; unblocked by **ODD-0024** (G-1 closed).
 
 ### v1.12 — 2026-07-27 — G-1 closed (id scheme decided); minting unfrozen
 
