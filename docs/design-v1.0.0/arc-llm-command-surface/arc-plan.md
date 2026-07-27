@@ -28,7 +28,7 @@ places where driving the tool disagreed with it.
 
 | Proposed here | Status against the inventory |
 |---|---|
-| Status read-back (slice 01) | **Absent from the inventory entirely.** Confirms UAT L-1 is a real gap, not a known-and-deferred one. Highest-value item in this plan. |
+| Status read-back (slice 01) | **DELIVERED by RH C-8 (2026-07-27).** `odm node show` (text + `--json`) now exposes the per-gate vector (`reached`/`evidence` + the normalized `status`) — the L-1 blocking gap, closed ahead of schedule as a side effect of the F-19 status work. Slice 01 shrinks to the *remainder* (see the slice row). |
 | Ordered/typed `next` (02) | Absent. |
 | `why` (02) | **Partly redundant — corrected.** `blocked <REF>` already claims to *"explain why a node is blocked or low-confidence."* See the amended slice 02 scope. |
 | `search` (03) | **Convergent, and the inventory sharpens it:** legacy *had* `search`; it was dropped with the state-directory model, not deliberately as a capability. Under ID-mirrored storage it is needed *more* than it was, not less. |
@@ -69,7 +69,7 @@ those land first and does not restate them.
 
 | Slice | Scope | Source |
 |---|---|---|
-| **01 · read-back the status vector** | Add gate status to `show` (text + `--json`): per-gate `reached`/`by`/`evidence`/`evidence_dates`, the computed satisfaction verdict, and — for soft-satisfied deps — the weakest link that caused it. Optionally `odm status <ref>`. **The blocking gap.** | UAT L-1 |
+| **01 · read-back the status vector — CORE DONE (RH C-8)** | ✅ **Landed in C-8:** `show`/`--json` expose the per-gate vector (`reached`/`evidence`) + the normalized `status`; A-1 is satisfied. **Remainder:** add `by`/`evidence_dates` to the gates array; enumerate **unreached** gates in `--json` (the text `show` already lists them, so a consumer can see the *next* gate — a machine reading `--json` today sees only reached gates); the computed **satisfaction verdict**; and — for soft-satisfied deps — the **weakest link** (overlaps slice 02's readiness analysis). Optionally `odm status <ref>`. | UAT L-1 |
 | **02 · explain the *ready* half; order `next`** | `blocked <ref>` already explains the blocked half. **Nothing explains readiness** — and that is the question an agent actually asks. On this store `blocked 1604` returns `nothing holding` and `--json` returns `[]`, which cannot distinguish *ready and well-supported* from *ready on an `asserted`-only dependency*. Extend `blocked` (or add the symmetric command) to report the supporting chain with evidence per hop and the weakest link named. Separately: `next` gains type labels, ordering by downstream fan-out, `unblocks: N`, `depth`, all in `--json`. | UAT L-4, L-5 (corrected) |
 | **03 · `search` and flat rollup** | `odm search <text>` over names + bodies (`--type`, `--tag`, `--json`). Under ID-mirrored storage, topic-grep and `ls` stop working; search is their replacement, not a convenience. `odm rollup --format=flat` emits a greppable `id → number → type → name` map for consumers with **no odm binary**. | UAT L-7; the one `odm search` trace |
 | **04 · `history` and `diff`** | `odm history <ref>` — gate transitions over time from `evidence_dates` + git. `odm diff <since>` — **what changed in the plan** since a commit/date: nodes added, gates advanced, edges rewired, evidence upgraded or downgraded. *This is the resume command:* `orient` says where things stand, `diff` says what moved while I was away, which is what a returning context actually needs. Feeds A7 telemetry directly. | UAT (new); A7 adjacency |
@@ -91,7 +91,7 @@ lost again.
 
 | Row | Criterion | Evidence | Sev | Status |
 |---|---|---|---|---|
-| **A-1** | A fresh context can answer *"what is the gate vector and evidence level of node X"* in **one** CLI call | transcript | serious | open |
+| **A-1** | A fresh context can answer *"what is the gate vector and evidence level of node X"* in **one** CLI call | **`odm node show 1600` / `--json` (RH C-8)** — per-gate `reached`/`evidence` + `status` | serious | **attested** (delivered by C-8; durable on push + CI) |
 | **A-2** | A fresh context can answer *"why is X blocked"* in one call, naming the weakest link | transcript | serious | open |
 | **A-3** | `next` output is ordered, typed, and carries the rationale for its order | transcript + `--json` shape test | serious | open |
 | **A-4** | A consumer with **no odm binary** can resolve any ULID to a human-readable node | flat rollup artifact committed | correctness | open |
@@ -120,6 +120,17 @@ which is the same independence the ledger requires everywhere else.
   1.1 arc — flagged rather than assumed.
 
 ## Version History
+
+### v1.2 — 2026-07-27 (slice 01 core delivered by RH C-8)
+**The blocking gap closed early, as a side effect.** RH C-8 (normalized display status, F-19) had to
+expose the gate vector in `odm node show` / `--json` — because `list`'s STATUS column was the *only*
+place the ladder surfaced, and normalizing it alone would have hidden the ladder from the CLI entirely
+(a flaw CDC's own C-8 brief carried; CC checked the running tool, found it, and made the acceptance
+text true). That exposure **is L-1** — this arc's slice 01, "the blocking gap." So **A-1 is attested**
+and slice 01 shrinks to its remainder: `by`/`evidence_dates` fields, enumerating **unreached** gates in
+`--json`, the satisfaction verdict, and the soft-satisfaction weakest link (the last two overlap slice
+02's readiness work). Recorded here rather than left to be rediscovered when the arc is picked up.
+Surfaced by: the RH C-8 CDC verification. **Sequencing unchanged** — this arc still runs after RH.
 
 ### v1.1 — 2026-07-25 (reconciled against `odm-command-inventory.md`)
 
