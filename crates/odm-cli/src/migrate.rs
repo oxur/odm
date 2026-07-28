@@ -108,15 +108,25 @@ pub(crate) fn migrate(
 /// (F-14) and the surviving top-level spelling was removed by C-4, per ODD-0023
 /// §5 — one verb, whose derivation the tree's shape selects.
 ///
-/// Runs the full migration-fidelity flow in **load-bearing order**
-/// (arc-migration-fidelity s06 F-2/F-3): [`odm_migrate::selfhost::repair`]
+/// Runs the full migration-fidelity flow (arc-migration-fidelity s06 F-2/F-3,
+/// corrected s07 F-1 — CDC v2.5 finding): [`odm_migrate::selfhost::repair`]
 /// **first** — repairs stub bodies and gated-backfills `source` onto every
 /// existing faithful node (the project excluded, ODD-0025 §2.3) — **then**
-/// [`odm_migrate::selfhost::self_host`], so the import's source-keyed
-/// idempotence (s05) finds every already-reconciled node by its now-populated
-/// `source.paths`, not just the ones that already had one. Reordering these
-/// would reintroduce exactly the gap s06 closed — a reconciled-before-import
-/// invariant, not an incidental sequence.
+/// [`odm_migrate::selfhost::self_host`] (import the missing arcs/slices).
+///
+/// The order is **not** load-bearing for *correctness*: both `repair` and
+/// `self_host`'s own coordinate→source transition route through the same
+/// [`odm_migrate::selfhost::reconcile_source`] gate (s06's two-path fix), so a
+/// coordinate-matched node reconciles identically whichever of the two calls
+/// reaches it first — `self_host` alone (no `repair` call) converges on the
+/// same final store state. Running `repair` first is a **composability +
+/// report-attribution** choice: it gives `repair` a real caller (previously
+/// only tests exercised it, the v2.2 finding) and lets the rendered report
+/// name what was reconciled versus imported, in that order, for a human
+/// reading the output.
+///
+/// Nothing here depends on that order for safety — it just reads more
+/// clearly.
 ///
 /// **No new flag**: both steps run unconditionally as part of the self-host
 /// path (a deliberate default-on choice — the command inventory documents no
