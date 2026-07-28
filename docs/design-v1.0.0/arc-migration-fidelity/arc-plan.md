@@ -14,9 +14,10 @@
 > the fidelity checks amend); `arc-migration-fidelity/design-notes.md` (the decision log this
 > plan draws on — the slice-02 model ODD is written from it).
 >
-> **Status:** shaped, not started. *Plan late, plan deep* — each slice's open set
-> (`slice-doc`/`ledger`/`cc-prompt`) is written when that slice becomes active, and its sizing
-> is confirmed then (a slice that will not fit one context is two slices).
+> **Status:** s01 (coverage-discovery) **closed & CDC-verified** (2026-07-27); **s02 (model) next**.
+> *Plan late, plan deep* — each slice's open set (`slice-doc`/`ledger`/`cc-prompt`) is written when
+> that slice becomes active, and its sizing is confirmed then (a slice that will not fit one context
+> is two slices).
 
 ## Capability
 
@@ -52,6 +53,8 @@ the same capability.
 
 - **Coverage:** every `.md` under `1.0.x/docs/*` maps to a node; the doc-coverage check is green
   (no file left behind). Design/research nodes may be top-level *or* contained — both valid (F7).
+  The arc's **own** report/verification artifacts are dispositioned per F10 (a node class,
+  exemption, or ignore rule) so the enforced check does not flag them in perpetuity.
 - **Body fidelity:** every migrated node's `trim(body)` hash equals its source's; the hard gate is
   green across the whole corpus; **no stub bodies remain**.
 - **Provenance:** every migrated node carries a `provenance` sub-map.
@@ -67,8 +70,8 @@ the same capability.
 
 | Slice | Scope | Mints nodes? | Depends on |
 |-------|-------|--------------|------------|
-| **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
-| **s02 — model** | The ODD(s): `provenance` sub-map; `supersedes`→`Vec` + guaranteed bidirectional; supporting-doc **artifact-vs-work** node class; frontmatter-fidelity schema mapping; F4 normalization (trim + line-endings); F7 containment-optional for doc nodes. | no | s01 |
+| **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 (CDC-verified) | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
+| **s02 — model** | The ODD(s): `provenance` sub-map; `supersedes`→`Vec` + guaranteed bidirectional; supporting-doc **artifact-vs-work** node class; frontmatter-fidelity schema mapping; F4 normalization (trim + line-endings); F7 containment-optional for doc nodes; **F10 report-artifact coverage disposition** (a node class / exemption / ignore rule for the arc's own `coverage-report`/`closing-report`/`cdc-verification` files, so the s05 enforced check does not flag them forever — surfaced by s01, see v1.2). | no | s01 |
 | **s03 — migration-fidelity core** | 1:1 verbatim body import + **hard body-hash gate** + provenance persistence + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`). | building | s02 |
 | **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. | yes | s03 |
 | **s05 — coverage enforcement** | Mint the supporting-doc child nodes (`ledger`/`cc-prompt`/`cdc-verification`/`closing-report`/ADR/amendment/UAT); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s04 |
@@ -87,17 +90,33 @@ at slice-activation, not pre-committed here.
 
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
-| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, attested); the *enforced check* MF-1 asks for is s05's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, live-verified); s03 builds the gate |
-| MF-3 | Every migrated node carries a `provenance` sub-map | grep/`check` over the store | correctness | planned — s01's provenance-absence detector confirms the baseline (0/60, exact); s02/s03 land the field |
+| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, CDC-verified); the *enforced check* MF-1 asks for is s05's job |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, CDC-reproduced); s03 builds the gate |
+| MF-3 | Every migrated node carries a `provenance` sub-map | grep/`check` over the store | correctness | planned — s01's provenance-absence detector confirms the baseline (0/60, CDC-reproduced); s02/s03 land the field |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned |
 | MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s01 counted the exact gap (6 arc dirs, 5 slice dirs unrepresented — the 6th arc is `arc-migration-fidelity` itself, shaped after the audit); s04/s05 mint |
-| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned |
+| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — see F10 (v1.2): the check's design must disposition the arc's own report/verification artifacts, or it flags them forever |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, provenance | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.2 — 2026-07-27 — s01 CDC-verified; report-artifact self-coverage escalated to an s02 fork (F10)
+
+**CDC verification: PASS** (`slice01-coverage-discovery/cdc-verification.md`). All 9 ledger rows
+carried to `reproduced` or a justified `attested`→CI; **F-5 (44 stubs), F-6 (60 provenance-absent),
+the 60-node composition, and F-9's zero-`unsafe` were independently re-derived by CDC** against the
+live corpus, not read from CC's summary. The v1.1 bubble-up (CC) stands; this entry ratifies it and
+carries forward the one thing CC's flag (3) named as "correct, not a bug" but did not push into
+s02's scope. **The fork (F10):** because `odm migrate --coverage` renders to stdout and the operator
+redirects into `coverage-report.md` under `design-v1.0.0/`, every regeneration adds a
+*permanently-uncovered* `.md` — the report plus this arc's own `closing-report`/`cdc-verification`
+artifacts (the 326→328 source-count drift observed at verification is the first instance). When s05
+wires doc-coverage into `odm check` (MF-6), **the arc's own reports will fail the enforced gate
+forever unless s02's model decides their disposition** — a report/verification node class, an
+explicit coverage exemption, or an ignore rule. Recorded in the s02 scope row, the Coverage exit
+criterion, and MF-6 above. (Also belongs in `design-notes.md` §3 when s02's open set is drawn.)
 
 ### v1.1 — 2026-07-27 — s01 (coverage-discovery) closed; the arc's work-list is now exact
 
