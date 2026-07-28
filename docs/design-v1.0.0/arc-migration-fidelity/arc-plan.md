@@ -14,11 +14,7 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01–s04 **closed** (2026-07-28); s04 delivered the scope + repair
-> **capability** (fixture-proven); **s05 (live repair run) next** — the destructive op fires on
-> the real corpus there, deliberately separated from where it was built (operator call, v1.6).
-> *Plan late, plan deep* — each slice's open set is written when it becomes active, and its
-> sizing is confirmed then.
+> **Status:** s01–s04 **closed** (2026-07-28), s04 CDC-verified PASS. **s05 (source-based identity) next** — retire `number` as a correctness key (F12) before any live work (v1.9); the live repair run follows as **s06**. *Plan late, plan deep.*
 
 ## Capability
 
@@ -83,14 +79,15 @@ runs the same capability.
 | **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 (CDC-verified) | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors; run over all `1.0.x/docs` → the **exact gap inventory**. | no (read-only) | — |
 | **s02 — model** ✅ CLOSED 2026-07-27 (ODD-0025 Accepted) | The model ODD: `source` sub-map (§2.0); `author`/`version` typed fields; `supersedes`→`Vec`; the `artifact` node type; frontmatter-fidelity mapping; F4/F7/F10 resolved. → **ODD-0025**. | no | s01 |
 | **s03 — migration-fidelity core** ✅ CLOSED 2026-07-27 (CDC-verified) | 1:1 verbatim import + **hard body-hash gate** + `source`/`author`/`version` typing + **no-transform**. Both importers + odm-core typing. | no (fixture-only) | s02 |
-| **s04 — scope + repair capability** ✅ CLOSED 2026-07-28 | **Cap removed** (`self_host` imports **all** arc/slice dirs; named arcs get a non-structural `number` handle; `coverage.rs`'s shared predicate updated). **Update-in-place repair** of stub nodes (ODD-0025 §2.8 — real body + `source`, preserve id/edges/status, via `persist` overwrite — no `delete`). **Schema-minor bump executed** (`v1.0→v1.1`, forward-compat proven). Fixture-verified; no live mutation. | no (fixture-only) | s03 |
-| **s05 — live repair run** | Fire the s04 capability on the **live** `.worktrees/odm` corpus: repair the 44 stubs, import the 6 previously-excluded arcs + their slices, populate `source`/`author`/`version`, stamp `v1.1`, re-point `context.json`. Verify `check` green, 0 stubs, all arcs/slices represented, `orient`/`rollup` reproduce. | **yes (live)** | s04 |
-| **s06 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (F10 mint-all incl. the reports); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s05 |
-| **s07 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
-| **s08 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
+| **s04 — scope + repair capability** ✅ CLOSED 2026-07-28 (CDC-verified) | **Cap removed** (`self_host` imports **all** arc/slice dirs; named arcs get a non-structural `number` handle; `coverage.rs`'s shared predicate updated). **Update-in-place repair** of stub nodes (ODD-0025 §2.8 — real body + `source`, preserve id/edges/status, via `persist` overwrite — no `delete`). **Schema-minor bump executed** (`v1.0→v1.1`, forward-compat proven). Fixture-verified; no live mutation. | no (fixture-only) | s03 |
+| **s05 — source-based identity** | Retire `number` as a **correctness key** (F12 — the number problem's root): key `self_host` idempotence + coverage matching on **`source.paths`**, not `(type, number)`; **backfill `source`** onto the already-faithful non-stub nodes (body unchanged, hash-gate-confirmed) so *every* node carries one; make the named-arc handle **name-derived + stable** (cosmetic display only). `number` becomes a pure label nothing keys on — the position-based fragility dissolves permanently. Fixture-verified. | no (fixture-only) | s04 |
+| **s06 — live repair run** | Fire the s04+s05 capability on the **live** `.worktrees/odm` corpus: backfill `source` on faithful nodes, repair the 44 stubs, import the 6 previously-excluded arcs + their slices, populate `source`/`author`/`version`, stamp `v1.1`, re-point `context.json`. Verify `check` green, 0 stubs, all arcs/slices represented, `orient`/`rollup` reproduce. | **yes (live)** | s05 |
+| **s07 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (F10 mint-all incl. the reports); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s06 |
+| **s08 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
+| **s09 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
 
-*Sizing note:* the heaviest are **s04** (capability), **s06** (children-mint + check-wiring), and
-the two live-mutation slices **s05**/**s06** — split at slice-activation if an open set won't fit
+*Sizing note:* the heaviest are **s05**/**s06** (identity + live run) and **s07** (children-mint + check-wiring); the live-mutation slices are
+**s06**/**s07** — split at slice-activation if an open set won't fit
 one context. s04 was split from its live run (s05) at activation (2026-07-27) precisely so the
 destructive op is fixture-proven before it fires.
 
@@ -102,17 +99,50 @@ destructive op is fixture-proven before it fires.
 
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
-| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — s01 *detector* exists + ran (CDC-verified); the *enforced check* is s06's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built the gate, s04 built + fixture-verified the repair path that clears a stub (`slice04-scope-repair-capability/closing-report.md`); **s05's live run** produces "zero stubs" |
-| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 types + populates the fields, s04's repair path populates it on an existing node too (fixture-verified); the live 60-node corpus gets them in **s05** |
+| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — s01 *detector* exists + ran (CDC-verified); the *enforced check* is s07's job |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built the gate, s04 built + fixture-verified the repair path that clears a stub (`slice04-scope-repair-capability/closing-report.md`); **s06's live run** produces "zero stubs" |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 types + populates the fields, s04's repair path populates it on an existing node too (fixture-verified); the live 60-node corpus gets them in **s06** |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
-| MF-5 | All arcs (incl. the 6 previously-excluded) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s04 removed the cap + proved named-arc handle assignment is collision-free (fixture-verified, `slice04-scope-repair-capability/closing-report.md`); **s05** mints the missing arcs/slices live |
-| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **mint-all** (ODD-0025 §2.6); s06 mints + wires |
+| MF-5 | All arcs (incl. the 6 previously-excluded) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s04 removed the cap + proved named-arc handle assignment is collision-free (fixture-verified, `slice04-scope-repair-capability/closing-report.md`); **s06** mints the missing arcs/slices live |
+| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **mint-all** (ODD-0025 §2.6); s07 mints + wires |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned — model in ODD-0025 §2.3 |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.9 — 2026-07-28 — source-based identity inserted as s05 (retire number-as-a-correctness-key); live run → s06
+
+Operator decision (2026-07-28): **retire `number` as a correctness key now, before any live work** —
+the number kept causing problems precisely because a *derived* value was doing an *identity* job. A
+new **s05 — source-based identity** is inserted ahead of the live run: `self_host` idempotence +
+coverage matching key on **`source.paths`** (the stable identity s03 gave every node), not
+`(type, number)`; the already-faithful non-stub nodes get a one-time **`source` backfill** (body
+unchanged, hash-gate-confirmed) so *every* node carries one; and the named-arc handle becomes
+**name-derived + stable**. Once `source` is the key, `number` is a pure display label nothing keys on,
+so the position-based handle fragility (v1.8 finding) **dissolves permanently** rather than being
+patched. Resolves the v1.8 pre-mint requirement at its root and promotes design-notes F12 from
+"future refinement" to **done-now**. Downstream renumbered: old s05/s06/s07/s08 → **s06/s07/s08/s09**.
+*(Should have been done when F12 first surfaced; deferring it is what let the number keep biting —
+recorded so the lesson sticks.)*
+
+### v1.8 — 2026-07-28 — s04 CDC-verified PASS; named-arc handle scheme flagged onto s05
+
+**CDC verification: PASS** (`slice04-scope-repair-capability/cdc-verification.md`; 12/12 rows).
+Reproduced by CDC on the live machine: the cap is **deleted** (grep clean), `schema.rs CURRENT = v1.1`
+with forward-compat, the live store is untouched (0 nodes carry `source:`, all 60 still `v1.0`), and
+`repair()` preserves id/edges/status/number by **cloning the frontmatter and mutating only the delta**
+(a stronger guarantee than the slice-doc asked for). The s03 schema-bump carry-forward is **closed**
+(executed here; blast radius smaller than feared — only 7 test literals, found by grep). **One
+load-bearing finding, carried onto s05:** the named-arc `number` handle is **position-based**
+(`named_arc_number(index) = 1900 + index·100`, from the CDC slice-doc spec) — collision-free and
+correct for a one-shot, but (1) unstable under *adding* a named arc (a re-run then mints a **duplicate**
+node, since idempotence keys on `(type, number)`), and (2) not recomputable from a name (so coverage
+can't resolve named arcs — CC's disclosed gap). Both dissolve once the number stops being a correctness
+key: **s05 must, before minting named-arc nodes on the live store, either make the handle name-derived
+or move idempotence onto `source.paths` (F12 — now load-bearing, not optional).** CC's disposition of
+the coverage gap (defer to s06's source-based matching, ODD-0025 §5) is concurred. MF-2/3/5 stay
+planned — live outcomes s05 produces.
 
 ### v1.7 — 2026-07-28 — s04 (scope + repair capability) closed; ready for the live run
 
