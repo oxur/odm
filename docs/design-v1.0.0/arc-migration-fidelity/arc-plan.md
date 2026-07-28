@@ -11,13 +11,13 @@
 >
 > `depends_on:` A6·slice04 (the self-hosted corpus this repairs); ODD-0024 (minting unfrozen).
 > **Refs:** `reconciliation-audit-2026-07-27.md` (the discovery); ODD-0013/0020 (the node model
-> the fidelity checks amend); `arc-migration-fidelity/design-notes.md` (the decision log this
-> plan draws on — the slice-02 model ODD is written from it).
+> the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
+> `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01 (coverage-discovery) **closed & CDC-verified** (2026-07-27); **s02 (model) next**.
-> *Plan late, plan deep* — each slice's open set (`slice-doc`/`ledger`/`cc-prompt`) is written when
-> that slice becomes active, and its sizing is confirmed then (a slice that will not fit one context
-> is two slices).
+> **Status:** s01 & s02 **closed** (2026-07-27) — s02 delivered **ODD-0025** (Accepted); **s03
+> (fidelity core) next**. *Plan late, plan deep* — each slice's open set
+> (`slice-doc`/`ledger`/`cc-prompt`) is written when that slice becomes active, and its sizing is
+> confirmed then (a slice that will not fit one context is two slices).
 
 ## Capability
 
@@ -27,12 +27,16 @@ projects. Four properties define "faithful and verifiable," each enforced by a c
 trusted:
 
 1. **1:1 verbatim bodies, hard-gated.** A migrated node's body **is** its source body. Migration
-   hashes `trim(source_body)` and `trim(node_body)`; a mismatch is a **hard error** that fails the
-   migration. The importer performs **no body transformation** (no synthesised `# {name}` H1, no
-   header injection) — the old transform behaviour is the thing that produced the 44 stubs.
-2. **Provenance on every node.** A `provenance` sub-map records `source_paths` (a list),
-   `source_class`, `normalization`, and the migrating tool + version. Computed at migration time;
-   no hashes stored (content is allowed to change — Version-History sections do).
+   hashes `normalize(source_body)` and `normalize(node_body)` (`normalize` = trim + CRLF→LF); a
+   mismatch is a **hard error** that fails the migration. The importer performs **no body
+   transformation** (no synthesised `# {name}` H1, no header injection) — the old transform
+   behaviour is the thing that produced the 44 stubs.
+2. **A `source` record + preserved `author`/`version` on every migrated node.** A `source` sub-map
+   records paths (a list), class, normalization, and the migrating tool + version — computed at
+   migration, no hashes stored (content is allowed to change — Version-History sections do). Legacy
+   `author`/`version` are preserved as **typed fields** (not dropped, not git-derived). *(0013
+   reserves `provenance` for **derived** lineage; this stored record is the distinct `source` axis —
+   ODD-0025 §2.0/§2.2, Accepted.)*
 3. **Frontmatter fidelity, schema-mapped.** The fields the source actually had are checked to map
    correctly onto the node's fields (e.g. legacy `state: Final` → the cumulative gate reach),
    over a versioned schema mapping. Only originally-present fields are checked.
@@ -46,18 +50,19 @@ reverse `superseded_by` derived and **tooling-guaranteed** on every synthesis). 
 stays hash-gated; editorial/conceptual merges are verified by lineage + attestation.
 
 Applied first to odm's own `1.0.x` corpus — taking self-hosting from skeleton (44 stub bodies, 6
-of 11 arcs, ~211 uncovered docs, 0 provenance) to **100%**. Built general so the next project runs
-the same capability.
+of 11 arcs, ~211 uncovered docs, 0 source records) to **100%**. Built general so the next project
+runs the same capability.
 
 ## Exit criteria (arc acceptance — the composition check)
 
 - **Coverage:** every `.md` under `1.0.x/docs/*` maps to a node; the doc-coverage check is green
   (no file left behind). Design/research nodes may be top-level *or* contained — both valid (F7).
-  The arc's **own** report/verification artifacts are dispositioned per F10 (a node class,
-  exemption, or ignore rule) so the enforced check does not flag them in perpetuity.
-- **Body fidelity:** every migrated node's `trim(body)` hash equals its source's; the hard gate is
-  green across the whole corpus; **no stub bodies remain**.
-- **Provenance:** every migrated node carries a `provenance` sub-map.
+  The arc's **own** report/verification artifacts are minted as `artifact` nodes (F10 mint-all,
+  ODD-0025 §2.6) so the enforced check does not flag them in perpetuity.
+- **Body fidelity:** every migrated node's `normalize(body)` hash equals its source's; the hard gate
+  is green across the whole corpus; **no stub bodies remain**.
+- **Source record:** every migrated node carries a `source` sub-map, and preserved `author`/`version`
+  where the source had them (ODD-0025 §2.2).
 - **Representation:** all real arcs (the 5 missing + A1–A6) and all slices are represented; scope
   is no longer capped at `arc_in_scope` A1–A6; supporting-doc children are minted.
 - **Frontmatter fidelity:** the schema-mapping check is green over originally-present fields.
@@ -71,10 +76,10 @@ the same capability.
 | Slice | Scope | Mints nodes? | Depends on |
 |-------|-------|--------------|------------|
 | **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 (CDC-verified) | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
-| **s02 — model** | The ODD(s): `provenance` sub-map; `supersedes`→`Vec` + guaranteed bidirectional; supporting-doc **artifact-vs-work** node class; frontmatter-fidelity schema mapping; F4 normalization (trim + line-endings); F7 containment-optional for doc nodes; **F10 report-artifact coverage disposition** (a node class / exemption / ignore rule for the arc's own `coverage-report`/`closing-report`/`cdc-verification` files, so the s05 enforced check does not flag them forever — surfaced by s01, see v1.2). | no | s01 |
-| **s03 — migration-fidelity core** | 1:1 verbatim body import + **hard body-hash gate** + provenance persistence + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`). | building | s02 |
+| **s02 — model** ✅ CLOSED 2026-07-27 (ODD-0025 Accepted) | The model ODD: `source` sub-map (renamed from provenance, §2.0); `author`/`version` typed fields; `supersedes`→`Vec` + guaranteed bidirectional; the `artifact` node type; frontmatter-fidelity mapping; F4/F7/F10 resolved. → **ODD-0025**. | no | s01 |
+| **s03 — migration-fidelity core** | 1:1 verbatim body import + **hard body-hash gate** + **`source`/`author`/`version` typing & persistence** + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`) + odm-core frontmatter typing (ODD-0025 §4 → 0013 §2.3, 0020). **Sizing (v1.3): typing 3 new fields + both importers may exceed one context → candidate split (a) core-model typing / (b) import-fidelity, decided at slice-draw.** | building | s02 |
 | **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. | yes | s03 |
-| **s05 — coverage enforcement** | Mint the supporting-doc child nodes (`ledger`/`cc-prompt`/`cdc-verification`/`closing-report`/ADR/amendment/UAT); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s04 |
+| **s05 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (`ledger`/`cc-prompt`/`cdc-verification`/`closing-report`/ADR/amendment/UAT + the reports, F10 mint-all); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s04 |
 | **s06 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs to authoritative states. | yes | s02, s03 |
 | **s07 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
 
@@ -91,16 +96,32 @@ at slice-activation, not pre-committed here.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, CDC-verified); the *enforced check* MF-1 asks for is s05's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, CDC-reproduced); s03 builds the gate |
-| MF-3 | Every migrated node carries a `provenance` sub-map | grep/`check` over the store | correctness | planned — s01's provenance-absence detector confirms the baseline (0/60, CDC-reproduced); s02/s03 land the field |
-| MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, CDC-reproduced); ODD-0025 §2.1 models the gate; s03 builds it |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s01's absence detector confirms the baseline (0/60, CDC-reproduced); ODD-0025 §2.2 models it (renamed `provenance`→`source`); s03 types + lands it |
+| MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
 | MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s01 counted the exact gap (6 arc dirs, 5 slice dirs unrepresented — the 6th arc is `arc-migration-fidelity` itself, shaped after the audit); s04/s05 mint |
-| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — see F10 (v1.2): the check's design must disposition the arc's own report/verification artifacts, or it flags them forever |
-| MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned |
+| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **resolved mint-all** (ODD-0025 §2.6): every report incl. `coverage-report.md` gets an `artifact` node, no exemption; s05 mints + wires |
+| MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned — model in ODD-0025 §2.3 |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
-| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, provenance | project-scale reproduce at arc close | serious (P-12) | planned |
+| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.3 — 2026-07-27 — s02 (model) closed; ODD-0025 Accepted; provenance→source, author/version typed, F10 mint-all
+
+**Slice 02 is closed** (`slice02-fidelity-model/closing-report.md`; 14/14 ledger rows done;
+authored CDC-seat, operator-gated — Duncan confirmed every decision 2026-07-27). Deliverable:
+**ODD-0025 — Migration Fidelity** (Accepted, `docs/design/04-accepted/`). **What authoring revealed
+(slice → arc feedback):** (1) `provenance` was the wrong name — 0013 reserves it for *derived*
+lineage ("never a stored scalar"); the stored migration record is renamed **`source`** (ODD-0025
+§2.0's origin/source/provenance split), rewording Capability property 2, the Source-record exit
+criterion, and MF-3 above; (2) **`author`/`version` become new typed document-node fields** — the
+operator corrected a proposed drop (author because git returns the migrator, not the source author;
+version because it is SoT quick-access) — which **expands s03's scope** to type three new frontmatter
+fields + amend 0013 §2.3 (s03 row updated, with a split flag); (3) **F10 resolved `mint-all`** —
+every report incl. `coverage-report.md` gets an `artifact` node, no exemption (MF-6 note updated);
+(4) the `note`-vs-`artifact` sub-fork surfaced (0013 already has a `note` type) and resolved to a new
+`artifact` type. MF-2/3/4/6/7 stay **planned**, pointing at ODD-0025 as their design baseline.
 
 ### v1.2 — 2026-07-27 — s01 CDC-verified; report-artifact self-coverage escalated to an s02 fork (F10)
 
