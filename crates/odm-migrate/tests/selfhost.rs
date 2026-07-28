@@ -42,16 +42,16 @@ fn selfhost_creates_work_nodes() {
     let store = Store::open(store_dir.path());
     let report = self_host(&store, legacy.path(), Mode::Commit).expect("self-host");
 
-    // project (1) + 2 in-scope arcs (arc07 excluded) + 4 slices = 7 work nodes.
-    assert_eq!(report.created_count(), 7, "project + 2 arcs + 4 slices");
+    // project (1) + 3 arcs (arc07 now included — no scope cap, v1.6) + 4 slices = 8.
+    assert_eq!(report.created_count(), 8, "project + 3 arcs + 4 slices");
     let nodes = nodes_by_key(&store);
     assert_eq!(nodes[&(NodeType::Project, 1000)].frontmatter().name(), "Test Project — Plan");
     assert_eq!(
         nodes[&(NodeType::Arc, arc_number(1))].frontmatter().name(),
         "Arc 01 — Alpha (plan-of-record)"
     );
-    // arc07 is out of MVP scope — never imported.
-    assert!(!nodes.contains_key(&(NodeType::Arc, arc_number(7))), "arc07 excluded");
+    // arc-migration-fidelity slice04: the MAX_MVP_ARC cap is removed, not widened.
+    assert!(nodes.contains_key(&(NodeType::Arc, arc_number(7))), "arc07 now imported");
 
     // Every work node is schema-stamped `<type>/v1.0`.
     for ((ty, _), doc) in &nodes {
@@ -140,7 +140,7 @@ fn selfhost_dry_run_writes_nothing() {
     let store = Store::open(store_dir.path());
     let report = self_host(&store, &plan_set(), Mode::DryRun).expect("dry-run");
     assert!(report.dry_run);
-    assert_eq!(report.created_count(), 7, "the plan still lists all nodes");
+    assert_eq!(report.created_count(), 8, "the plan still lists all nodes");
     assert!(store.load_all().unwrap().is_empty(), "dry-run wrote nothing");
     assert!(!store_dir.path().join("nodes").exists(), "no nodes/ created");
 }
@@ -150,13 +150,13 @@ fn selfhost_idempotent() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
     let first = self_host(&store, &plan_set(), Mode::Commit).expect("first");
-    assert_eq!(first.created_count(), 7);
+    assert_eq!(first.created_count(), 8);
     let n = store.load_all().unwrap().len();
 
     // Re-run: every (type, number) already exists → 0 created, all skipped.
     let second = self_host(&store, &plan_set(), Mode::Commit).expect("second");
     assert_eq!(second.created_count(), 0, "idempotent re-run creates nothing");
-    assert_eq!(second.skipped_count(), 7, "all skipped as already-existing");
+    assert_eq!(second.skipped_count(), 8, "all skipped as already-existing");
     assert_eq!(store.load_all().unwrap().len(), n, "no duplicates on disk");
 }
 

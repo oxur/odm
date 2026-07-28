@@ -7,8 +7,10 @@
 //! markers (`check/v1` …) and the binary formats (`FORMAT_VERSION`,
 //! `SNAPSHOT_VERSION`), not a replacement for any of them (ODD-0020 §3).
 //!
-//! - The **current** schema is [`SchemaVersion::CURRENT`] (`v1.0`). New
-//!   odm-created nodes stamp `<type>/v1.0`.
+//! - The **current** schema is [`SchemaVersion::CURRENT`] (`v1.1`). New
+//!   odm-created nodes stamp `<type>/v1.1`; a `v1.0` node remains valid
+//!   (additive fields — the schema-minor bump arc-migration-fidelity slice04
+//!   executed for `source`/`author`/`version`, ODD-0020 §4).
 //! - **Absent** `schema:` ⇒ [`SchemaVersion::LEGACY`] (`v0.1`), a *computed*
 //!   default on read — in practice only the legacy `docs/design` ODDs (migrate
 //!   never mutates them).
@@ -34,8 +36,14 @@ pub struct SchemaVersion {
 }
 
 impl SchemaVersion {
-    /// The current file-metadata schema (`v1.0`) — what new nodes stamp.
-    pub const CURRENT: SchemaVersion = SchemaVersion { major: 1, minor: 0 };
+    /// The current file-metadata schema (`v1.1`) — what new nodes stamp.
+    ///
+    /// Bumped from `v1.0` by arc-migration-fidelity slice04 (ODD-0020 §4):
+    /// `source`/`author`/`version` (ODD-0025 §2.2) are a real per-type
+    /// contract addition. The bump is additive — a `v1.0` node remains valid
+    /// (see [`is_newer_than_current`](Self::is_newer_than_current)); only a
+    /// node stamped *newer* than the reader's current version is reported.
+    pub const CURRENT: SchemaVersion = SchemaVersion { major: 1, minor: 1 };
     /// The legacy default (`v0.1`) — the *computed* version of an unversioned
     /// (pre-v1.0) node with no `schema:` field.
     pub const LEGACY: SchemaVersion = SchemaVersion { major: 0, minor: 1 };
@@ -133,15 +141,17 @@ mod tests {
         assert!(SchemaVersion::LEGACY < SchemaVersion::CURRENT);
         assert!(!SchemaVersion::CURRENT.is_newer_than_current());
         assert!(!SchemaVersion::LEGACY.is_newer_than_current());
-        assert!(SchemaVersion { major: 1, minor: 1 }.is_newer_than_current());
+        // v1.0 (the pre-slice04 current) is older, still valid — not newer.
+        assert!(!SchemaVersion { major: 1, minor: 0 }.is_newer_than_current());
+        assert!(SchemaVersion { major: 1, minor: 2 }.is_newer_than_current());
         assert!(SchemaVersion { major: 2, minor: 0 }.is_newer_than_current());
     }
 
     #[test]
     fn marker_round_trips_through_string() {
         let m = SchemaMarker::current(NodeType::Design);
-        assert_eq!(m.to_string(), "design/v1.0");
-        assert_eq!("design/v1.0".parse::<SchemaMarker>().unwrap(), m);
+        assert_eq!(m.to_string(), "design/v1.1");
+        assert_eq!("design/v1.1".parse::<SchemaMarker>().unwrap(), m);
         assert_eq!(
             "slice/v1.1".parse::<SchemaMarker>().unwrap().version,
             SchemaVersion { major: 1, minor: 1 }

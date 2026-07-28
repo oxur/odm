@@ -204,14 +204,15 @@ fn coverage_doc_coverage() {
         entry("design-v1.0.0/project-plan.md").covered,
         "project-plan matches the project root"
     );
-    assert!(entry("design-v1.0.0/arc01-alpha/arc-plan.md").covered, "in-scope arc matches");
+    assert!(entry("design-v1.0.0/arc01-alpha/arc-plan.md").covered, "arc01 matches");
     assert!(
-        !entry("design-v1.0.0/arc07-horizon/arc-plan.md").covered,
-        "an out-of-scope numbered arc has no coordinate to resolve"
+        entry("design-v1.0.0/arc07-horizon/arc-plan.md").covered,
+        "arc-migration-fidelity slice04: the scope cap is removed — self_host now \
+         imports arc07 too, so its arc-plan.md now matches a real node"
     );
     assert!(
         entry("design-v1.0.0/arc01-alpha/slice01-aa/slice-doc.md").covered,
-        "in-scope slice matches"
+        "arc01's slice matches"
     );
     for supporting in [
         "design-v1.0.0/arc01-alpha/slice01-aa/ledger.md",

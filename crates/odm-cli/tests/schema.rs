@@ -23,14 +23,14 @@ fn run_code(root: &Path, args: &[&str]) -> (Option<u8>, String, String) {
     (code, String::from_utf8(out).unwrap(), String::from_utf8(err).unwrap())
 }
 
-// ----- V-2: every odm-created node stamps `<type>/v1.0` ----------------------
+// ----- V-2: every odm-created node stamps the current schema -----------------
 
 #[test]
 fn new_node_stamps_schema_v1() {
     let dir = TempDir::new().unwrap();
     let store = Store::open(dir.path());
 
-    // Create one node of a few representative types; each must carry <type>/v1.0.
+    // Create one node of a few representative types; each must carry the current schema.
     for (ty, name) in [("project", "Proj"), ("design", "Doc"), ("slice", "Work")] {
         let (code, _o, _e) = run_code(dir.path(), &["node", "new", ty, name]);
         assert_eq!(code, Some(0), "`odm new {ty}` dispatches");
@@ -46,7 +46,6 @@ fn new_node_stamps_schema_v1() {
     assert_eq!(by_type[&NodeType::Project], SchemaMarker::current(NodeType::Project));
     assert_eq!(by_type[&NodeType::Design], SchemaMarker::current(NodeType::Design));
     assert_eq!(by_type[&NodeType::Slice], SchemaMarker::current(NodeType::Slice));
-    // "v1.0" is the current version.
     assert_eq!(by_type[&NodeType::Design].version, SchemaVersion::CURRENT);
 }
 

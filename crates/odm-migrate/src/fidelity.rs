@@ -61,6 +61,17 @@ pub fn migrated_by() -> String {
     concat!("odm-migrate/", env!("CARGO_PKG_VERSION")).to_string()
 }
 
+/// Whether a node body is a **stub** — ≤ 1 non-blank line (the lone
+/// synthesized `# {name}` heading the old self-host importer wrote before
+/// slice03 removed that transform). Shared between the coverage detector
+/// (s01, [`crate::coverage`]) and the update-in-place repair op (s04,
+/// [`crate::selfhost::repair`]) so both agree on exactly the same set —
+/// "don't re-derive the stub predicate" (s04 ledger F-8).
+#[must_use]
+pub fn is_stub_body(body: &str) -> bool {
+    body.lines().filter(|line| !line.trim().is_empty()).count() <= 1
+}
+
 /// Builds the `source` record (ODD-0025 §2.0/§2.2) a migrated node carries:
 /// the source path(s), the source doc's class (odm-migrate's `DocClass`
 /// vocabulary, e.g. `"arc-plan"`, `"slice-doc"`, `"odd"`), this module's
@@ -100,6 +111,14 @@ mod tests {
         let err =
             verify_body_hash("# Title\n\noriginal\n", "# Title\n\nmutated\n", "#1").unwrap_err();
         assert!(matches!(err, MigrateError::BodyHashMismatch { context } if context == "#1"));
+    }
+
+    #[test]
+    fn is_stub_body_matches_lone_heading_only() {
+        assert!(is_stub_body("# Title\n"));
+        assert!(is_stub_body("# Title\n\n   \n"), "whitespace-only lines don't count");
+        assert!(is_stub_body(""));
+        assert!(!is_stub_body("# Title\n\nReal content here.\n"));
     }
 
     #[test]

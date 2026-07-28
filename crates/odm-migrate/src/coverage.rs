@@ -28,7 +28,7 @@ use odm_store::{Store, StoreError};
 use walkdir::WalkDir;
 
 use crate::legacy;
-use crate::selfhost::{arc_in_scope, arc_number, parse_prefix, slice_number};
+use crate::selfhost::{arc_number, parse_prefix, slice_number};
 
 /// A source document's coarse classification (F-2). A closed set matching the
 /// canonical shapes the `1.0.x` corpus (and the general planning-corpus
@@ -392,10 +392,14 @@ fn match_arc(relative: &Path, index: &NodeIndex) -> (bool, &'static str) {
     };
     match arc_coordinate(arc_dir) {
         Some(major) if index.arc_numbers.contains(&arc_number(major)) => {
-            (true, "structural coordinate (in-scope arc directory number)")
+            (true, "structural coordinate (arc directory number)")
         }
         Some(_) => (false, "structural coordinate resolved; no matching arc node"),
-        None => (false, "no numbered in-scope coordinate (named or post-MVP arc directory)"),
+        None => (
+            false,
+            "named arc directory — no numbered coordinate to re-derive \
+             (heuristic limitation, not a scope exclusion; see the module docs)",
+        ),
     }
 }
 
@@ -411,7 +415,7 @@ fn match_slice(relative: &Path, index: &NodeIndex) -> (bool, &'static str) {
         return (false, "unrecognized path shape (no arc directory)");
     };
     let Some(arc_major) = arc_coordinate(arc_dir) else {
-        return (false, "parent arc directory has no in-scope numbered coordinate");
+        return (false, "parent arc directory has no numbered coordinate (a named arc)");
     };
     match parse_prefix(slice_dir, "slice") {
         Some((slice_major, slice_minor)) => {
@@ -505,36 +509,51 @@ fn dir_label(dir: &Path) -> String {
     dir.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-/// The in-scope arc major number a directory name resolves to, or `None` if it
-/// carries no numbered coordinate, a fractional one, or is out of MVP scope.
+/// The numbered-arc major number a directory name resolves to, or `None` if
+/// it carries no `arcNN` coordinate at all (a fractional arc, or a **named**
+/// arc directory such as `arc-store-home`).
+///
+/// **No scope filter (v1.6 F11/F3):** every numbered arc counts, including
+/// the former post-MVP `arc07`/`arc08` — the hardcoded A1–A6 cap this used to
+/// apply is removed, not widened.
+///
+/// **Known heuristic limitation (disclosed, not fixed here):** a named arc's
+/// actual `number` is an *assigned handle* ([`crate::selfhost::named_arc_number`])
+/// that depends on the sorted list of every named arc directory in the
+/// corpus — information a single directory name can't recover on its own.
+/// This function therefore still cannot resolve a coordinate for a named
+/// arc, so the doc-coverage/representation detectors report a named arc's
+/// docs as heuristically uncovered even after `self_host` mints it a real
+/// node. Per ODD-0025 §5, this is exactly the class of heuristic gap the
+/// `source` record (once wired into coverage as an exact set-difference,
+/// arc-migration-fidelity s06+) is meant to close — not re-derived here.
 fn arc_coordinate(dir_name: &str) -> Option<u32> {
-    parse_prefix(dir_name, "arc")
-        .filter(|(major, minor)| minor.is_none() && arc_in_scope(*major))
-        .map(|(major, _)| major)
+    parse_prefix(dir_name, "arc").filter(|(_, minor)| minor.is_none()).map(|(major, _)| major)
 }
 
 // ----- stub-body detector (F-5) ----------------------------------------------
 
 /// Work nodes (`arc`/`slice`) whose body is effectively empty (≤ 1 non-blank
-/// line — the lone synthesized `# {name}` H1 [`crate::selfhost::self_host`]
-/// writes). Retired (tombstone) nodes are excluded — a retired node's body is
-/// meant to be a terse marker, not migrated content.
+/// line — the lone synthesized `# {name}` H1 the old self-host importer wrote
+/// before arc-migration-fidelity slice03 removed that transform). Retired
+/// (tombstone) nodes are excluded — a retired node's body is meant to be a
+/// terse marker, not migrated content.
+///
+/// The predicate itself ([`crate::fidelity::is_stub_body`]) is shared with
+/// the s04 update-in-place repair op, so both agree on exactly the same set
+/// (s04 ledger F-8 — "don't re-derive the stub predicate").
 fn stub_bodies(corpus: &[Document]) -> Vec<StubEntry> {
     corpus
         .iter()
         .filter(|d| matches!(d.frontmatter().node_type(), NodeType::Arc | NodeType::Slice))
         .filter(|d| d.frontmatter().retired().is_none())
-        .filter(|d| non_blank_line_count(d.body()) <= 1)
+        .filter(|d| crate::fidelity::is_stub_body(d.body()))
         .map(|d| StubEntry {
             number: d.frontmatter().number(),
             node_type: d.frontmatter().node_type(),
             name: d.frontmatter().name().to_string(),
         })
         .collect()
-}
-
-fn non_blank_line_count(body: &str) -> usize {
-    body.lines().filter(|line| !line.trim().is_empty()).count()
 }
 
 // ----- provenance-absence detector (F-6) -------------------------------------
@@ -587,12 +606,5 @@ mod tests {
         let yaml = frontmatter_yaml(text);
         assert!(yaml.contains("provenance:"));
         assert!(!yaml.contains("body with"));
-    }
-
-    #[test]
-    fn non_blank_line_count_ignores_whitespace_only_lines() {
-        assert_eq!(non_blank_line_count("# Title\n"), 1);
-        assert_eq!(non_blank_line_count("# Title\n\n   \nBody line\n"), 2);
-        assert_eq!(non_blank_line_count(""), 0);
     }
 }

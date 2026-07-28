@@ -292,7 +292,7 @@ fn schema_marker_round_trip() {
 
     let doc = Document::new(fm, "body\n");
     let emitted = doc.emit().unwrap();
-    assert!(emitted.contains("schema: design/v1.0"), "schema marker emitted:\n{emitted}");
+    assert!(emitted.contains("schema: design/v1.1"), "schema marker emitted:\n{emitted}");
     // Additive round-trip: parse ∘ emit is identity.
     assert_eq!(Document::parse(&emitted).unwrap(), doc);
 }

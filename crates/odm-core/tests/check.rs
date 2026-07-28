@@ -405,17 +405,17 @@ mod content {
         // A node stamped with a newer schema than this binary supports → reported.
         let newer = odd(A, 1, "Doc").with_schema(SchemaMarker {
             node_type: NodeType::Design,
-            version: SchemaVersion { major: 1, minor: 1 },
+            version: SchemaVersion { major: 1, minor: 2 },
         });
         let findings = content_validity(&[newer]);
         assert!(
             findings
                 .iter()
-                .any(|f| matches!(&f.violation, Violation::UnsupportedSchema { schema } if schema == "design/v1.1")),
+                .any(|f| matches!(&f.violation, Violation::UnsupportedSchema { schema } if schema == "design/v1.2")),
             "newer schema reported: {findings:?}"
         );
 
-        // The current schema (v1.0) and an unversioned (v0.1) node are fine.
+        // The current schema (v1.1) and an unversioned (v0.1) node are fine.
         let current = odd(B, 2, "Now").with_schema(SchemaMarker::current(NodeType::Design));
         let legacy = odd(C, 3, "Old"); // no schema ⇒ v0.1
         assert!(
@@ -423,6 +423,24 @@ mod content {
                 .iter()
                 .all(|f| !matches!(f.violation, Violation::UnsupportedSchema { .. })),
             "current + legacy schema are supported"
+        );
+    }
+
+    #[test]
+    fn v1_0_nodes_remain_valid_after_the_v1_1_bump() {
+        // arc-migration-fidelity slice04, F-7: the schema-minor bump is
+        // additive — an existing v1.0 node (pre-slice04, no source/author/
+        // version) must still validate cleanly, not be reported as unsupported.
+        let pre_bump = odd(A, 1, "Pre-bump").with_schema(SchemaMarker {
+            node_type: NodeType::Design,
+            version: SchemaVersion { major: 1, minor: 0 },
+        });
+        assert!(!pre_bump.schema_version().is_newer_than_current(), "v1.0 is older, not newer");
+        assert!(
+            content_validity(&[pre_bump])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::UnsupportedSchema { .. })),
+            "a v1.0 node is still supported after the v1.1 bump"
         );
     }
 }

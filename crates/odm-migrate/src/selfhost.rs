@@ -12,8 +12,16 @@
 //! Ledger P-row or an arc-level close file) + per-slice `closing-report.md`
 //! presence, at [`Evidence::Asserted`] (claimed-from-record).
 //!
-//! **Scope = the v1.0.0 MVP (A1–A6).** `arc07`/`arc08` (the post-MVP horizon, 0
-//! slices, owned separately) are **not** imported — see [`arc_in_scope`].
+//! **No scope cap (v1.6, arc-migration-fidelity F11).** Every arc directory is
+//! imported — numbered (`arcNN-*`, including the post-MVP `arc07`/`arc08`) and
+//! **named** (`arc-<slug>`, no `arcNN` coordinate) alike. A numbered arc's
+//! `number` is still derived from its directory (`arc_number`); a named arc
+//! gets a deterministic, collision-free `number` **handle** ([`named_arc_number`])
+//! — `number` is a non-structural human handle (not identity, not order;
+//! ODD-0013 §2.3), so a named arc simply takes the next slot in a band above
+//! the numbered arcs' range. The former hardcoded A1–A6 scope cap was the root
+//! cause of six real arcs going silently unrepresented and directly
+//! contradicted "no file left behind" — removed outright, not widened.
 //!
 //! **Never-delete:** this writes `nodes/` only; the plan-set Markdown is the
 //! human-authored source and is never read-write-violated.
@@ -29,10 +37,6 @@ use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 
 use crate::{Created, MigrateError, Mode, SkipReason, Skipped};
-
-/// The highest arc number in the v1.0.0 MVP scope (A1–A6). `arc07`/`arc08` are
-/// the post-MVP horizon and are not imported.
-const MAX_MVP_ARC: u32 = 6;
 
 /// The project (root) node's number — a high, fixed value disjoint from the document
 /// numbering space (legacy ODDs are `2`, `9`–`20`) and from the arc/slice ranges.
@@ -58,26 +62,48 @@ pub fn canonical_slice_gates() -> GateSet {
     GateSet::new(["planned", "built", "tested"].map(String::from).to_vec())
 }
 
-/// The work-node number for arc `major` (`arc01` → 1100 … `arc06` → 1600) — a
-/// stable, per-arc-disjoint value in the work range (≥ 1000).
+/// The work-node number for arc `major` (`arc01` → 1100 … `arc08` → 1800) — a
+/// stable, per-arc-disjoint value in the work range (≥ 1000). `const fn` so
+/// [`NAMED_ARC_BASE`] can derive from it directly rather than repeating the
+/// highest-numbered-arc value as a separate magic number.
 #[must_use]
-pub fn arc_number(major: u32) -> u32 {
+pub const fn arc_number(major: u32) -> u32 {
     PROJECT_NUMBER + major * 100
 }
 
-/// The work-node number for a slice: `arc_number(arc_major) + position`, where
-/// `position` is the slice's `MM` (`slice05` → 5) or, for a fractional slice
-/// (`slice05.1`), `MM*10 + k` (→ 51). Stable and unique within its arc.
-#[must_use]
-pub fn slice_number(arc_major: u32, slice_major: u32, slice_minor: Option<u32>) -> u32 {
-    let position = slice_minor.map_or(slice_major, |k| slice_major * 10 + k);
-    arc_number(arc_major) + position
+/// The offset within an arc's number band for a slice: the slice's `MM`
+/// (`slice05` → 5) or, for a fractional slice (`slice05.1`), `MM*10 + k`
+/// (→ 51). Shared by [`slice_number`] (numbered arcs) and named-arc slice
+/// numbering ([`discover`]) so both derive a slice's offset identically.
+fn slice_position(slice_major: u32, slice_minor: Option<u32>) -> u32 {
+    slice_minor.map_or(slice_major, |k| slice_major * 10 + k)
 }
 
-/// Whether an arc number is inside the MVP self-host scope (A1–A6).
+/// The work-node number for a slice: `arc_number(arc_major) + position`.
+/// Stable and unique within its arc.
 #[must_use]
-pub fn arc_in_scope(major: u32) -> bool {
-    (1..=MAX_MVP_ARC).contains(&major)
+pub fn slice_number(arc_major: u32, slice_major: u32, slice_minor: Option<u32>) -> u32 {
+    arc_number(arc_major) + slice_position(slice_major, slice_minor)
+}
+
+/// The spacing between named-arc number bands (v1.6 F12) — matches the
+/// numbered arcs' own 100-wide spacing, leaving room for up to 99 slice
+/// positions per named arc before it would collide with the next one.
+pub const NAMED_ARC_STEP: u32 = 100;
+
+/// The base `number` handle for the first **named** arc directory (no
+/// `arcNN` coordinate) — one band above the highest numbered arc (A1–A8,
+/// `arc_number(8) == 1800`), so numbered and named arcs can never collide.
+/// `number` is a non-structural human handle here (v1.6 F12) — not identity
+/// (the ULID), not order (the dependency DAG).
+pub const NAMED_ARC_BASE: u32 = arc_number(8) + NAMED_ARC_STEP;
+
+/// The `number` handle for the `index`-th named arc (0-based), assigned in
+/// the deterministic directory-sort order [`discover`] walks named arc
+/// directories in.
+#[must_use]
+pub fn named_arc_number(index: usize) -> u32 {
+    NAMED_ARC_BASE + u32::try_from(index).unwrap_or(u32::MAX) * NAMED_ARC_STEP
 }
 
 /// The outcome of a self-host cutover run.
@@ -253,6 +279,121 @@ fn source_class(node_type: NodeType) -> &'static str {
     }
 }
 
+/// One node repaired **update-in-place** (ODD-0025 §2.8): a stub's real body
+/// + `source` record written into the *same* node.
+#[derive(Debug, Clone)]
+pub struct Repaired {
+    /// The node's number (unchanged by repair).
+    pub number: u32,
+    /// The node's identity (unchanged by repair).
+    pub id: Id,
+    /// The node's name.
+    pub name: String,
+    /// The node's type (`arc` or `slice`).
+    pub node_type: NodeType,
+}
+
+/// The outcome of a [`repair`] run.
+#[derive(Debug, Clone)]
+pub struct RepairReport {
+    /// Nodes repaired (or, under `--dry-run`, that would be repaired).
+    pub repaired: Vec<Repaired>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl RepairReport {
+    /// The number of nodes repaired (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn repaired_count(&self) -> usize {
+        self.repaired.len()
+    }
+}
+
+/// Repairs every **stub** work node in `store` **update-in-place** (ODD-0025
+/// §2.8): matches it to its plan-set source under `plan_root` by structural
+/// coordinate (the same discovery [`self_host`] uses), imports the verbatim
+/// body + a fresh `source` record through the hard body-hash gate
+/// ([`crate::fidelity::verify_body_hash`]), and persists the **same** node —
+/// `id`, `edges`, `status`, and `number` are all preserved (only `body`,
+/// `source`, `updated`, and the schema marker change), via [`Store::persist`]
+/// (which overwrites by id — **no `delete`**).
+///
+/// A stub is decided by [`crate::fidelity::is_stub_body`] (≤ 1 non-blank body
+/// line), the exact predicate the coverage detector (s01) counts by — this
+/// deliberately does not re-derive it (F-8). A node with no matching plan-set
+/// entry (a stub whose source directory has since moved or been removed) is
+/// left untouched, not an error — repair only ever touches nodes it can
+/// faithfully resolve a source for. Only `arc`/`slice` nodes are ever stubs in
+/// practice (the project node's body comes from a hand-authored vision
+/// section, never the stub synthesis; ODD-0025 §2.8's mechanism is generic —
+/// it would apply to a document-node stub identically, but `self_host`
+/// mints no document nodes, so none exists to repair here).
+///
+/// Idempotent: a node that is no longer a stub (already repaired, or never
+/// one) is left alone, so re-running `repair` is always safe.
+///
+/// # Errors
+///
+/// [`MigrateError`] if the corpus can't be loaded, a source body can't be
+/// read, the hard body-hash gate fails, or a persist fails.
+pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairReport, MigrateError> {
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let plan_by_key: HashMap<(NodeType, u32), PlanNode> =
+        discover(plan_root).into_iter().map(|n| ((n.node_type, n.number), n)).collect();
+
+    let today = today();
+    let mut repaired = Vec::new();
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !matches!(fm.node_type(), NodeType::Arc | NodeType::Slice) {
+            continue;
+        }
+        if fm.retired().is_some() || !crate::fidelity::is_stub_body(document.body()) {
+            continue;
+        }
+        let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
+            continue; // no plan-set source to repair from — left as-is
+        };
+
+        let source_path = body_source_path(plan_node);
+        let body = std::fs::read_to_string(&source_path)
+            .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
+
+        let mut new_fm = fm.clone();
+        new_fm.set_updated(today);
+        new_fm.stamp_schema();
+        let new_fm = new_fm.with_source(crate::fidelity::build_source(
+            vec![source_path],
+            source_class(plan_node.node_type),
+            today,
+        ));
+
+        let new_document = Document::new(new_fm, body.clone());
+        crate::fidelity::verify_body_hash(
+            &body,
+            new_document.body(),
+            format!("#{} ({}) repair", fm.number(), fm.node_type()),
+        )?;
+
+        repaired.push(Repaired {
+            number: fm.number(),
+            id: fm.id(),
+            name: new_document.frontmatter().name().to_string(),
+            node_type: fm.node_type(),
+        });
+
+        if !mode.is_dry_run() {
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    repaired.sort_by_key(|r| r.number);
+    Ok(RepairReport { repaired, dry_run: mode.is_dry_run() })
+}
+
 /// The persist order rank: slices (0) before arcs (1) before the project (2), so
 /// the tree is written children-up and the root lands last.
 fn persist_rank(node_type: NodeType) -> u8 {
@@ -353,8 +494,11 @@ pub(crate) fn plan_nodes(plan_root: &Path) -> Vec<PlanNode> {
     discover(plan_root)
 }
 
-/// Discovers the in-scope plan nodes under `plan_root`: the project root, the
-/// A1–A6 arcs, and their slices. Deterministic (sorted).
+/// Discovers **every** arc/slice plan node under `plan_root` — numbered
+/// (`arcNN-*`, no scope cap — v1.6 F11) and named (`arc-<slug>`) alike — plus
+/// the project root. A numbered arc's `number` is derived ([`arc_number`]); a
+/// named arc's is assigned deterministically ([`named_arc_number`], in
+/// directory-sort order among just the named arcs). Deterministic (sorted).
 fn discover(plan_root: &Path) -> Vec<PlanNode> {
     let closed_arcs = closed_arcs_from_pledger(plan_root);
     let mut nodes = Vec::new();
@@ -365,12 +509,13 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
         number: PROJECT_NUMBER,
         name: h1_or_slug(&plan_root.join("project-plan.md"), "odm"),
         parent_key: None,
-        // The project is active while any arc is open (A6 open).
+        // The project is active while any arc is open.
         status: WorkStatus::Active,
         source: plan_root.join("project-plan.md"),
     });
 
-    let mut arc_dirs: Vec<(u32, std::path::PathBuf)> = Vec::new();
+    let mut numbered: Vec<(u32, std::path::PathBuf)> = Vec::new();
+    let mut named: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(plan_root) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -378,21 +523,41 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();
-            if let Some((major, _)) = parse_prefix(&name, "arc") {
-                if arc_in_scope(major) {
-                    arc_dirs.push((major, path));
-                }
+            if !name.to_ascii_lowercase().starts_with("arc") {
+                continue;
+            }
+            match parse_prefix(&name, "arc") {
+                Some((major, None)) => numbered.push((major, path)),
+                // A fractional-major (`arc06.1-…`) or non-numeric (`arc-slug`)
+                // `arc*` directory has no `arcNN` coordinate — named.
+                _ => named.push(path),
             }
         }
     }
-    arc_dirs.sort_by_key(|(m, _)| *m);
+    numbered.sort_by_key(|(m, _)| *m);
+    named.sort();
 
-    for (arc_major, arc_dir) in &arc_dirs {
-        let closed = closed_arcs.contains(arc_major) || arc_close_file(arc_dir);
+    // `(assigned number, structural major if any, dir)` — the major is kept
+    // only to look up the Project Ledger's `P-N` closure signal, which is
+    // meaningless for a named arc (no `P-N` row references it by number).
+    let mut arcs: Vec<(u32, Option<u32>, std::path::PathBuf)> = Vec::new();
+    for (major, path) in numbered {
+        arcs.push((arc_number(major), Some(major), path));
+    }
+    for (index, path) in named.into_iter().enumerate() {
+        arcs.push((named_arc_number(index), None, path));
+    }
+
+    for (arc_num, arc_major, arc_dir) in &arcs {
+        let closed = arc_major.is_some_and(|m| closed_arcs.contains(&m)) || arc_close_file(arc_dir);
+        let fallback = arc_major.map_or_else(
+            || arc_dir.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+            |m| format!("arc{m}"),
+        );
         nodes.push(PlanNode {
             node_type: NodeType::Arc,
-            number: arc_number(*arc_major),
-            name: h1_or_slug(&arc_dir.join("arc-plan.md"), &format!("arc{arc_major}")),
+            number: *arc_num,
+            name: h1_or_slug(&arc_dir.join("arc-plan.md"), &fallback),
             parent_key: Some((NodeType::Project, PROJECT_NUMBER)),
             status: if closed { WorkStatus::Closed } else { WorkStatus::Active },
             source: arc_dir.clone(),
@@ -417,9 +582,9 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
             let complete = slice_dir.join("closing-report.md").exists();
             nodes.push(PlanNode {
                 node_type: NodeType::Slice,
-                number: slice_number(*arc_major, *slice_major, *slice_minor),
+                number: arc_num + slice_position(*slice_major, *slice_minor),
                 name: slice_name(slice_dir, *slice_major, *slice_minor),
-                parent_key: Some((NodeType::Arc, arc_number(*arc_major))),
+                parent_key: Some((NodeType::Arc, *arc_num)),
                 status: if complete { WorkStatus::Closed } else { WorkStatus::Planned },
                 source: slice_dir.clone(),
             });
@@ -512,9 +677,17 @@ mod tests {
     }
 
     #[test]
-    fn arc_scope_excludes_post_mvp() {
-        assert!(arc_in_scope(1) && arc_in_scope(6));
-        assert!(!arc_in_scope(7) && !arc_in_scope(8));
+    fn named_arc_numbers_are_collision_free_with_numbered_arcs() {
+        // Numbered arcs occupy up to arc_number(8) == 1800, plus up to 99 in
+        // slice-position headroom (1899 max); named arcs start clear of that.
+        assert_eq!(NAMED_ARC_BASE, 1900);
+        assert_eq!(named_arc_number(0), 1900);
+        assert_eq!(named_arc_number(1), 2000);
+        assert_eq!(named_arc_number(3), 2200);
+        assert!(
+            named_arc_number(0) > arc_number(8) + 99,
+            "no collision with any numbered arc/slice"
+        );
     }
 
     #[test]

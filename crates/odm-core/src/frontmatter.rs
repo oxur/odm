@@ -182,8 +182,9 @@ pub struct Frontmatter {
     /// The per-type versioned schema marker (`<type>/vMAJOR.MINOR`, ODD-0020).
     /// Absent ⇒ `v0.1` on read (a *computed* legacy default — see
     /// [`schema_version`](Frontmatter::schema_version)); every odm-created node is
-    /// stamped `<type>/v1.0` at creation. Additive + skipped-when-absent, so an
-    /// unversioned legacy node round-trips byte-identically.
+    /// stamped `<type>/`[`SchemaVersion::CURRENT`](crate::schema::SchemaVersion::CURRENT)
+    /// at creation. Additive + skipped-when-absent, so an unversioned legacy
+    /// node round-trips byte-identically.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     schema: Option<crate::schema::SchemaMarker>,
     /// Human label.
@@ -543,8 +544,9 @@ impl Frontmatter {
     }
 
     /// Stamps the current schema marker for this node's type
-    /// (`<type>/v1.0`) — called by every odm create/write path so no node is
-    /// written unversioned (ODD-0020 §2). Idempotent.
+    /// (`<type>/`[`SchemaVersion::CURRENT`](crate::schema::SchemaVersion::CURRENT))
+    /// — called by every odm create/write path so no node is written
+    /// unversioned (ODD-0020 §2). Idempotent.
     pub fn stamp_schema(&mut self) {
         self.schema = Some(crate::schema::SchemaMarker::current(self.node_type));
     }

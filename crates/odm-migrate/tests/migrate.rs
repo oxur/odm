@@ -203,7 +203,7 @@ fn migrate_malformed_frontmatter_is_a_reported_skip() {
     );
 }
 
-// ----- V-4: migrate stamps imported nodes `design/v1.0` ---------------------
+// ----- V-4: migrate stamps imported nodes with the current schema -----------
 
 #[test]
 fn migrate_stamps_schema_v1() {
@@ -217,14 +217,14 @@ fn migrate_stamps_schema_v1() {
     let store = Store::open(store_dir.path());
     migrate(&store, legacy_dir.path(), Mode::Commit).expect("migrate");
 
-    // Every imported node is stamped `design/v1.0` (the v0.1 → v1.0 upgrade path).
+    // Every imported node is stamped the current schema (the v0.1 → current upgrade path).
     let nodes = store.load_all().unwrap();
     assert!(!nodes.is_empty());
     for doc in &nodes {
         assert_eq!(
             doc.frontmatter().schema(),
             Some(SchemaMarker::current(NodeType::Design)),
-            "#{} stamped design/v1.0",
+            "#{} stamped the current schema",
             doc.frontmatter().number()
         );
         assert_eq!(doc.frontmatter().schema_version(), SchemaVersion::CURRENT);
@@ -258,14 +258,14 @@ fn backfill_stamps_unversioned_nodes() {
     assert!(fm.schema().is_none(), "sanity: starts unversioned");
     store.persist(&Document::new(fm, "body\n")).unwrap();
 
-    // Backfill stamps it `design/v1.0`.
+    // Backfill stamps it the current schema (`design/v1.1`).
     let upgraded = odm_migrate::backfill_schema(&store, Mode::Commit).expect("backfill");
     assert_eq!(upgraded.len(), 1, "one node stamped");
-    assert_eq!(upgraded[0].schema, "design/v1.0");
+    assert_eq!(upgraded[0].schema, "design/v1.1");
     assert_eq!(
         store.load_all().unwrap()[0].frontmatter().schema(),
         Some(SchemaMarker::current(NodeType::Design)),
-        "node now carries design/v1.0"
+        "node now carries the current schema"
     );
 
     // Idempotent: a second backfill stamps nothing.
