@@ -195,12 +195,18 @@ pub fn prepare(front: &LegacyFrontmatter) -> Result<Prepared, MapError> {
 /// The `id` is reserved by the caller (pass 1) so the resolved supersession
 /// edges point at the right node; a mis-set gate is a bug, not a user error —
 /// the reach only ever uses [`DESIGN_GATES`]/[`RESEARCH_GATES`] names.
+///
+/// `source_path` is the legacy file this node was migrated from, and
+/// `migrated_on` the date the migration ran — both go into the node's
+/// `source` record (ODD-0025 §2.0/§2.2).
 #[must_use]
 pub fn build_node(
     id: Id,
     front: &LegacyFrontmatter,
     prep: &Prepared,
     gates: &DocGates,
+    source_path: &std::path::Path,
+    migrated_on: chrono::NaiveDate,
 ) -> Frontmatter {
     let node_type = classify_type(&front.tags);
     let created = front.created.or(front.updated).unwrap_or_else(today);
@@ -224,11 +230,20 @@ pub fn build_node(
     if let Some(component) = &front.component {
         fm = fm.with_component(component.clone());
     }
-    // The node schema has no typed `author` field (ODD-0013 §2.3 dropped it);
-    // carry it into the forward-compat catch-all so it is not lost.
+    // `author`/`version` are now typed fields (ODD-0025 §2.2) — preserved
+    // explicitly rather than git-derived (git blame on a migrated node
+    // returns the migrator, not the source author).
     if let Some(author) = &front.author {
-        fm.insert_extra("author", author.clone());
+        fm = fm.with_author(author.clone());
     }
+    if let Some(version) = &front.version {
+        fm = fm.with_version(version.clone());
+    }
+    fm = fm.with_source(crate::fidelity::build_source(
+        vec![source_path.to_path_buf()],
+        "odd",
+        migrated_on,
+    ));
 
     match &prep.class {
         StateClass::Progression { gate } => {
@@ -285,6 +300,7 @@ mod tests {
             number: Some(5),
             title: Some("X".into()),
             author: None,
+            version: None,
             component: None,
             tags: vec![],
             created: NaiveDate::from_ymd_opt(2026, 1, 1),
@@ -294,7 +310,14 @@ mod tests {
             superseded_by: None,
         };
         let prep = prepare(&front).unwrap();
-        let fm = build_node(Id::new(), &front, &prep, &gates);
+        let fm = build_node(
+            Id::new(),
+            &front,
+            &prep,
+            &gates,
+            std::path::Path::new("docs/design/04-accepted/0005-x.md"),
+            NaiveDate::from_ymd_opt(2026, 7, 27).unwrap(),
+        );
         // Cumulative: draft..=accepted reached; active/final not.
         for g in ["draft", "under-review", "revised", "accepted"] {
             assert!(fm.status().has_reached(g), "{g} should be reached");

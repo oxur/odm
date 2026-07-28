@@ -222,6 +222,25 @@ fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
                 Violation::FieldNotValidForType { field: "affects", node_type: ty },
             ));
         }
+        // `author`/`version` are document-node fields (ODD-0025 §2.2: "Both are
+        // document-node fields", referring to the two just introduced) —
+        // meaningless on a work node. `source`, by contrast, is explicitly
+        // "every migrated node carries a source sub-map" (§2.2, no type
+        // restriction) — a self-hosted arc/slice is a migrated *node* too, so
+        // `source` stays valid on work nodes; only `author`/`version` are
+        // flagged here.
+        if fm.author().is_some() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "author", node_type: ty },
+            ));
+        }
+        if fm.version().is_some() {
+            findings.push(finding(
+                fm,
+                Violation::FieldNotValidForType { field: "version", node_type: ty },
+            ));
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use std::str::FromStr;
 use chrono::NaiveDate;
 use odm_core::desired::{DesiredFact, FileExpect, ProbeSpec, ShellExpect};
 use odm_core::frontmatter::{
-    Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, SupersedeKind,
+    Dependency, Document, Edges, Frontmatter, FrontmatterError, Retirement, Source, SupersedeKind,
     Supersedes, TornEdge,
 };
 use odm_core::gates::GateSets;
@@ -246,7 +246,9 @@ fn mutators_and_retirement_roundtrip() {
 
 #[test]
 fn insert_extra_carries_an_unmodeled_key_through_roundtrip() {
-    // `odm migrate` uses this to carry a legacy `author` (no typed field).
+    // A stand-in for whatever field is still unmodeled — `author` was this
+    // catch-all's original motivating example (`odm migrate` staged it here
+    // before ODD-0025 typed it), so it is no longer usable as the example.
     let id = Id::from_str(SAMPLE_ULID).unwrap();
     let mut fm = Frontmatter::new(
         id,
@@ -258,12 +260,12 @@ fn insert_extra_carries_an_unmodeled_key_through_roundtrip() {
         Origin::Planned,
     );
     assert_eq!(fm.unknown_key_count(), 0);
-    fm.insert_extra("author", "Ada Lovelace");
+    fm.insert_extra("legacy_field", "Ada Lovelace");
     assert_eq!(fm.unknown_key_count(), 1);
 
     let doc = Document::new(fm, "body\n");
     let emitted = doc.emit().unwrap();
-    assert!(emitted.contains("author: Ada Lovelace"), "extra key emitted:\n{emitted}");
+    assert!(emitted.contains("legacy_field: Ada Lovelace"), "extra key emitted:\n{emitted}");
     // Round-trips: the unmodeled key survives parse ∘ emit.
     assert_eq!(Document::parse(&emitted).unwrap(), doc);
 }
@@ -445,6 +447,9 @@ proptest! {
         has_parent in any::<bool>(),
         n_deps in 0usize..3,
         body_lines in prop::collection::vec(arb_text(), 0..4),
+        author in prop::option::of(arb_text()),
+        version in prop::option::of(arb_text()),
+        has_source in any::<bool>(),
     ) {
         let id = Id::new();
         let mut edges = Edges::default();
@@ -470,12 +475,88 @@ proptest! {
         if let Some(c) = component {
             fm = fm.with_component(c);
         }
+        if let Some(a) = author {
+            fm = fm.with_author(a);
+        }
+        if let Some(v) = version {
+            fm = fm.with_version(v);
+        }
+        if has_source {
+            fm = fm.with_source(Source {
+                paths: vec!["docs/design-v1.0.0/arc01-alpha/arc-plan.md".into()],
+                class: "arc-plan".to_string(),
+                normalization: "trim+lf".to_string(),
+                migrated_by: "odm-migrate/1.0.0".to_string(),
+                migrated_on: created,
+            });
+        }
 
         let doc = Document::new(fm, body_lines.join("\n"));
         let emitted = doc.emit()?;
         let reparsed = Document::parse(&emitted)?;
         prop_assert_eq!(reparsed, doc);
     }
+}
+
+// ----- ODD-0025 §2.2: author/version/source round-trip + canonical order ---
+
+#[test]
+fn author_version_source_round_trip() {
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let source = Source {
+        paths: vec![
+            "docs/design-v1.0.0/arc06-migrate-self-host/slice02-migrate-odm-docs/slice-doc.md"
+                .into(),
+        ],
+        class: "slice-doc".to_string(),
+        normalization: "trim+lf".to_string(),
+        migrated_by: "odm-migrate/1.0.0".to_string(),
+        migrated_on: day(2026, 7, 27),
+    };
+    let fm = Frontmatter::new(
+        id,
+        1602,
+        NodeType::Slice,
+        "n",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    )
+    .with_author("Katherine Johnson")
+    .with_version("2.3")
+    .with_source(source.clone());
+
+    let emitted = Document::new(fm, "body\n").emit().unwrap();
+    assert!(emitted.contains("author: Katherine Johnson"), "author persisted:\n{emitted}");
+    assert!(emitted.contains("version:"), "version persisted:\n{emitted}");
+    assert!(emitted.contains("source:"), "source persisted:\n{emitted}");
+    assert!(emitted.contains("class: slice-doc"), "source.class persisted:\n{emitted}");
+
+    let reparsed = Document::parse(&emitted).unwrap();
+    let fm = reparsed.frontmatter();
+    assert_eq!(fm.author(), Some("Katherine Johnson"));
+    assert_eq!(fm.version(), Some("2.3"));
+    assert_eq!(fm.source(), Some(&source));
+}
+
+#[test]
+fn absent_author_version_source_are_not_emitted() {
+    // Additive: a node with none of the three fields round-trips with no
+    // stray keys, matching the existing skip-when-absent convention.
+    let id = Id::from_str(SAMPLE_ULID).unwrap();
+    let fm = Frontmatter::new(
+        id,
+        1,
+        NodeType::Design,
+        "n",
+        day(2026, 6, 20),
+        day(2026, 6, 20),
+        Origin::Planned,
+    );
+    let emitted = Document::new(fm, "body\n").emit().unwrap();
+    assert!(!emitted.contains("author:"), "no author key when absent:\n{emitted}");
+    assert!(!emitted.contains("version:"), "no version key when absent:\n{emitted}");
+    assert!(!emitted.contains("source:"), "no source key when absent:\n{emitted}");
 }
 
 // ----- C-1: a tear entry carries both the torn edge and the rationale -------

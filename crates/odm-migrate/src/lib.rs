@@ -18,8 +18,18 @@
 //! | `state` (progression) | → | cumulative `design`/`research` gate reach |
 //! | `state` (deferred/rejected/withdrawn/superseded) | → | retirement marker |
 //! | `supersedes`/`superseded-by` | → | a `supersedes` edge on the superseding node |
-//! | title/author/created/updated/tags/component | → | carried (author → `extra`) |
+//! | title/created/updated/tags/component | → | carried |
+//! | `author`/`version` | → | typed `author`/`version` fields (ODD-0025 §2.2, slice03) |
 //! | node type | → | `NodeType::Research` iff `tags` include `research`, else `NodeType::Design` |
+//!
+//! ## Fidelity (slice03, ODD-0025 §2.1/§2.2 — see [`fidelity`])
+//!
+//! Both importers import the source body **verbatim** — no synthesized
+//! heading, no transformation — and every created node carries a `source`
+//! record (path, class, normalization, migrating tool + version). The hard
+//! body-hash gate ([`fidelity::verify_body_hash`]) is a migration-time
+//! invariant check: the body about to be persisted must hash identically
+//! (after normalization) to the body that was read.
 //!
 //! ## Numbering space (slice02, settled against the real corpus)
 //!
@@ -41,6 +51,7 @@
 //! interim mapping (revisitable if a real deferred ODD appears).
 
 pub mod coverage;
+pub mod fidelity;
 pub mod legacy;
 pub mod mapping;
 pub mod replan;
@@ -234,6 +245,28 @@ pub enum MigrateError {
         #[source]
         source: StoreError,
     },
+    /// A migrated node's body does not match its source, byte-for-byte after
+    /// normalization (ODD-0025 §2.1) — a hard failure that stops the
+    /// migration, never a per-doc skip.
+    #[error(
+        "body-hash mismatch for {context}: the migrated body does not match its source, \
+         byte-for-byte after normalization"
+    )]
+    BodyHashMismatch {
+        /// A human label identifying the node that failed (e.g. `"#1602 (slice)"`).
+        context: String,
+    },
+    /// A node's source body could not be read (ODD-0025 §2.1's verbatim
+    /// import — `selfhost.rs` reading `arc-plan.md`/`slice-doc.md`/
+    /// `project-plan.md`).
+    #[error("reading the source body at {path}")]
+    SourceRead {
+        /// The source file that could not be read.
+        path: PathBuf,
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Migrates the legacy ODD corpus rooted at `legacy_path` into `store`, using the
@@ -341,20 +374,30 @@ pub fn migrate_with_gates(
     }
 
     // Pass 2 — resolve supersession relations against the full id map, then build
-    // + (unless dry-run) persist each node with its edge attached.
+    // + (unless dry-run) persist each node with its edge attached. Body import
+    // is verbatim (`doc.body`, already read source-faithful by `legacy::parse_file`);
+    // the hard hash gate (ODD-0025 §2.1) verifies the persisted body is exactly
+    // the body that was read, regardless of `--dry-run` (a dry run still catches
+    // a fidelity break, it just doesn't write).
+    let migrated_on = chrono::Utc::now().date_naive();
     let edges = resolve_supersedes(&to_create, &planned, &mut report.warnings);
     for (doc, prep, id) in &to_create {
-        let fm = build_node(*id, &doc.front, prep, gates);
+        let fm = build_node(*id, &doc.front, prep, gates, &doc.path, migrated_on);
         let fm = attach_supersedes(fm, edges.get(&prep.number).copied());
+        let document = Document::new(fm, doc.body.clone());
+        crate::fidelity::verify_body_hash(
+            &doc.body,
+            document.body(),
+            format!("#{} ({})", prep.number, document.frontmatter().node_type()),
+        )?;
         let created = Created {
             number: prep.number,
             id: *id,
-            name: fm.name().to_string(),
-            node_type: fm.node_type(),
-            retired: fm.retired().is_some(),
+            name: document.frontmatter().name().to_string(),
+            node_type: document.frontmatter().node_type(),
+            retired: document.frontmatter().retired().is_some(),
         };
         if !mode.is_dry_run() {
-            let document = Document::new(fm, doc.body.clone());
             store
                 .persist(&document)
                 .map_err(|source| MigrateError::Persist { number: prep.number, source })?;
@@ -550,6 +593,7 @@ mod tests {
             number: Some(number),
             title: None,
             author: None,
+            version: None,
             component: None,
             tags: Vec::new(),
             created: None,

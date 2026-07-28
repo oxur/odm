@@ -13,6 +13,8 @@
 //! YAML-crate type appears in the public API, so the backend can be swapped
 //! without touching callers. (Same insurance applied to `ulid` in slice 02.)
 
+use std::path::PathBuf;
+
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_norway::Mapping;
@@ -159,14 +161,16 @@ impl Document {
     }
 }
 
-/// The typed frontmatter schema (ODD-0013 §2.3).
+/// The typed frontmatter schema (ODD-0013 §2.3, amended by ODD-0025 §4 for
+/// `author`/`version`/`source`).
 ///
 /// Fields are declared — and therefore emitted — in canonical order: `id`,
 /// `number`, `type`, `schema`, `name`, `created`, `updated`, `tags`,
-/// `component`, `origin`, `reserved`, `retired`, `edges`, `status`,
-/// `decomposed`, `desired_facts`, `deferred`. Any keys not modeled here are
-/// captured in a hidden catch-all and re-emitted last, so they survive a
-/// round-trip until their owning slices model them.
+/// `component`, `author`, `version`, `origin`, `reserved`, `retired`,
+/// `source`, `edges`, `status`, `decomposed`, `desired_facts`, `deferred`.
+/// Any keys not modeled here are captured in a hidden catch-all and
+/// re-emitted last, so they survive a round-trip until their owning slices
+/// model them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frontmatter {
     /// Stable ULID identity.
@@ -194,6 +198,21 @@ pub struct Frontmatter {
     /// Optional subsystem/component filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     component: Option<String>,
+    /// The document's original author (ODD-0025 §2.2), preserved explicitly on
+    /// migration rather than git-derived — git blame on a migrated node
+    /// returns the migrator, not the source author (ODD-0002 §2.2's original
+    /// git-derivation intent is wrong for migrated docs). Absent on a
+    /// hand-created node. Document-node only; [`crate::check::content_validity`]
+    /// flags it on a work node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    author: Option<String>,
+    /// The document's own content-version marker (ODD-0025 §2.2) — the
+    /// source-of-truth quick-access answer to "what version is this doc,"
+    /// distinct from [`schema`](Self::schema) (which versions the frontmatter
+    /// *shape*, ODD-0020 §3, not the document's content). Absent on a
+    /// hand-created node. Document-node only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
     /// How the node arose.
     origin: Origin,
     /// Tentative future-work placeholder flag.
@@ -203,6 +222,10 @@ pub struct Frontmatter {
     /// withdrawn. (Not in the ODD-0013 §2.3 example yet — see slice05 report.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     retired: Option<Retirement>,
+    /// The node's **source record** (ODD-0025 §2.0/§2.2) — set only on a
+    /// migrated node; absent on a hand-created one. See [`Source`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<Source>,
     /// The node's outgoing edges.
     #[serde(default, skip_serializing_if = "Edges::is_empty")]
     edges: Edges,
@@ -255,9 +278,12 @@ impl Frontmatter {
             updated,
             tags: Vec::new(),
             component: None,
+            author: None,
+            version: None,
             origin,
             reserved: false,
             retired: None,
+            source: None,
             edges: Edges::default(),
             status: crate::status::Status::new(),
             decomposed: None,
@@ -278,6 +304,27 @@ impl Frontmatter {
     #[must_use]
     pub fn with_component(mut self, component: impl Into<String>) -> Self {
         self.component = Some(component.into());
+        self
+    }
+
+    /// Sets the document's original author (ODD-0025 §2.2).
+    #[must_use]
+    pub fn with_author(mut self, author: impl Into<String>) -> Self {
+        self.author = Some(author.into());
+        self
+    }
+
+    /// Sets the document's own content-version marker (ODD-0025 §2.2).
+    #[must_use]
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    /// Sets the node's source record (ODD-0025 §2.0/§2.2).
+    #[must_use]
+    pub fn with_source(mut self, source: Source) -> Self {
+        self.source = Some(source);
         self
     }
 
@@ -355,6 +402,25 @@ impl Frontmatter {
     #[must_use]
     pub fn component(&self) -> Option<&str> {
         self.component.as_deref()
+    }
+
+    /// The document's original author, if migrated with one (ODD-0025 §2.2).
+    #[must_use]
+    pub fn author(&self) -> Option<&str> {
+        self.author.as_deref()
+    }
+
+    /// The document's own content-version marker, if migrated with one
+    /// (ODD-0025 §2.2).
+    #[must_use]
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    /// The node's source record, if migrated (ODD-0025 §2.0/§2.2).
+    #[must_use]
+    pub fn source(&self) -> Option<&Source> {
+        self.source.as_ref()
     }
 
     /// How the node arose.
@@ -541,6 +607,39 @@ pub struct Decomposition {
     /// from the node's current children is drift (re-affirmation needed).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Id>,
+}
+
+/// A migrated node's **source record** (ODD-0025 §2.0/§2.2): *where* the
+/// node's content came from. A third, deliberately distinct axis alongside
+/// [`Origin`] (*why* the node exists) and 0013's `provenance` (*derived*
+/// git/supersede/gate lineage, never stored) — `source` is stored because git
+/// cannot derive it: after migration, git blame returns the migrate commit,
+/// not the original author or path.
+///
+/// Present only on a migrated node; absent on a hand-created one. Fields are
+/// computed once, at migration time, and never re-verified later — no hash is
+/// stored (ODD-0025 §2.1: content is allowed to change post-migration, e.g. a
+/// Version-History section, so a stored hash would be a false drift signal).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Source {
+    /// The source file path(s) this node's content was migrated from — a
+    /// list (1+) so a later synthesis (many sources → one node, ODD-0025
+    /// §2.3) fits the same shape without a model change.
+    pub paths: Vec<PathBuf>,
+    /// The source document's class (the `DocClass` odm-migrate's coverage
+    /// detector assigns, e.g. `"arc-plan"`, `"slice-doc"`, `"odd"`) — carried
+    /// as a plain string since the enum lives in `odm-migrate`, which depends
+    /// on this crate, not the reverse.
+    pub class: String,
+    /// What the body-hash gate's normalization stripped before comparing
+    /// (ODD-0025 §2.1, e.g. `"trim+lf"`), so the comparison stays
+    /// interpretable without re-deriving the rule from code.
+    pub normalization: String,
+    /// The migrating tool + version (e.g. `"odm-migrate/1.0.0"`) — so a
+    /// pre-fix import is queryable by tool version.
+    pub migrated_by: String,
+    /// The date the migration ran.
+    pub migrated_on: NaiveDate,
 }
 
 /// A node's retirement marker (set by `odm retire`).

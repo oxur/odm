@@ -347,6 +347,60 @@ mod content {
     }
 
     #[test]
+    fn author_version_source_validity_by_type() {
+        // ODD-0025 §2.2: "every migrated node carries a `source` sub-map" (no
+        // type restriction — a self-hosted arc/slice is a migrated node too),
+        // while "Both [`author`/`version`] are document-node fields" (the two
+        // *separately* preserved fields, not `source`). So `source` is valid
+        // on work AND document nodes; `author`/`version` are document-only.
+        use odm_core::frontmatter::Source;
+
+        let a_source = || Source {
+            paths: vec!["docs/design/01-draft/0001-x.md".into()],
+            class: "odd".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/1.0.0".to_string(),
+            migrated_on: day(),
+        };
+
+        // Valid: author/version/source on a document node → no finding.
+        let good_odd = odd(A, 1, "Doc")
+            .with_author("Katherine Johnson")
+            .with_version("2.3")
+            .with_source(a_source());
+        assert!(
+            content_validity(&[good_odd])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::FieldNotValidForType { .. })),
+            "author/version/source are valid on a document node"
+        );
+
+        // Valid: source on a work node (a self-hosted arc/slice) → no finding.
+        let good_slice = slice(A, 1, "Work").with_source(a_source());
+        assert!(
+            content_validity(&[good_slice])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::FieldNotValidForType { .. })),
+            "source is valid on a work node — every migrated node carries one"
+        );
+
+        // Invalid: author/version each flagged individually on a work node.
+        let bad_author = slice(B, 2, "Work").with_author("Someone");
+        let bad_version = slice(C, 3, "Work").with_version("1.0");
+        for (fm, field) in [(bad_author, "author"), (bad_version, "version")] {
+            let findings = content_validity(&[fm]);
+            assert!(
+                findings.iter().any(|f| matches!(
+                    &f.violation,
+                    Violation::FieldNotValidForType { field: got, node_type: NodeType::Slice }
+                    if *got == field
+                )),
+                "{field} on a work node flagged: {findings:?}"
+            );
+        }
+    }
+
+    #[test]
     fn unknown_newer_schema_is_reported_error() {
         // A node stamped with a newer schema than this binary supports → reported.
         let newer = odd(A, 1, "Doc").with_schema(SchemaMarker {

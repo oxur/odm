@@ -179,17 +179,35 @@ pub fn self_host(
         }
     }
 
-    // Pass 2 — build each node (schema-stamped, parented, gates from status), then
-    // persist **children-up**: slices, then arcs, then the project root last.
+    // Pass 2 — build each node (schema-stamped, parented, gates from status),
+    // import its **verbatim** source body (ODD-0025 §2.1 — no synthesized H1,
+    // no header injection; this replaced the stub-body root cause) and attach
+    // its `source` record, then persist **children-up**: slices, then arcs,
+    // then the project root last.
     let today = today();
-    let mut built: Vec<(Frontmatter, u32)> = Vec::new();
+    let mut built: Vec<(Frontmatter, String)> = Vec::new();
     for (node, id) in &to_create {
-        built.push((build_node(node, *id, &ids, &children, today), node.number));
+        let fm = build_node(node, *id, &ids, &children, today);
+        let source_path = body_source_path(node);
+        let body = std::fs::read_to_string(&source_path)
+            .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
+        let fm = fm.with_source(crate::fidelity::build_source(
+            vec![source_path],
+            source_class(node.node_type),
+            today,
+        ));
+        built.push((fm, body));
     }
     built.sort_by_key(|(fm, _)| persist_rank(fm.node_type()));
 
     let mut created = Vec::new();
-    for (fm, _) in &built {
+    for (fm, body) in &built {
+        let document = Document::new(fm.clone(), body.clone());
+        crate::fidelity::verify_body_hash(
+            body,
+            document.body(),
+            format!("#{} ({})", fm.number(), fm.node_type()),
+        )?;
         created.push(Created {
             number: fm.number(),
             id: fm.id(),
@@ -198,7 +216,6 @@ pub fn self_host(
             retired: false,
         });
         if !mode.is_dry_run() {
-            let document = Document::new(fm.clone(), format!("# {}\n", fm.name()));
             store
                 .persist(&document)
                 .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
@@ -208,6 +225,32 @@ pub fn self_host(
     created.sort_by_key(|c| c.number);
     skipped.sort_by_key(|s| s.number);
     Ok(SelfHostReport { created, skipped, dry_run: mode.is_dry_run() })
+}
+
+/// The actual body-source **file** for a plan node (ODD-0025 §2.1: "whole
+/// file" body for the frontmatter-less planning corpus). `PlanNode.source` is
+/// already the file for the project (`project-plan.md`), but a *directory*
+/// for an arc/slice, so this resolves the primary doc within it.
+fn body_source_path(node: &PlanNode) -> std::path::PathBuf {
+    match node.node_type {
+        NodeType::Project => node.source.clone(),
+        NodeType::Arc => node.source.join("arc-plan.md"),
+        NodeType::Slice => node.source.join("slice-doc.md"),
+        // discover() never produces any other type.
+        _ => node.source.clone(),
+    }
+}
+
+/// The `source.class` label for a plan node's type — the same vocabulary
+/// `odm-migrate::coverage`'s `DocClass` uses (`"project-plan"`/`"arc-plan"`/
+/// `"slice-doc"`), so a human reading `source.class` sees a consistent name
+/// regardless of which detector or importer produced it.
+fn source_class(node_type: NodeType) -> &'static str {
+    match node_type {
+        NodeType::Project => "project-plan",
+        NodeType::Arc => "arc-plan",
+        _ => "slice-doc",
+    }
 }
 
 /// The persist order rank: slices (0) before arcs (1) before the project (2), so

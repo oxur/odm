@@ -1895,6 +1895,7 @@ dependencies = [
  "odm-store",
  "serde",
  "serde_norway",
+ "sha2",
  "tempfile",
  "thiserror 1.0.69",
  "walkdir",

@@ -13,11 +13,11 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 use walkdir::WalkDir;
 
-/// The legacy frontmatter fields this importer reads. Unknown keys (e.g.
-/// `version`) are ignored by `serde` — the legacy file is preserved intact, so
-/// nothing is lost. All fields are optional so a malformed doc parses into a
-/// value we can *report on* rather than panicking (M-6); the required-field
-/// checks live in the mapping.
+/// The legacy frontmatter fields this importer reads. Unknown keys are
+/// ignored by `serde` — the legacy file is preserved intact, so nothing is
+/// lost. All fields are optional so a malformed doc parses into a value we
+/// can *report on* rather than panicking (M-6); the required-field checks
+/// live in the mapping.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LegacyFrontmatter {
     /// The legacy human number (identity in the legacy model). Required by the
@@ -26,9 +26,16 @@ pub struct LegacyFrontmatter {
     /// The document title → the node `name`.
     #[serde(default)]
     pub title: Option<String>,
-    /// The document author → carried into the node's `extra` (no typed field).
+    /// The document author → the node's typed `author` field (ODD-0025 §2.2,
+    /// preserved explicitly rather than git-derived — git blame on a migrated
+    /// node returns the migrator, not the source author).
     #[serde(default)]
     pub author: Option<String>,
+    /// The document's own content-version marker → the node's typed
+    /// `version` field (ODD-0025 §2.2). Tolerates YAML's untyped-number
+    /// parsing (`version: 2.3` parses as a float) — see [`de_opt_version`].
+    #[serde(default, deserialize_with = "de_opt_version")]
+    pub version: Option<String>,
     /// The subsystem/component label → the node `component`.
     #[serde(default)]
     pub component: Option<String>,
@@ -90,6 +97,39 @@ fn first_number(s: &str) -> Option<u32> {
     let rest = &s[start..];
     let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
     rest[..end].parse().ok()
+}
+
+/// Deserializes a legacy `version` scalar, tolerating YAML's untyped-number
+/// parsing: the real corpus writes bare `version: 1.0` / `version: 2.3`,
+/// which a YAML parser reads as a **float** — and Rust's `Display` for a
+/// whole float drops the trailing `.0` (`1.0_f64` prints `"1"`), which would
+/// silently corrupt a two-part version number. This reconstructs the written
+/// form instead: a bare integer (`version: 3`) formats without a decimal
+/// point; a float formats via Rust's round-trip `Debug` (which, unlike
+/// `Display`, keeps a trailing `.0` for a whole number) — the shortest
+/// decimal that reparses to the same value, which is exactly what a
+/// hand-written `x.y` version literal is. A quoted string (`version:
+/// "1.0.0"`) passes through unchanged, so a three-part semver already
+/// written as a string is never routed through float formatting at all.
+fn de_opt_version<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        // Tried in order: an untagged enum keeps the first variant whose
+        // shape matches, so an integer literal is captured as `Int`, never
+        // routed through `Float`'s reconstruction.
+        Int(i64),
+        Float(f64),
+        Str(String),
+    }
+    Ok(Option::<Raw>::deserialize(deserializer)?.map(|raw| match raw {
+        Raw::Int(n) => n.to_string(),
+        Raw::Float(f) => format!("{f:?}"),
+        Raw::Str(s) => s,
+    }))
 }
 
 /// One legacy document: its parsed frontmatter, its markdown body (carried
@@ -254,6 +294,29 @@ mod tests {
         assert_eq!(s.r, Some(11));
         // A string with no number is a hard error (loud), never a silent None.
         assert!(serde_norway::from_str::<Holder>("r: \"none\"").is_err());
+    }
+
+    #[test]
+    fn de_opt_version_reconstructs_decimal_and_integer_forms() {
+        #[derive(serde::Deserialize)]
+        struct Holder {
+            #[serde(default, deserialize_with = "de_opt_version")]
+            version: Option<String>,
+        }
+        // The real corpus's shape: bare decimals, parsed as YAML floats.
+        let v: Holder = serde_norway::from_str("version: 1.0").unwrap();
+        assert_eq!(v.version.as_deref(), Some("1.0"), "a whole float keeps its trailing .0");
+        let v: Holder = serde_norway::from_str("version: 2.3").unwrap();
+        assert_eq!(v.version.as_deref(), Some("2.3"));
+        // A bare integer stays a bare integer (no spurious .0).
+        let v: Holder = serde_norway::from_str("version: 3").unwrap();
+        assert_eq!(v.version.as_deref(), Some("3"));
+        // An already-quoted string (e.g. a three-part semver) passes through.
+        let v: Holder = serde_norway::from_str("version: \"1.0.0\"").unwrap();
+        assert_eq!(v.version.as_deref(), Some("1.0.0"));
+        // Absent stays absent.
+        let v: Holder = serde_norway::from_str("other: 1").unwrap();
+        assert_eq!(v.version, None);
     }
 
     #[test]
