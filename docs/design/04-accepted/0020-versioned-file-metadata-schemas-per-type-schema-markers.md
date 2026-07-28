@@ -5,11 +5,11 @@ author: "Duncan McGreggor"
 component: All
 tags: [schema, versioning, frontmatter, migrate, metadata]
 created: 2026-07-06
-updated: 2026-07-26
+updated: 2026-07-27
 state: Accepted
 supersedes: null
 superseded-by: null
-version: 1.1
+version: 1.2
 ---
 
 # Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
@@ -42,7 +42,7 @@ change can't be distinguished from a breaking one. The migrate boundary (A6 slic
 schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, design/v1.0, research/v1.0, adr/v1.0, note/v1.0, artifact/v1.0
 ```
 
-(v2.1, ODD-0025 §4: `artifact/v1.0` is **named here** for the process-execution
+(v1.2, ODD-0025 §4: `artifact/v1.0` is **named here** for the process-execution
 supporting-doc type ODD-0013 §2.2 v2.4 adds; the `NodeType::Artifact` variant
 and its minting are arc-migration-fidelity s05, not this ODD's own scope.)
 
@@ -78,10 +78,10 @@ odm now carries several version numbers; **keep them from colliding**:
 | Index / drift binary formats | `FORMAT_VERSION`, `SNAPSHOT_VERSION` | the `.odm/` derived artifacts |
 | Design-doc tree | `docs/design-v1.0.0/` | the *design*'s version (not a release) |
 | Crate / release | `oxur-odm 1.0.0` | the shipped binary |
-| Node `version:` field (typed, ODD-0025 §2.2, v2.1) | `version: "2.3"` | a **document's own content** version — **not** a schema version |
+| Node `version:` field (typed, ODD-0025 §2.2, v1.2) | `version: "2.3"` | a **document's own content** version — **not** a schema version |
 
 The field is `schema:` (a per-type marker), deliberately **not** overloading `version:`
-(the document's own content revision) — kept as two axes from the start, and (v2.1)
+(the document's own content revision) — kept as two axes from the start, and (v1.2)
 `version:` is no longer just a legacy carry-through: arc-migration-fidelity slice03
 promotes it to a typed `Frontmatter` field (document-node only), populated from the
 source frontmatter at migration.
@@ -112,7 +112,7 @@ This makes **migrate the schema-upgrade path**, which is exactly what A6 already
 So the schema marker + the v0.1→v1.0 stamp is an **A6 concern**: a schema-versioning slice
 lands **before** the self-host cutover, so the plan-set is self-hosted already at v1.0.
 
-**Schema-minor note (v2.1, ODD-0025 §4).** `source`/`author`/`version` land as typed
+**Schema-minor note (v1.2, ODD-0025 §4).** `source`/`author`/`version` land as typed
 fields in arc-migration-fidelity slice03 — a genuine per-type contract change for
 every type that gains them (document types for `author`/`version`; all types for
 `source`, §2.2). Per this ODD's own contract ("a change to a type's fields bumps
@@ -180,7 +180,7 @@ change into a slice scoped as "core typing."
 
 ## Version History
 
-### v2.1 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
+### v1.2 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
 
 Applied by arc-migration-fidelity slice03 (fidelity-core), specified by ODD-0025
 (slice02, Accepted). **§2:** names `artifact/v1.0` for the process-execution

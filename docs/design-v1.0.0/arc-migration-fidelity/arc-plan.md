@@ -14,10 +14,10 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01, s02 & s03 **closed** (2026-07-27) — s03 delivered the faithful-import
-> capability (fixture-verified); **s04 (scope + repair) next**. *Plan late, plan deep* — each slice's open set
-> (`slice-doc`/`ledger`/`cc-prompt`) is written when that slice becomes active, and its sizing is
-> confirmed then (a slice that will not fit one context is two slices).
+> **Status:** s01–s03 **closed** (2026-07-27); s03 **CDC-verified PASS**
+> (`slice03-fidelity-core/cdc-verification.md`); **s04 (scope + repair) next**. *Plan late, plan
+> deep* — each slice's open set (`slice-doc`/`ledger`/`cc-prompt`) is written when that slice becomes
+> active, and its sizing is confirmed then (a slice that will not fit one context is two slices).
 
 ## Capability
 
@@ -77,8 +77,8 @@ runs the same capability.
 |-------|-------|--------------|------------|
 | **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 (CDC-verified) | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
 | **s02 — model** ✅ CLOSED 2026-07-27 (ODD-0025 Accepted) | The model ODD: `source` sub-map (renamed from provenance, §2.0); `author`/`version` typed fields; `supersedes`→`Vec` + guaranteed bidirectional; the `artifact` node type; frontmatter-fidelity mapping; F4/F7/F10 resolved. → **ODD-0025**. | no | s01 |
-| **s03 — migration-fidelity core** ✅ CLOSED 2026-07-27 | 1:1 verbatim body import + **hard body-hash gate** + **`source`/`author`/`version` typing & persistence** + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`) + odm-core frontmatter typing (ODD-0025 §4 → 0013 §2.3, 0020). Delivered in one context (no split needed). | no (fixture-only) | s02 |
-| **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. | yes | s03 |
+| **s03 — migration-fidelity core** ✅ CLOSED 2026-07-27 (CDC-verified) | 1:1 verbatim body import + **hard body-hash gate** + **`source`/`author`/`version` typing & persistence** + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`) + odm-core frontmatter typing (ODD-0025 §4 → 0013 §2.3, 0020). Delivered in one context (no split needed). | no (fixture-only) | s02 |
+| **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. **+ own the ODD-0020 schema-minor bump** for `source`/`author`/`version` (s03 deferred it — see v1.5; **not deferrable past the live mint**, its own ledger row). | yes | s03 |
 | **s05 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (`ledger`/`cc-prompt`/`cdc-verification`/`closing-report`/ADR/amendment/UAT + the reports, F10 mint-all); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s04 |
 | **s06 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs to authoritative states. | yes | s02, s03 |
 | **s07 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
@@ -96,8 +96,8 @@ at slice-activation, not pre-committed here.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, CDC-verified); the *enforced check* MF-1 asks for is s05's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built + fixture-verified the gate (`slice03-fidelity-core/closing-report.md`); "zero stubs" is a live-corpus outcome s04's re-migration produces |
-| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 typed the fields + both importers populate them, fixture-verified for all 4 source classes (`slice03-fidelity-core/closing-report.md`); the live 60-node corpus gets them for real in s04 |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built + fixture-verified the gate (`slice03-fidelity-core/`, CDC-verified); "zero stubs" is a live-corpus outcome s04's re-migration produces |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 typed the fields + both importers populate them, fixture-verified for all 4 source classes (CDC-verified); the live 60-node corpus gets them for real in s04 |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
 | MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s01 counted the exact gap (6 arc dirs, 5 slice dirs unrepresented — the 6th arc is `arc-migration-fidelity` itself, shaped after the audit); s04/s05 mint |
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **resolved mint-all** (ODD-0025 §2.6): every report incl. `coverage-report.md` gets an `artifact` node, no exemption; s05 mints + wires |
@@ -106,6 +106,26 @@ at slice-activation, not pre-committed here.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.5 — 2026-07-27 — s03 CDC-verified PASS; two findings ratified upward
+
+**CDC verification: PASS** (`slice03-fidelity-core/cdc-verification.md`; 12/12 rows). Reproduced by
+CDC on the live machine: the stub synthesis is gone (`selfhost.rs`), the live store is untouched (0
+nodes carry `source:`, still 60 nodes), the three fields are typed, `fidelity.rs` uses `trim+lf` with
+no stored hash, and `de_opt_version` (the `1.0`→`"1"` fix) is sound and tested; cargo rows
+attested→CI. **The F-3 correction was CDC's error, correctly caught** — my s03 ledger F-3 bundled
+`source` with `author`/`version` as document-only, contradicting my own F-7; ODD-0025 §2.2's text
+(`source` on *every migrated node*) is right, and CC corrected toward it. Ratifies CC's v1.4
+bubble-up and carries up two findings it did not: **(a) ODD version-field hygiene** — the amendment
+bumped the histories but not the docs' own SoT `version:` fields (0013 frontmatter still `2.3` vs a
+`v2.4` entry; **0020's new entry is mis-numbered `v2.1`** where the sequence was v1.0→v1.1, so it
+should be **v1.2**, and its frontmatter still says `1.1`) — minor, recommend correcting given this
+arc is about version-as-SoT; **(b) branch deviation** — s01–s03 all landed on
+`arc-migfidelity-slice01-coverage` rather than per-slice branches (disclosed) — an operator call on
+whether to keep the running-branch pattern from s04 on. And it hardens finding (3) from v1.4: the
+**ODD-0020 schema-minor bump is on s04's critical path** (s04's row updated) — the live mint stamps
+nodes with the new fields, so an un-bumped marker would redefine the current schema version rather
+than version the change.
 
 ### v1.4 — 2026-07-27 — s03 (fidelity core) closed; the faithful-import capability is fixture-proven
 

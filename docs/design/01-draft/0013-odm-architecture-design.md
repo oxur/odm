@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [architecture, design, node-graph, dag, reconciliation]
 created: 2026-06-20
-updated: 2026-07-26
+updated: 2026-07-27
 state: Draft
 supersedes: null
 superseded-by: null
-version: 2.3
+version: 2.4
 ---
 
 # odm — Architecture & Design (v-major rebuild)
