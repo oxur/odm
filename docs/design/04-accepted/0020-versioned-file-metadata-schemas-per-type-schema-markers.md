@@ -5,11 +5,11 @@ author: "Duncan McGreggor"
 component: All
 tags: [schema, versioning, frontmatter, migrate, metadata]
 created: 2026-07-06
-updated: 2026-07-27
+updated: 2026-07-28
 state: Accepted
 supersedes: null
 superseded-by: null
-version: 1.2
+version: 1.3
 ---
 
 # Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
@@ -112,18 +112,24 @@ This makes **migrate the schema-upgrade path**, which is exactly what A6 already
 So the schema marker + the v0.1→v1.0 stamp is an **A6 concern**: a schema-versioning slice
 lands **before** the self-host cutover, so the plan-set is self-hosted already at v1.0.
 
-**Schema-minor note (v1.2, ODD-0025 §4).** `source`/`author`/`version` land as typed
-fields in arc-migration-fidelity slice03 — a genuine per-type contract change for
-every type that gains them (document types for `author`/`version`; all types for
-`source`, §2.2). Per this ODD's own contract ("a change to a type's fields bumps
-`<type>/v1.0 → <type>/v1.1`", §2), that argues for a minor bump on the affected
-markers. **Recorded, not executed here:** slice03's ledger scopes it to the field
-additions themselves (round-trip + per-type validity), not a marker bump — bumping
+**Schema-minor bump executed (v1.3, arc-migration-fidelity slice04).** `source`/
+`author`/`version` (ODD-0025 §2.2) are a genuine per-type contract change —
+`SchemaVersion::CURRENT` is now **`v1.1`** (`SchemaVersion { major: 1, minor: 1 }`).
+New and repaired nodes stamp `<type>/v1.1`; an existing `v1.0` node **remains
+valid** — the added fields are optional/additive, so `is_newer_than_current`
+correctly treats `v1.0` as older-but-supported, not unsupported. This closes the
+v1.2 deferral below (kept for its rationale).
+
+**Schema-minor note (v1.2, ODD-0025 §4 — historical, closed by v1.3 above).**
+`source`/`author`/`version` land as typed fields in arc-migration-fidelity
+slice03 — a genuine per-type contract change for every type that gains them
+(document types for `author`/`version`; all types for `source`, §2.2). Per this
+ODD's own contract ("a change to a type's fields bumps `<type>/v1.0 → <type>/v1.1`",
+§2), that argues for a minor bump on the affected markers. **Recorded, not
+executed in slice03:** its ledger scoped to the field additions themselves
+(round-trip + per-type validity), not a marker bump — bumping
 `SchemaMarker::current()` touches the "unsupported newer schema" `check` path
-workspace-wide and is deliberately left for the slice (this one, or a dedicated
-follow) that actually decides the new minor version and updates the `content_validity`
-contract test suite alongside it, rather than folding an unplanned schema-version
-change into a slice scoped as "core typing."
+workspace-wide and was deliberately left for slice04, which executes it above.
 
 ## 5. Consequences
 
@@ -179,6 +185,16 @@ change into a slice scoped as "core typing."
   for additive fields) this ODD generalizes into an explicit version marker.
 
 ## Version History
+
+### v1.3 — 2026-07-28 — Schema-minor bump executed (arc-migration-fidelity slice04)
+
+**`SchemaVersion::CURRENT` is now `v1.1`** (`crates/odm-core/src/schema.rs`), closing the
+v1.2 deferral: `source`/`author`/`version` (ODD-0025 §2.2) are a real per-type contract
+addition, so new/repaired nodes stamp `<type>/v1.1`. An existing `v1.0` node remains
+valid — the bump is additive, and `is_newer_than_current` treats `v1.0` as older-but-
+supported. Verified: the workspace's `content_validity`/"unsupported newer schema"
+contract test suite updated in lockstep (a `v1.0` node passes; the "newer than current"
+example moved from `v1.1` — now current — to `v1.2`).
 
 ### v1.2 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
 
