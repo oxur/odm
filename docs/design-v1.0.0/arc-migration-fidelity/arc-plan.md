@@ -14,8 +14,8 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01 & s02 **closed** (2026-07-27) — s02 delivered **ODD-0025** (Accepted); **s03
-> (fidelity core) next**. *Plan late, plan deep* — each slice's open set
+> **Status:** s01, s02 & s03 **closed** (2026-07-27) — s03 delivered the faithful-import
+> capability (fixture-verified); **s04 (scope + repair) next**. *Plan late, plan deep* — each slice's open set
 > (`slice-doc`/`ledger`/`cc-prompt`) is written when that slice becomes active, and its sizing is
 > confirmed then (a slice that will not fit one context is two slices).
 
@@ -77,7 +77,7 @@ runs the same capability.
 |-------|-------|--------------|------------|
 | **s01 — coverage-discovery** ✅ CLOSED 2026-07-27 (CDC-verified) | Build the read-only doc-coverage detector (inverse `orphan`) + sibling detectors (representation, body-fidelity, provenance-absence); run over all ~320 `1.0.x/docs` files → the **exact gap inventory** (the work-list). | no (read-only) | — |
 | **s02 — model** ✅ CLOSED 2026-07-27 (ODD-0025 Accepted) | The model ODD: `source` sub-map (renamed from provenance, §2.0); `author`/`version` typed fields; `supersedes`→`Vec` + guaranteed bidirectional; the `artifact` node type; frontmatter-fidelity mapping; F4/F7/F10 resolved. → **ODD-0025**. | no | s01 |
-| **s03 — migration-fidelity core** | 1:1 verbatim body import + **hard body-hash gate** + **`source`/`author`/`version` typing & persistence** + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`) + odm-core frontmatter typing (ODD-0025 §4 → 0013 §2.3, 0020). **Sizing (v1.3): typing 3 new fields + both importers may exceed one context → candidate split (a) core-model typing / (b) import-fidelity, decided at slice-draw.** | building | s02 |
+| **s03 — migration-fidelity core** ✅ CLOSED 2026-07-27 | 1:1 verbatim body import + **hard body-hash gate** + **`source`/`author`/`version` typing & persistence** + **no-transform** (kill stub synthesis). Both importers (`mapping.rs`, `selfhost.rs`) + odm-core frontmatter typing (ODD-0025 §4 → 0013 §2.3, 0020). Delivered in one context (no split needed). | no (fixture-only) | s02 |
 | **s04 — scope + repair** | Widen `self_host` past the `arc_in_scope` A1–A6 cap (all arcs/slices); **delete bodyless (stub) nodes, then re-migrate** (F8); re-point `context.json`; a real `delete` capability if `retire` won't serve. | yes | s03 |
 | **s05 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (`ledger`/`cc-prompt`/`cdc-verification`/`closing-report`/ADR/amendment/UAT + the reports, F10 mint-all); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s04 |
 | **s06 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs to authoritative states. | yes | s02, s03 |
@@ -96,8 +96,8 @@ at slice-activation, not pre-committed here.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — the s01 *detector* exists and ran (`slice01-coverage-discovery/coverage-report.md`, CDC-verified); the *enforced check* MF-1 asks for is s05's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s01 counted the stubs exactly (44, CDC-reproduced); ODD-0025 §2.1 models the gate; s03 builds it |
-| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s01's absence detector confirms the baseline (0/60, CDC-reproduced); ODD-0025 §2.2 models it (renamed `provenance`→`source`); s03 types + lands it |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built + fixture-verified the gate (`slice03-fidelity-core/closing-report.md`); "zero stubs" is a live-corpus outcome s04's re-migration produces |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 typed the fields + both importers populate them, fixture-verified for all 4 source classes (`slice03-fidelity-core/closing-report.md`); the live 60-node corpus gets them for real in s04 |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
 | MF-5 | All arcs (incl. the 5 previously out-of-scope) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s01 counted the exact gap (6 arc dirs, 5 slice dirs unrepresented — the 6th arc is `arc-migration-fidelity` itself, shaped after the audit); s04/s05 mint |
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **resolved mint-all** (ODD-0025 §2.6): every report incl. `coverage-report.md` gets an `artifact` node, no exemption; s05 mints + wires |
@@ -106,6 +106,32 @@ at slice-activation, not pre-committed here.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v1.4 — 2026-07-27 — s03 (fidelity core) closed; the faithful-import capability is fixture-proven
+
+**Slice 03 is closed** (`slice03-fidelity-core/closing-report.md`; 12/12 ledger rows done, 1 with a
+corrected criterion, 0 deferred, 0 no-op). Delivered ODD-0025's model as code: `odm-core` gained
+typed `source`/`author`/`version` fields (round-trip + per-type validity); both importers
+(`mapping.rs`, `selfhost.rs`) now import bodies **verbatim** — the stub-synthesis root cause
+(`format!("# {name}\n")`) is gone — behind a shared, hard body-hash gate
+(`odm-migrate::fidelity`), and populate the `source` record. ODD-0013 (v2.4) and ODD-0020 (v2.1)
+carry the ODD-0025 §4 amendments. Entirely fixture-verified; the live `.worktrees/odm` corpus is
+untouched (byte-identical throughout, matching s01's baseline). **What implementing it revealed:**
+(1) **a real internal inconsistency between two ledger rows** — F-3's wording bundled
+`author`/`version`/`source` as uniformly document-node-only, but F-7 requires `selfhost.rs` to
+populate `source` on the work nodes it mints; ODD-0025 §2.2's own text (not its ledger summary)
+resolves this — `source` is valid on every migrated node, work or document, only `author`/`version`
+are document-only. Corrected in code and flagged, not silently worked around; **worth a standing
+note for s05**, which will extend per-type validity again (`artifact`) and should check the ODD's
+prose directly rather than a ledger row's compressed restatement. (2) **A real data-fidelity hazard**
+in parsing the legacy `version:` field — YAML reads `version: 1.0` as a float, and Rust's default
+float formatting silently drops the trailing zero (`1.0` → `"1"`); fixed via a dedicated
+round-trip-preserving deserializer (`legacy::de_opt_version`), caught before it could corrupt a real
+migration. (3) The ODD-0025 §4 schema-minor-bump ask is **recorded, not executed** — bumping
+`SchemaMarker::current()` has its own workspace-wide blast radius on the "unsupported-schema" check
+contract, deliberately left for a dedicated follow rather than riding along on this slice's field
+additions. MF-2/MF-3 stay **planned** — the capability exists and is fixture-proven; "zero stubs" /
+"every node has one" are live-corpus outcomes s04 produces.
 
 ### v1.3 — 2026-07-27 — s02 (model) closed; ODD-0025 Accepted; provenance→source, author/version typed, F10 mint-all
 

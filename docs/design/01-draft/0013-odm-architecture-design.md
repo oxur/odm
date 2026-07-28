@@ -92,11 +92,23 @@ Two families, one substrate:
   0025-§4a.)
 - **Document nodes:** `design` (a design document — formerly `odd`), `research`
   (a research / literature-survey / investigation doc that *informs* decisions
-  but does not govern like a design doc), `adr`/`rfc` (decision record), `note`.
-  Long-form content; same id/edge/gate machinery; supersede-don't-delete.
-  A document node is **`research` iff its source frontmatter `tags` include
-  `research`**, else `design` — self-documenting, and robust where a
-  title-prefix or filename rule would not be (v2.0).
+  but does not govern like a design doc), `adr`/`rfc` (decision record), `note`,
+  **`artifact`** (v2.4 — ODD-0025 §2.5). Long-form content; same id/edge/gate
+  machinery; supersede-don't-delete. A document node is **`research` iff its
+  source frontmatter `tags` include `research`**, else `design` — self-documenting,
+  and robust where a title-prefix or filename rule would not be (v2.0).
+  - **`artifact` (v2.4, named here; the `NodeType` enum variant + minting land in
+    arc-migration-fidelity slice05):** a process-execution supporting doc
+    (`ledger`, `cc-prompt`, `cdc-verification`, `closing-report`, ADR, amendment,
+    UAT) — distinct from work nodes and from the governing/informing types
+    (`design`/`research`/`adr`), because it carries no work-gates or ordering and
+    is not itself consulted-and-decided-by like a design doc. **Containment:** an
+    `artifact` is `part_of` its **nearest *modeled* scale** — a per-slice artifact
+    → its slice; an arc-level or **chunk-level** artifact → its **arc**. There is
+    **no `step`/`chunk` node scale** — a "chunk" (the Release-Hardening `cN-*`
+    grouping) is not one of the project/arc/slice scales, and a node scale for it
+    would fracture the constant vocabulary (PROJECT-MANAGEMENT Part I) this
+    section already commits to for `step` (§2.2 above). ODD-0025 §2.5/§2.6.
 
 **Display names for the two families (v2.2).** The CLI names them **`plan`**
 (the work nodes — what is being built) and **`reference`** (the document nodes —
@@ -121,8 +133,25 @@ created: 2026-06-20                  # also encoded in the ULID; this is the hum
 updated: 2026-06-20
 tags: [store, persistence]          # optional; free-form filter labels (carried from legacy)
 component: odm-store                # optional; subsystem filter (carried from legacy)
+author: "Katherine Johnson"         # optional; document-node only (v2.4, ODD-0025 §2.2) — the
+                                     #   source doc's original author, preserved explicitly on
+                                     #   migration (not git-derived: git blame on a migrated node
+                                     #   returns the migrator, not the source author)
+version: "2.3"                      # optional; document-node only (v2.4, ODD-0025 §2.2) — the
+                                     #   doc's own content-version marker; distinct from `schema:`
+                                     #   (ODD-0020 §3), which versions the frontmatter shape
 origin: planned                     # how this node AROSE: planned | discovered | amendment
 reserved: false                     # tentative future-work placeholder (not yet real work)
+source:                             # optional; every MIGRATED node carries one (v2.4, ODD-0025
+                                     #   §2.0/§2.2) — work and document nodes alike; absent on a
+                                     #   hand-created node. Distinct from `origin` (why a node
+                                     #   exists) and from *provenance* below (derived, never
+                                     #   stored) — `source` is stored because git cannot derive it.
+  paths: [docs/design-v1.0.0/arc04-index-cache/slice07-early-cutoff/slice-doc.md]
+  class: slice-doc                  #   the source doc's class
+  normalization: trim+lf            #   what the body-hash gate stripped before comparing
+  migrated_by: odm-migrate/1.0.0    #   tool + version
+  migrated_on: 2026-07-27
 edges:
   part_of: 01J9...ARC               # single parent (containment tree)
   depends_on:
@@ -132,7 +161,7 @@ edges:
   verifies: [01J9...DOC]
   consumes: [01J9...OUT]
   affects: []                        # decision/doc → the docs it touches (0001-C5)
-  supersedes: null                   # or { node: 01J9...OLD, kind: updates } — kind ∈ {obsoletes (replace), updates (amend)}; reverse (superseded_by) derived
+  supersedes: []                     # a LIST (v2.4, ODD-0025 §2.3) — { node: 01J9...OLD, kind: updates } entries; kind ∈ {obsoletes (replace), updates (amend)}; empty when none. A synthesized node may supersede many originals (many-to-one); reverse (superseded_by) stays derived, never stored, and the tooling GUARANTEES the bidirectional lineage on every synthesis (never a hand-maintained back-edge) — enforced by a `check` rule.
   tears:                             # explicitly-broken dependency edges (see §4.3); omitted when empty
     - edge: 01J9...TORN              #   the assumed `depends_on` (bare id or { node, satisfied_at })
       because: "B is assumed to ship first"   # required rationale (audited; never dropped)
@@ -150,8 +179,11 @@ desired_facts:                       # for the reconciler (§5)
 ```
 
 Frontmatter is **emitted in a canonical field order** (round-trip stable;
-`parse ∘ emit = identity` is a proptest invariant) — including the edge sub-keys in
-the order shown above (`part_of, depends_on, blocked_by, verifies, consumes,
+`parse ∘ emit = identity` is a proptest invariant): `id, number, type, schema,
+name, created, updated, tags, component, author, version, origin, reserved,
+retired, source, edges, status, decomposed, desired_facts, deferred` (v2.4 adds
+`author`/`version`/`source`, ODD-0025 §4) — including the edge sub-keys in the
+order shown above (`part_of, depends_on, blocked_by, verifies, consumes,
 affects, supersedes, tears`), which §3's table mirrors. Unknown keys are preserved,
 not dropped (forward-compat).
 
@@ -174,8 +206,15 @@ never stored, so there is exactly one place to edit.
 | `verifies` | this node (often a doc/test) verifies target | traceability |
 | `consumes` | uses a concrete output/artifact of target | ordering DAG |
 | `affects` | a decision/doc affects target docs; powers the stale-doc-vs-decision check (0001-C5) | traceability |
-| `supersedes` | lineage; carries `kind: obsoletes` (replace) or `updates` (amend); old node stays | lineage chain |
+| `supersedes` | lineage; a **list** (v2.4, ODD-0025 §2.3) of `{ node, kind: obsoletes\|updates }` entries — a synthesized node may supersede many originals; old node(s) stay | lineage chain |
 | `tears` | a `depends_on` we have *deliberately* assumed (cycle break) | annotation |
+
+**Bidirectional lineage is tooling-guaranteed, never hand-maintained (v2.4).**
+`superseded_by` stays **derived**, never stored (unchanged) — but the *tooling*
+(the synthesis command) must guarantee, on every synthesis, that every
+`supersedes` target is reachable in reverse, and a `check` rule verifies it. A
+hand-maintained back-edge is exactly the kind of thing that drifts silently;
+this closes that gap for the many-to-one case `supersedes`→list introduces.
 
 The **ordering DAG** = `depends_on` ∪ `consumes` (∪ `blocked_by` as a soft gate).
 `part_of` is a separate tree (containment ≠ sequence). `supersedes`/`verifies`
@@ -442,11 +481,31 @@ Map the legacy model onto the new one:
 | state directory (`05-active/…`) | dropped (was redundant truth); state → gate |
 | `supersedes`/`superseded_by` | `supersedes` edge (reverse derived) |
 | dustbin / Removed / Overwritten | supersede-don't-delete + git history |
-| flat doc | `design`/`research`/`adr` document node |
+| flat doc | `design`/`research`/`adr`/`artifact` document node |
+| `author` | typed `author` field (v2.4) |
+| `version` | typed `version` field (v2.4) |
 
 The importer is **idempotent** and `--dry-run`-able; it never deletes legacy
 files (git preserves history). Once it can import odm's own `docs/`, `odm`
 self-hosts and these design docs move under `nodes/` (the loop closes).
+
+**Migration is strictly 1:1 and verbatim, hard-gated (v2.4, ODD-0025 §2.1 —
+arc-migration-fidelity).** A migrated node's body **is** its source body: the
+importer performs **no body transformation** — no synthesized `# {name}`
+heading, no header injection (the transform that produced odm's own 44 stub
+bodies at self-host cutover). Migration computes `sha256(normalize(source))`
+and `sha256(normalize(node))` (`normalize` = trim + CRLF→LF) and **hard-fails**
+on mismatch — a migration-time-only invariant; no hash is stored, since content
+is allowed to change afterward (e.g. Version-History sections). Every migrated
+node additionally carries a `source` sub-map (§2.3) recording where its content
+came from, and re-running does not repair an already-migrated node
+(create-or-skip on `(type, number)`) — a `check` finding on that node's staleness
+is repaired by an explicit **update-in-place** operation (arc-migration-fidelity
+s04), which matches an existing node to its source by structural coordinate,
+rewrites body + `source` in place, and preserves `id`/`edges`/`status`.
+**Synthesis** (merging several source docs into one node) is explicitly **not**
+migration — it is a separate, later step that mints a new node **superseding**
+its sources (§3), keeping this hash gate exception-free.
 
 ## 10. Decisions & open questions
 
@@ -467,9 +526,14 @@ that defers to `odm` (§11) · evidence-level on gate transitions, an `affects` 
 0001 — D3/C5/E5) · evidence-leveled satisfaction with a threshold + min-propagation
 (§4.4) — the internal counterpart of ODD-0017 §3.3.
 
-> **Terminology:** *provenance* is reserved for the **derived lineage** — git
-> history + the `supersedes` chain + gate-reached timestamps — never a stored
-> scalar. A node's current frontmatter records its `origin`, not its provenance.
+> **Terminology (v2.4 adds a third axis — ODD-0025 §2.0):** *provenance* is
+> reserved for the **derived lineage** — git history + the `supersedes` chain +
+> gate-reached timestamps — never a stored scalar. `origin` (§2.3) is *why* a
+> node exists (`planned`/`discovered`/`amendment`). `source` (§2.3, new) is
+> *where a migrated node's content came from* — stored, because git cannot
+> derive it (after migration, git blame returns the migrate commit, not the
+> original path or author). Three distinct axes; only `source` is stored
+> alongside `origin` — `provenance` stays derived-only.
 
 **Open / resolved:**
 - **Q-1** `type` immutability — **agreed: immutable** (model changes via supersede).
@@ -520,6 +584,26 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.4 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
+
+Applied by arc-migration-fidelity slice03 (fidelity-core), specified by ODD-0025
+(slice02, Accepted). **§2.2:** names `artifact` for the document family (a
+process-execution supporting-doc type — `ledger`/`cc-prompt`/`cdc-verification`/
+`closing-report`/ADR/amendment/UAT; `part_of` its nearest *modeled* scale;
+explicitly no `step`/`chunk` node scale). **§2.3:** adds typed `author`/`version`
+(document-node only) and `source` (every migrated node, work and document alike)
+to the normative frontmatter + canonical field order. **§3:** `supersedes`
+becomes a list (many-to-one synthesis support); `superseded_by` stays derived
+but its bidirectional reachability is now tooling-guaranteed + `check`-verified,
+never hand-maintained. **§9:** replaces the terse legacy-map with the 1:1
+verbatim, hard-body-hash-gated migration semantics, the `source` record, and the
+update-in-place repair vector — the mechanism that fixes the 44 stub bodies
+self-host cutover produced. **§10 Terminology** gains `source` as a third,
+deliberately-distinct axis alongside `origin` and the unchanged derived-only
+`provenance`. Documentation only in this amendment — the `artifact` `NodeType`
+enum variant, its minting, and the `supersedes`-list's actual `Vec` type change
+in code are arc-migration-fidelity s05/s06, not s03.
 
 ### v2.3 — 2026-07-26
 **§2.1 naming rule generalized:** from "names don't embed numbers" (v2.1) to **"names embed no

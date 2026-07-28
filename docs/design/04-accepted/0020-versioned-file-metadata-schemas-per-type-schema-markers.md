@@ -39,8 +39,12 @@ change can't be distinguished from a breaking one. The migrate boundary (A6 slic
 **Stamp each node's frontmatter with a per-type, versioned schema marker:**
 
 ```yaml
-schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, design/v1.0, research/v1.0, adr/v1.0, note/v1.0
+schema: <type>/vMAJOR.MINOR      # project/v1.0, arc/v1.0, slice/v1.0, design/v1.0, research/v1.0, adr/v1.0, note/v1.0, artifact/v1.0
 ```
+
+(v2.1, ODD-0025 §4: `artifact/v1.0` is **named here** for the process-execution
+supporting-doc type ODD-0013 §2.2 v2.4 adds; the `NodeType::Artifact` variant
+and its minting are arc-migration-fidelity s05, not this ODD's own scope.)
 
 (`design/v1.0` was `odd/v1.0` before v1.1 — same contract, renamed with the node
 type. `research/v1.0` is a **distinct marker sharing the design contract**
@@ -74,10 +78,13 @@ odm now carries several version numbers; **keep them from colliding**:
 | Index / drift binary formats | `FORMAT_VERSION`, `SNAPSHOT_VERSION` | the `.odm/` derived artifacts |
 | Design-doc tree | `docs/design-v1.0.0/` | the *design*'s version (not a release) |
 | Crate / release | `oxur-odm 1.0.0` | the shipped binary |
-| Legacy ODD `version:` field | `version: 1.1` | a **document's content** version — **not** a schema version |
+| Node `version:` field (typed, ODD-0025 §2.2, v2.1) | `version: "2.3"` | a **document's own content** version — **not** a schema version |
 
-The new field is `schema:` (a per-type marker), deliberately **not** overloading the legacy
-`version:` (which stays the document's own content revision).
+The field is `schema:` (a per-type marker), deliberately **not** overloading `version:`
+(the document's own content revision) — kept as two axes from the start, and (v2.1)
+`version:` is no longer just a legacy carry-through: arc-migration-fidelity slice03
+promotes it to a typed `Frontmatter` field (document-node only), populated from the
+source frontmatter at migration.
 
 ## 4. The v0.1 → v1.0 upgrade path (A6 / migrate)
 
@@ -104,6 +111,19 @@ This makes **migrate the schema-upgrade path**, which is exactly what A6 already
 
 So the schema marker + the v0.1→v1.0 stamp is an **A6 concern**: a schema-versioning slice
 lands **before** the self-host cutover, so the plan-set is self-hosted already at v1.0.
+
+**Schema-minor note (v2.1, ODD-0025 §4).** `source`/`author`/`version` land as typed
+fields in arc-migration-fidelity slice03 — a genuine per-type contract change for
+every type that gains them (document types for `author`/`version`; all types for
+`source`, §2.2). Per this ODD's own contract ("a change to a type's fields bumps
+`<type>/v1.0 → <type>/v1.1`", §2), that argues for a minor bump on the affected
+markers. **Recorded, not executed here:** slice03's ledger scopes it to the field
+additions themselves (round-trip + per-type validity), not a marker bump — bumping
+`SchemaMarker::current()` touches the "unsupported newer schema" `check` path
+workspace-wide and is deliberately left for the slice (this one, or a dedicated
+follow) that actually decides the new minor version and updates the `content_validity`
+contract test suite alongside it, rather than folding an unplanned schema-version
+change into a slice scoped as "core typing."
 
 ## 5. Consequences
 
@@ -159,6 +179,18 @@ lands **before** the self-host cutover, so the plan-set is self-hosted already a
   for additive fields) this ODD generalizes into an explicit version marker.
 
 ## Version History
+
+### v2.1 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
+
+Applied by arc-migration-fidelity slice03 (fidelity-core), specified by ODD-0025
+(slice02, Accepted). **§2:** names `artifact/v1.0` for the process-execution
+supporting-doc type ODD-0013 §2.2 v2.4 adds (the `NodeType` variant + minting are
+s05, not this ODD). **§3:** the `version:` field is no longer only a legacy
+carry-through — it is now a typed, document-node-only `Frontmatter` field
+(ODD-0025 §2.2), still a distinct axis from `schema:`. **§4:** records (without
+executing) that typing `source`/`author`/`version` is a per-type contract change
+that argues for a schema-minor bump on the affected markers — deliberately left
+for a dedicated follow rather than folded into slice03's core-typing scope.
 
 ### v1.1 — 2026-07-26
 Marker set updated for the node-type rename (ODD-0013 v2.0): removed `odd/v1.0`; added
