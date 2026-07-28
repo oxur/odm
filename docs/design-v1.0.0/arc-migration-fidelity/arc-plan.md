@@ -14,7 +14,7 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01–s06 **closed** (2026-07-28); s04–s05 CDC-verified PASS, s06 attested-by-CC pending
+> **Status:** s01–s06 **closed** (2026-07-28); s04–s06 CDC-verified PASS. **s07 (live repair run) next** — opens by correcting the `self_host_inner` order comment (CDC v2.5 finding), then fires the flow on the real corpus (v2.5).
 > CDC. `number` is retired as a correctness key (F12 done); the two-path `source`-backfill gap CDC
 > found is closed (v2.1) and the reconcile flow is wired into `odm migrate` (v2.2/v2.3). **s07 (live
 > repair run) next** — fires the now-CDC-review-informed flow on the real corpus. *Plan late, plan
@@ -86,7 +86,7 @@ runs the same capability.
 | **s04 — scope + repair capability** ✅ CLOSED 2026-07-28 (CDC-verified) | **Cap removed** (`self_host` imports **all** arc/slice dirs; named arcs get a non-structural `number` handle; `coverage.rs`'s shared predicate updated). **Update-in-place repair** of stub nodes (ODD-0025 §2.8 — real body + `source`, preserve id/edges/status, via `persist` overwrite — no `delete`). **Schema-minor bump executed** (`v1.0→v1.1`, forward-compat proven). Fixture-verified; no live mutation. | no (fixture-only) | s03 |
 | **s05 — source-based identity** ✅ CLOSED 2026-07-28 (CDC-verified) | Retire `number` as a **correctness key** (F12 — the number problem's root): key `self_host` idempotence + coverage matching on **`source.paths`**, not `(type, number)`; **backfill `source`** onto the already-faithful non-stub nodes (body unchanged, hash-gate-confirmed) so *every* node carries one; make the named-arc handle **name-derived + stable** (cosmetic display only). `number` becomes a pure label nothing keys on — the position-based fragility dissolves permanently. Fixture-verified. | no (fixture-only) | s04 |
 | **s06 — live-run capability** ✅ CLOSED 2026-07-28 (attested-by-CC; CDC pending) | **Unified the two `source`-backfill paths** (v2.1 finding): a single `reconcile_source()` — gated, project-excluding, and (self-identified extension) retired-excluding — now backs both `self_host`'s `to_populate` transition and `repair()`. **Extended `odm migrate`'s self-host path**: `repair()` now runs before `self_host()` in `self_host_inner`, default-on, no new flag; `repair()`'s only callers were previously tests. **No new verb** (`self-host` folded into `migrate`, C-5); reuses `--dry-run`. **Fixture-verified end-to-end; no live mutation.** `context.json` re-pointing stays with s07 (structurally a live-store operator statement, not a migration artifact — disclosed in the closing report). | no (fixture-only) | s05 |
-| **s07 — live repair run** | Fire the s06 flow on the **live** `.worktrees/odm` corpus (snapshot/commit the `odm` branch first — revertible; `--dry-run` + inspect before the real run): repair the 44 stubs, gated-backfill `source` on the faithful nodes, import the 6 previously-excluded arcs + their slices, stamp `v1.1`, populate `source`/`author`/`version`, re-point `context.json`. **Verify** `check` green, 0 stubs, all arcs/slices represented, every body-hash passes, `orient`/`rollup` reproduce, every node source-bearing. | **yes (live)** | s06 |
+| **s07 — live repair run** | Fire the s06 flow on the **live** `.worktrees/odm` corpus (snapshot/commit the `odm` branch first — revertible; `--dry-run` + inspect before the real run): repair the 44 stubs, gated-backfill `source` on the faithful nodes, import the 6 previously-excluded arcs + their slices, stamp `v1.1`, populate `source`/`author`/`version`, re-point `context.json`. **Opens with** a one-line doc fix: correct `self_host_inner`'s comment, which asserts the repair→import order is load-bearing for correctness when s06 proved it isn't (correctness rests on `reconcile_source`, run both ways) — CDC v2.5 finding. **Verify** `check` green, 0 stubs, all arcs/slices represented, every body-hash passes, `orient`/`rollup` reproduce, every node source-bearing. | **yes (live)** | s06 |
 | **s08 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (F10 mint-all incl. the reports); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s07 |
 | **s09 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
 | **s10 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
@@ -115,6 +115,22 @@ destructive op is fixture-proven before it fires.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v2.5 — 2026-07-28 — s06 CDC-verified PASS; doc-only comment finding carried onto s07
+
+**CDC verification: PASS** (`slice06-live-run-capability/cdc-verification.md`; 10/10 rows). Reproduced
+by close code-read on the live machine: `reconcile_source()` is the one gated, project- **and**
+retired-excluding policy both `repair()` and `self_host`'s transition route through (no second copy to
+drift); the gate runs even under `--dry-run`; `self_host_inner` runs `repair()` then `self_host()`,
+default-on; no `unsafe`; live store not checked out. Cargo-run behaviors (drift/dry-run/idempotence,
+clippy, coverage) attested → CI. **One CDC finding, doc-only (fails no row):** `self_host_inner`'s doc
+comment calls the repair→import order a load-bearing correctness invariant ("reordering would
+reintroduce exactly the gap s06 closed"), but CC's own closing-report F-3 disproves it — the Preferred
+unification makes `self_host()` alone reconcile a coordinate-matched node identically, so the order is
+for composability/report-attribution, not per-node correctness (which rests on `reconcile_source`,
+exercised both ways). Carried onto s07 as a one-line comment correction at its opening, not a reopen
+of s06. s06 flips to **CDC-verified PASS**; MF-2/MF-3/MF-5 stay **planned** (their live-corpus outcome
+is s07's, per §B).
 
 ### v2.4 — 2026-07-28 — s06 (live-run capability) closed; both CDC findings resolved
 
