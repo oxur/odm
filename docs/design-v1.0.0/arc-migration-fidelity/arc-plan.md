@@ -14,9 +14,11 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01–s05 **closed** (2026-07-28); s04–s05 CDC-verified PASS. **s06 (live-run capability) next** — wire + fix, fixture-proven; the live mutation is **s07**. Entry point is `odm migrate` (extend, not a new verb — v2.3).
-> `number` is now retired as a correctness key (F12 done) — the live repair run is **s06** next.
-> *Plan late, plan deep.*
+> **Status:** s01–s06 **closed** (2026-07-28); s04–s05 CDC-verified PASS, s06 attested-by-CC pending
+> CDC. `number` is retired as a correctness key (F12 done); the two-path `source`-backfill gap CDC
+> found is closed (v2.1) and the reconcile flow is wired into `odm migrate` (v2.2/v2.3). **s07 (live
+> repair run) next** — fires the now-CDC-review-informed flow on the real corpus. *Plan late, plan
+> deep.*
 
 ## Capability
 
@@ -83,7 +85,7 @@ runs the same capability.
 | **s03 — migration-fidelity core** ✅ CLOSED 2026-07-27 (CDC-verified) | 1:1 verbatim import + **hard body-hash gate** + `source`/`author`/`version` typing + **no-transform**. Both importers + odm-core typing. | no (fixture-only) | s02 |
 | **s04 — scope + repair capability** ✅ CLOSED 2026-07-28 (CDC-verified) | **Cap removed** (`self_host` imports **all** arc/slice dirs; named arcs get a non-structural `number` handle; `coverage.rs`'s shared predicate updated). **Update-in-place repair** of stub nodes (ODD-0025 §2.8 — real body + `source`, preserve id/edges/status, via `persist` overwrite — no `delete`). **Schema-minor bump executed** (`v1.0→v1.1`, forward-compat proven). Fixture-verified; no live mutation. | no (fixture-only) | s03 |
 | **s05 — source-based identity** ✅ CLOSED 2026-07-28 (CDC-verified) | Retire `number` as a **correctness key** (F12 — the number problem's root): key `self_host` idempotence + coverage matching on **`source.paths`**, not `(type, number)`; **backfill `source`** onto the already-faithful non-stub nodes (body unchanged, hash-gate-confirmed) so *every* node carries one; make the named-arc handle **name-derived + stable** (cosmetic display only). `number` becomes a pure label nothing keys on — the position-based fragility dissolves permanently. Fixture-verified. | no (fixture-only) | s04 |
-| **s06 — live-run capability** | **Unify the two `source`-backfill paths** (v2.1 finding): route `self_host`'s `to_populate` transition through the same **gated, project-excluding** reconcile logic as `repair()`. **Extend `odm migrate`'s self-host path** — today it runs `self_host()` (import) only; `repair()` had no caller outside tests. Run the full flow in order: `repair()` (repair stubs + gated faithful-backfill) **before** `self_host()` (import missing arcs), stamping `v1.1` + `source`/`author`/`version` + re-pointing `context.json`. **No new verb** (`self-host` folded into `migrate`, C-5); `--dry-run` already exists on `migrate`. **Fixture-verified end-to-end; no live mutation.** | no (fixture-only) | s05 |
+| **s06 — live-run capability** ✅ CLOSED 2026-07-28 (attested-by-CC; CDC pending) | **Unified the two `source`-backfill paths** (v2.1 finding): a single `reconcile_source()` — gated, project-excluding, and (self-identified extension) retired-excluding — now backs both `self_host`'s `to_populate` transition and `repair()`. **Extended `odm migrate`'s self-host path**: `repair()` now runs before `self_host()` in `self_host_inner`, default-on, no new flag; `repair()`'s only callers were previously tests. **No new verb** (`self-host` folded into `migrate`, C-5); reuses `--dry-run`. **Fixture-verified end-to-end; no live mutation.** `context.json` re-pointing stays with s07 (structurally a live-store operator statement, not a migration artifact — disclosed in the closing report). | no (fixture-only) | s05 |
 | **s07 — live repair run** | Fire the s06 flow on the **live** `.worktrees/odm` corpus (snapshot/commit the `odm` branch first — revertible; `--dry-run` + inspect before the real run): repair the 44 stubs, gated-backfill `source` on the faithful nodes, import the 6 previously-excluded arcs + their slices, stamp `v1.1`, populate `source`/`author`/`version`, re-point `context.json`. **Verify** `check` green, 0 stubs, all arcs/slices represented, every body-hash passes, `orient`/`rollup` reproduce, every node source-bearing. | **yes (live)** | s06 |
 | **s08 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (F10 mint-all incl. the reports); **wire doc-coverage into `odm check`**; attach or top-level the design/research nodes (F7). | yes | s02, s03, s07 |
 | **s09 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
@@ -103,16 +105,41 @@ destructive op is fixture-proven before it fires.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — s01 *detector* exists + ran (CDC-verified); the *enforced check* is s08's job |
-| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built the gate, s04 built + fixture-verified the repair path that clears a stub, s05 generalized it to every faithful non-stub node too (`slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`); **s07's live run** produces "zero stubs" |
-| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 types + populates the fields, s04's repair path populates it on an existing stub node, s05's generalized backfill populates it on any faithful non-stub node too — every node's path to `source` is now fixture-proven (`slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`); the live 60-node corpus gets them in **s07** |
+| MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | planned — s03 built the gate, s04 built + fixture-verified the repair path that clears a stub, s05 generalized it to every faithful non-stub node too, s06 unified the two backfill paths onto one gated policy and wired it into `odm migrate` so it actually fires (`slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`, `slice06-live-run-capability/closing-report.md`); **s07's live run** produces "zero stubs" |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | planned — s03 types + populates the fields, s04's repair path populates it on an existing stub node, s05's generalized backfill populates it on any faithful non-stub node too, s06 made the whole flow invocable via `odm migrate` (repair-then-import, one call) — every node's path to `source` is now fixture-proven end-to-end (`slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`, `slice06-live-run-capability/closing-report.md`); the live 60-node corpus gets them in **s07** |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
-| MF-5 | All arcs (incl. the 6 previously-excluded) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s04 removed the cap + proved named-arc handle assignment is collision-free, s05 made that handle name-derived + stable and closed coverage's named-arc matching gap (fixture-verified, `slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`); **s07** mints the missing arcs/slices live |
+| MF-5 | All arcs (incl. the 6 previously-excluded) + all slices represented | count dirs vs nodes = 0 gap | serious | planned — s04 removed the cap + proved named-arc handle assignment is collision-free, s05 made that handle name-derived + stable and closed coverage's named-arc matching gap, s06 proved the import fires correctly for missing arcs even in the same pass as a reconcile (fixture-verified, `slice04-scope-repair-capability/closing-report.md`, `slice05-source-identity/closing-report.md`, `slice06-live-run-capability/closing-report.md`); **s07** mints the missing arcs/slices live |
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **mint-all** (ODD-0025 §2.6); s08 mints + wires |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned — model in ODD-0025 §2.3 |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v2.4 — 2026-07-28 — s06 (live-run capability) closed; both CDC findings resolved
+
+**Slice 06 is closed** (`slice06-live-run-capability/closing-report.md`; 10/10 ledger rows done, 0
+deferred, 0 no-op; attested-by-CC, CDC reproduction pending). Delivered exactly what v2.1–v2.3 scoped:
+a single `reconcile_source()` is now the **one** gated, project-excluding `source`-population policy,
+backing both `repair()` and `self_host`'s coordinate→source transition (closing the v2.1 finding at
+its root, not just at the one call site CDC named); `odm migrate`'s self-host path now runs `repair()`
+**then** `self_host()` by default, no new flag, folding the reconcile count into the existing report
+shape (closing the v2.2 finding — `repair()` now has a real caller). **Self-identified extension
+beyond the literal CDC finding:** the same unification pass found `self_host`'s transition carried no
+guard against a **retired** node either (a tombstone sharing a coordinate with a live plan directory)
+— `repair()` had this by accident of its own pre-check; `reconcile_source` now excludes retired nodes
+for both callers, closing the same *class* of gap the CDC finding named, not just its one instance.
+**What implementing it revealed:** (1) given the "Preferred" unification choice, `self_host()` alone
+(no `repair()` call) now reconciles a coordinate-matched node identically to `repair()`-then-
+`self_host()` — the specified order is implemented exactly as directed and is the right shape for API
+composability (`repair()` needed a real caller), but it is not, in this implementation, load-bearing
+for *per-node correctness* the way the plan's framing assumed; disclosed rather than silently
+smoothed over. (2) `context.json` re-pointing, mentioned in `slice-doc.md`'s prose but absent from
+`cc-prompt.md`'s Task list and structurally a live-store operator statement rather than a migration
+artifact, stayed with **s07** as the slice-breakdown table already specified — followed the operative
+`cc-prompt.md` over the summary prose, flagged the inconsistency rather than silently picking one.
+MF-2/MF-3/MF-5 stay **planned**, now pointing at `slice04`/`slice05`/`slice06`'s closing reports as
+fixture-verified baseline evidence — the live-corpus outcome each asserts is **s07**'s job.
 
 ### v2.3 — 2026-07-28 — s06 entry point corrected: extend `odm migrate`, not a new command
 
