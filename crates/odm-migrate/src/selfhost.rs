@@ -16,12 +16,21 @@
 //! imported — numbered (`arcNN-*`, including the post-MVP `arc07`/`arc08`) and
 //! **named** (`arc-<slug>`, no `arcNN` coordinate) alike. A numbered arc's
 //! `number` is still derived from its directory (`arc_number`); a named arc
-//! gets a deterministic, collision-free `number` **handle** ([`named_arc_number`])
-//! — `number` is a non-structural human handle (not identity, not order;
-//! ODD-0013 §2.3), so a named arc simply takes the next slot in a band above
-//! the numbered arcs' range. The former hardcoded A1–A6 scope cap was the root
-//! cause of six real arcs going silently unrepresented and directly
-//! contradicted "no file left behind" — removed outright, not widened.
+//! gets a **name-derived**, collision-handled `number` **handle**
+//! ([`named_arc_number`], v1.9 arc-migration-fidelity s05, F8) — `number` is a
+//! non-structural human handle (not identity, not order; ODD-0013 §2.3), and
+//! the handle is recomputable from the arc's slug alone, so it stays stable
+//! when another named arc is added or removed elsewhere in the corpus. The
+//! former hardcoded A1–A6 scope cap was the root cause of six real arcs going
+//! silently unrepresented and directly contradicted "no file left behind" —
+//! removed outright, not widened.
+//!
+//! **Source-keyed identity (v1.9, arc-migration-fidelity s05, F1/F2/F3/F9).**
+//! `number` — numbered or named — keys **nothing** for correctness: idempotence
+//! is keyed on **`source.paths`**, the stable identity every migrated node
+//! carries (ODD-0025 §2.0/§2.2). A `number`, even a name-derived one, is still
+//! only ever a display/CLI-lookup label. See [`self_host`]'s doc for the
+//! source-match / coordinate-transition rule.
 //!
 //! **Never-delete:** this writes `nodes/` only; the plan-set Markdown is the
 //! human-authored source and is never read-write-violated.
@@ -98,12 +107,46 @@ pub const NAMED_ARC_STEP: u32 = 100;
 /// (the ULID), not order (the dependency DAG).
 pub const NAMED_ARC_BASE: u32 = arc_number(8) + NAMED_ARC_STEP;
 
-/// The `number` handle for the `index`-th named arc (0-based), assigned in
-/// the deterministic directory-sort order [`discover`] walks named arc
-/// directories in.
+/// How many slots the named-arc number band spans before repeating — large
+/// enough that a genuine hash collision between two real arc slugs is
+/// vanishingly unlikely, while comfortably fitting inside `u32`.
+const NAMED_ARC_SLOTS: u32 = 1_000_000;
+
+/// A stable (FNV-1a) hash of an arc slug — deterministic and recomputable
+/// from the slug alone, with no dependency on any other arc in the corpus.
+fn slug_hash(slug: &str) -> u32 {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in slug.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    hash
+}
+
+/// The `number` handle for a named arc directory's `slug` (its own directory
+/// name, e.g. `"arc-migration-fidelity"`) — **name-derived** (v1.9,
+/// arc-migration-fidelity s05 F8): a deterministic hash of the slug into the
+/// ≥[`NAMED_ARC_BASE`] band, stepped by [`NAMED_ARC_STEP`]. Recomputable from
+/// the slug alone, so it is **stable** when another named arc is added or
+/// removed elsewhere in the corpus — replacing the position-based
+/// `named_arc_number(index)` (v1.6–v1.8), which shifted every later arc's
+/// handle on any addition and, under the old `(type, number)` idempotence
+/// key, caused a re-run to mint a duplicate node (the s04 CDC v1.8 finding —
+/// now impossible, since s05 also keys idempotence on `source.paths`, not
+/// `number`).
+///
+/// `taken` is the set of handles already assigned earlier in the same
+/// [`discover`] pass, in its deterministic (sorted) processing order — on the
+/// vanishingly rare case two slugs hash to the same slot, the one processed
+/// first keeps the natural slot and the other is bumped to the next free one,
+/// deterministically (never a silent collision).
 #[must_use]
-pub fn named_arc_number(index: usize) -> u32 {
-    NAMED_ARC_BASE + u32::try_from(index).unwrap_or(u32::MAX) * NAMED_ARC_STEP
+pub fn named_arc_number(slug: &str, taken: &BTreeSet<u32>) -> u32 {
+    let mut candidate = NAMED_ARC_BASE + (slug_hash(slug) % NAMED_ARC_SLOTS) * NAMED_ARC_STEP;
+    while taken.contains(&candidate) {
+        candidate += NAMED_ARC_STEP;
+    }
+    candidate
 }
 
 /// The outcome of a self-host cutover run.
@@ -157,11 +200,19 @@ pub(crate) struct PlanNode {
 }
 
 /// Runs the self-host cutover over the `design-v1.0.0` plan set rooted at
-/// `plan_root`, importing the project + A1–A6 arcs + their slices into `store`.
+/// `plan_root`, importing the project + every arc/slice directory into `store`.
 ///
-/// Idempotent (keyed on `(type, number)`), `--dry-run`-safe, never-delete. The
-/// project (root) node is persisted **last** so a partial failure never leaves a
-/// dangling root (children-up ordering — the reflexive-import safety discipline).
+/// **Idempotence keys on `source.paths`** (arc-migration-fidelity s05, F-1),
+/// not `(type, number)`: a work node that already carries a `source` record is
+/// matched by its stable source path, immune to a `number` that shifts between
+/// runs (the s04 named-arc re-run-duplicate hazard, v1.8). A pre-`source`
+/// legacy node — the corpus predates this slice — falls back to a **one-time**
+/// structural `(type, number)` coordinate match (F-2): it is recognized as
+/// already-imported (never re-created) and its `source` is backfilled in place,
+/// so every subsequent run matches it by source too. `--dry-run`-safe,
+/// never-delete. The project (root) node is persisted **last** so a partial
+/// failure never leaves a dangling root (children-up ordering — the
+/// reflexive-import safety discipline).
 ///
 /// # Errors
 ///
@@ -172,18 +223,45 @@ pub fn self_host(
     mode: Mode,
 ) -> Result<SelfHostReport, MigrateError> {
     let plan = discover(plan_root);
+    let today = today();
 
-    // Idempotence: work nodes already present, keyed on (type, number).
-    let existing = existing_work_keys(store)?;
+    // The existing-node identity index: `by_source` (the primary key, F-1) from
+    // every work node that already carries a `source` record; `by_coordinate`
+    // (the one-time transition fallback, F-2) from every work node that does
+    // not — the corpus's pre-slice05 state.
+    let mut by_source: HashMap<std::path::PathBuf, Id> = HashMap::new();
+    let mut by_coordinate: HashMap<(NodeType, u32), Document> = HashMap::new();
+    for document in store.load_all().map_err(MigrateError::LoadCorpus)? {
+        let fm = document.frontmatter();
+        if !fm.node_type().is_work() {
+            continue;
+        }
+        match fm.source() {
+            Some(source) => {
+                for path in &source.paths {
+                    by_source.insert(path.clone(), fm.id());
+                }
+            }
+            None => {
+                by_coordinate.insert((fm.node_type(), fm.number()), document.clone());
+            }
+        }
+    }
 
-    // Pass 1 — decide create vs skip, minting an id per creation. `ids` maps every
-    // (type, number) that will exist (present ∪ minted) so `part_of` can resolve.
-    let mut ids: HashMap<(NodeType, u32), Id> = existing.clone();
+    // Pass 1 — decide create / transition-populate / skip, minting an id per
+    // creation. `ids` maps every (type, number) **this run** will have wired
+    // (present ∪ minted) so `part_of` can resolve, regardless of what number an
+    // already-existing matched node happens to carry on disk.
+    let mut ids: HashMap<(NodeType, u32), Id> = HashMap::new();
     let mut to_create: Vec<(PlanNode, Id)> = Vec::new();
+    let mut to_populate: Vec<(PlanNode, Document)> = Vec::new();
     let mut skipped = Vec::new();
     for node in plan {
         let key = (node.node_type, node.number);
-        if existing.contains_key(&key) {
+        let source_path = body_source_path(&node);
+
+        if let Some(&existing_id) = by_source.get(&source_path) {
+            ids.insert(key, existing_id);
             skipped.push(Skipped {
                 number: Some(node.number),
                 path: plan_root.to_path_buf(),
@@ -191,9 +269,42 @@ pub fn self_host(
             });
             continue;
         }
+        if let Some(existing_doc) = by_coordinate.get(&key) {
+            ids.insert(key, existing_doc.frontmatter().id());
+            skipped.push(Skipped {
+                number: Some(node.number),
+                path: plan_root.to_path_buf(),
+                reason: SkipReason::SourcePopulated,
+            });
+            to_populate.push((node, existing_doc.clone()));
+            continue;
+        }
+
         let id = Id::new();
         ids.insert(key, id);
         to_create.push((node, id));
+    }
+
+    // The one-time coordinate→source transition (F-2): backfill `source` onto
+    // each matched legacy node **in place** — id/edges/status/number untouched,
+    // only `source`/`updated`/schema change — the same "clone the frontmatter,
+    // mutate only the delta" pattern [`repair`] uses.
+    if !mode.is_dry_run() {
+        for (node, existing_doc) in &to_populate {
+            let source_path = body_source_path(node);
+            let mut new_fm = existing_doc.frontmatter().clone();
+            new_fm.set_updated(today);
+            new_fm.stamp_schema();
+            let new_fm = new_fm.with_source(crate::fidelity::build_source(
+                vec![source_path],
+                source_class(node.node_type),
+                today,
+            ));
+            let new_document = Document::new(new_fm, existing_doc.body().to_string());
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: node.number, source })?;
+        }
     }
 
     // The child ids of each arc/project (for the `decomposed` affirmation on a
@@ -210,7 +321,6 @@ pub fn self_host(
     // no header injection; this replaced the stub-body root cause) and attach
     // its `source` record, then persist **children-up**: slices, then arcs,
     // then the project root last.
-    let today = today();
     let mut built: Vec<(Frontmatter, String)> = Vec::new();
     for (node, id) in &to_create {
         let fm = build_node(node, *id, &ids, &children, today);
@@ -279,8 +389,9 @@ fn source_class(node_type: NodeType) -> &'static str {
     }
 }
 
-/// One node repaired **update-in-place** (ODD-0025 §2.8): a stub's real body
-/// + `source` record written into the *same* node.
+/// One node repaired / source-backfilled **update-in-place** (ODD-0025 §2.8):
+/// a stub's real body, or a faithful non-stub node's `source` record alone,
+/// written into the *same* node.
 #[derive(Debug, Clone)]
 pub struct Repaired {
     /// The node's number (unchanged by repair).
@@ -310,33 +421,44 @@ impl RepairReport {
     }
 }
 
-/// Repairs every **stub** work node in `store` **update-in-place** (ODD-0025
-/// §2.8): matches it to its plan-set source under `plan_root` by structural
-/// coordinate (the same discovery [`self_host`] uses), imports the verbatim
-/// body + a fresh `source` record through the hard body-hash gate
-/// ([`crate::fidelity::verify_body_hash`]), and persists the **same** node —
-/// `id`, `edges`, `status`, and `number` are all preserved (only `body`,
-/// `source`, `updated`, and the schema marker change), via [`Store::persist`]
-/// (which overwrites by id — **no `delete`**).
+/// Repairs / backfills every `arc`/`slice` work node in `store` that lacks a
+/// `source` record, **update-in-place** (ODD-0025 §2.8, generalized past the
+/// stub filter by arc-migration-fidelity s05 F-4/F-5/F-6): matches it to its
+/// plan-set source under `plan_root` by structural coordinate (the same
+/// discovery [`self_host`] uses — a node without `source` predates this arc's
+/// identity model, so coordinate is the only handle available), then:
 ///
-/// A stub is decided by [`crate::fidelity::is_stub_body`] (≤ 1 non-blank body
-/// line), the exact predicate the coverage detector (s01) counts by — this
-/// deliberately does not re-derive it (F-8). A node with no matching plan-set
-/// entry (a stub whose source directory has since moved or been removed) is
-/// left untouched, not an error — repair only ever touches nodes it can
-/// faithfully resolve a source for. Only `arc`/`slice` nodes are ever stubs in
-/// practice (the project node's body comes from a hand-authored vision
-/// section, never the stub synthesis; ODD-0025 §2.8's mechanism is generic —
-/// it would apply to a document-node stub identically, but `self_host`
-/// mints no document nodes, so none exists to repair here).
+/// - **A stub** ([`crate::fidelity::is_stub_body`], ≤ 1 non-blank body line —
+///   the exact predicate the coverage detector, s01, counts by; not re-derived
+///   here, F-8-s04) has its body **replaced** with the verbatim source text
+///   (ODD-0025 §2.1's original repair case, s04).
+/// - **A faithful non-stub node** keeps its **existing** body untouched; the
+///   hard body-hash gate ([`crate::fidelity::verify_body_hash`]) verifies it
+///   against the source body — a match is a content no-op that only adds
+///   `source` (F-4); a **mismatch is surfaced** as
+///   [`MigrateError::BodyHashMismatch`], not swallowed (F-5) — the run stops
+///   there rather than silently backfilling over drift.
 ///
-/// Idempotent: a node that is no longer a stub (already repaired, or never
-/// one) is left alone, so re-running `repair` is always safe.
+/// Either way `id`, `edges`, and `status` are preserved (only `body` — for a
+/// stub — plus `source`, `updated`, and the schema marker change), via
+/// [`Store::persist`] (which overwrites by id — **no `delete`**).
+///
+/// **The project node is excluded** (F-6): its body is a *synthesis* of
+/// `project-plan.md` §1 (`replan.rs::vision_from_plan`), not a 1:1 migration
+/// (ODD-0025 §2.3), so it can never pass the 1:1 gate here — it is left alone,
+/// not an error, pending the synthesis treatment (s08). A node with no
+/// matching plan-set entry (its source directory has since moved or been
+/// removed) is likewise left untouched, not an error — repair only ever
+/// touches nodes it can faithfully resolve a source for.
+///
+/// Idempotent: a node that already carries `source` is left alone, so
+/// re-running `repair` is always safe.
 ///
 /// # Errors
 ///
 /// [`MigrateError`] if the corpus can't be loaded, a source body can't be
-/// read, the hard body-hash gate fails, or a persist fails.
+/// read, the hard body-hash gate fails (a drifted non-stub body, F-5), or a
+/// persist fails.
 pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairReport, MigrateError> {
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
     let plan_by_key: HashMap<(NodeType, u32), PlanNode> =
@@ -346,10 +468,12 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
     let mut repaired = Vec::new();
     for document in &corpus {
         let fm = document.frontmatter();
+        // The project is excluded (F-6): its body is a synthesis, not a 1:1
+        // migration (ODD-0025 §2.3) — it can never pass the gate below.
         if !matches!(fm.node_type(), NodeType::Arc | NodeType::Slice) {
             continue;
         }
-        if fm.retired().is_some() || !crate::fidelity::is_stub_body(document.body()) {
+        if fm.retired().is_some() || fm.source().is_some() {
             continue;
         }
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
@@ -357,8 +481,17 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
         };
 
         let source_path = body_source_path(plan_node);
-        let body = std::fs::read_to_string(&source_path)
+        let source_body = std::fs::read_to_string(&source_path)
             .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
+
+        // A stub's body is worthless and is replaced outright; a faithful
+        // non-stub body is kept as-is — the gate below proves it matches the
+        // source rather than blindly overwriting a possibly hand-edited body.
+        let new_body = if crate::fidelity::is_stub_body(document.body()) {
+            source_body.clone()
+        } else {
+            document.body().to_string()
+        };
 
         let mut new_fm = fm.clone();
         new_fm.set_updated(today);
@@ -369,9 +502,9 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
             today,
         ));
 
-        let new_document = Document::new(new_fm, body.clone());
+        let new_document = Document::new(new_fm, new_body);
         crate::fidelity::verify_body_hash(
-            &body,
+            &source_body,
             new_document.body(),
             format!("#{} ({}) repair", fm.number(), fm.node_type()),
         )?;
@@ -475,18 +608,6 @@ fn today() -> NaiveDate {
     chrono::Utc::now().date_naive()
 }
 
-/// The `(type, number)` of every existing work node in the store (the idempotence
-/// key set — a re-run skips these).
-fn existing_work_keys(store: &Store) -> Result<HashMap<(NodeType, u32), Id>, MigrateError> {
-    let documents = store.load_all().map_err(MigrateError::LoadCorpus)?;
-    Ok(documents
-        .into_iter()
-        .map(|d| d.frontmatter().clone())
-        .filter(|fm| fm.node_type().is_work())
-        .map(|fm| ((fm.node_type(), fm.number()), fm.id()))
-        .collect())
-}
-
 /// The plan nodes under `plan_root`, for a caller that wants the *derived
 /// facts* rather than an import — the C-5 re-stamp joins these to the existing
 /// corpus by `(type, number)`.
@@ -497,8 +618,9 @@ pub(crate) fn plan_nodes(plan_root: &Path) -> Vec<PlanNode> {
 /// Discovers **every** arc/slice plan node under `plan_root` — numbered
 /// (`arcNN-*`, no scope cap — v1.6 F11) and named (`arc-<slug>`) alike — plus
 /// the project root. A numbered arc's `number` is derived ([`arc_number`]); a
-/// named arc's is assigned deterministically ([`named_arc_number`], in
-/// directory-sort order among just the named arcs). Deterministic (sorted).
+/// named arc's is **name-derived** ([`named_arc_number`], v1.9 F8) from its own
+/// slug, collision-handled against the handles already assigned earlier in
+/// this same pass (in directory-sort order). Deterministic (sorted).
 fn discover(plan_root: &Path) -> Vec<PlanNode> {
     let closed_arcs = closed_arcs_from_pledger(plan_root);
     let mut nodes = Vec::new();
@@ -544,8 +666,12 @@ fn discover(plan_root: &Path) -> Vec<PlanNode> {
     for (major, path) in numbered {
         arcs.push((arc_number(major), Some(major), path));
     }
-    for (index, path) in named.into_iter().enumerate() {
-        arcs.push((named_arc_number(index), None, path));
+    let mut named_taken: BTreeSet<u32> = BTreeSet::new();
+    for path in named {
+        let slug = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let number = named_arc_number(&slug, &named_taken);
+        named_taken.insert(number);
+        arcs.push((number, None, path));
     }
 
     for (arc_num, arc_major, arc_dir) in &arcs {
@@ -681,12 +807,35 @@ mod tests {
         // Numbered arcs occupy up to arc_number(8) == 1800, plus up to 99 in
         // slice-position headroom (1899 max); named arcs start clear of that.
         assert_eq!(NAMED_ARC_BASE, 1900);
-        assert_eq!(named_arc_number(0), 1900);
-        assert_eq!(named_arc_number(1), 2000);
-        assert_eq!(named_arc_number(3), 2200);
-        assert!(
-            named_arc_number(0) > arc_number(8) + 99,
-            "no collision with any numbered arc/slice"
+        let handle = named_arc_number("arc-migration-fidelity", &BTreeSet::new());
+        assert!(handle >= NAMED_ARC_BASE, "in the named-arc band");
+        assert!(handle > arc_number(8) + 99, "no collision with any numbered arc/slice");
+    }
+
+    #[test]
+    fn named_arc_number_is_recomputable_from_the_slug_alone() {
+        // No dependency on any other arc: the same slug always hashes the same.
+        let taken = BTreeSet::new();
+        assert_eq!(
+            named_arc_number("arc-migration-fidelity", &taken),
+            named_arc_number("arc-migration-fidelity", &taken)
+        );
+        // A different slug (very likely) lands on a different slot.
+        assert_ne!(
+            named_arc_number("arc-migration-fidelity", &taken),
+            named_arc_number("arc-store-home", &taken)
+        );
+    }
+
+    #[test]
+    fn named_arc_number_bumps_deterministically_on_collision() {
+        let natural = named_arc_number("arc-x", &BTreeSet::new());
+        let mut taken = BTreeSet::new();
+        taken.insert(natural);
+        assert_eq!(
+            named_arc_number("arc-x", &taken),
+            natural + NAMED_ARC_STEP,
+            "a taken slot bumps to the next free one, deterministically"
         );
     }
 

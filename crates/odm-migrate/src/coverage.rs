@@ -9,12 +9,16 @@
 //! 3. **stub-body** — work nodes whose body is a lone synthesized H1 (tombstones excluded).
 //! 4. **provenance-absence** — nodes carrying no `provenance` key.
 //!
-//! Matching is **heuristic** — provenance does not exist yet ([`crate::selfhost`]
-//! discussion), so a source doc is matched to a node structurally (arc/slice
-//! directory coordinates, reusing [`crate::selfhost::parse_prefix`]) or by its
-//! frontmatter `number` (ODDs, reusing [`crate::legacy::parse_file`]). A doc this
-//! run reports uncovered *may* be a matcher miss rather than a true hole — every
-//! [`CoverageEntry`] carries its matching `basis` so the report can say so.
+//! **Doc-coverage matching is primarily exact** (arc-migration-fidelity s05, F-7,
+//! ODD-0025 §5): a source doc's path is matched against every node's
+//! `source.paths` — an exact set-difference, no derivation involved. A doc
+//! whose node predates this arc's identity model (no `source` yet) falls back
+//! to the original **heuristic** match: structurally (arc/slice directory
+//! coordinates, reusing [`crate::selfhost::parse_prefix`]) or by frontmatter
+//! `number` (ODDs, reusing [`crate::legacy::parse_file`]). A doc this run
+//! reports uncovered *may* be a fallback-matcher miss rather than a true hole —
+//! every [`CoverageEntry`] carries its matching `basis` so the report can say
+//! so.
 //!
 //! **Read-only**: [`run`] only reads `docs_root` and `store` — it persists no
 //! document and mutates no file (F-7).
@@ -257,6 +261,11 @@ struct NodeIndex {
     arc_numbers: BTreeSet<u32>,
     slice_numbers: BTreeSet<u32>,
     doc_numbers: BTreeSet<u32>,
+    /// Every `source.paths` entry across the whole corpus (arc-migration-fidelity
+    /// s05, F-7, ODD-0025 §5) — the **primary**, exact doc-coverage match. The
+    /// `*_numbers` sets above are the **pre-`source` fallback** (a legacy node
+    /// that predates this arc's identity model), kept only for that transition.
+    source_paths: BTreeSet<PathBuf>,
 }
 
 impl NodeIndex {
@@ -266,6 +275,7 @@ impl NodeIndex {
             arc_numbers: BTreeSet::new(),
             slice_numbers: BTreeSet::new(),
             doc_numbers: BTreeSet::new(),
+            source_paths: BTreeSet::new(),
         };
         for document in corpus {
             let fm = document.frontmatter();
@@ -281,6 +291,9 @@ impl NodeIndex {
                     index.doc_numbers.insert(fm.number());
                 }
                 NodeType::Adr | NodeType::Note => {}
+            }
+            if let Some(source) = fm.source() {
+                index.source_paths.extend(source.paths.iter().cloned());
             }
         }
         index
@@ -362,19 +375,31 @@ fn doc_coverage(docs: &[SourceDoc], index: &NodeIndex, docs_root: &Path) -> DocC
     let entries = docs
         .iter()
         .map(|doc| {
-            let (covered, basis) = match doc.class {
-                DocClass::ProjectPlan => (index.project_exists, "structural (project root exists)"),
-                DocClass::ArcPlan => match_arc(&doc.path, index),
-                DocClass::SliceDoc => match_slice(&doc.path, index),
-                DocClass::Odd => match_odd(&docs_root.join(&doc.path), index),
-                DocClass::Ledger
-                | DocClass::CcPrompt
-                | DocClass::CdcVerification
-                | DocClass::ClosingReport => {
-                    (false, "no node class yet for supporting docs (lands in arc slice 05)")
-                }
-                DocClass::Dev | DocClass::Research | DocClass::Other => {
-                    (false, "no node class yet for this doc class")
+            let absolute = docs_root.join(&doc.path);
+            // Primary: an exact `source.paths` match (ODD-0025 §5, F-7) — this
+            // alone resolves a named arc, which the structural fallbacks below
+            // can never do (a named arc directory has no numbered coordinate to
+            // re-derive; see `arc_coordinate`'s doc).
+            let (covered, basis) = if index.source_paths.contains(&absolute) {
+                (true, "source.paths (exact match)")
+            } else {
+                match doc.class {
+                    DocClass::ProjectPlan => (
+                        index.project_exists,
+                        "structural (project root exists) — pre-source fallback",
+                    ),
+                    DocClass::ArcPlan => match_arc(&doc.path, index),
+                    DocClass::SliceDoc => match_slice(&doc.path, index),
+                    DocClass::Odd => match_odd(&absolute, index),
+                    DocClass::Ledger
+                    | DocClass::CcPrompt
+                    | DocClass::CdcVerification
+                    | DocClass::ClosingReport => {
+                        (false, "no node class yet for supporting docs (lands in arc slice 07)")
+                    }
+                    DocClass::Dev | DocClass::Research | DocClass::Other => {
+                        (false, "no node class yet for this doc class")
+                    }
                 }
             };
             CoverageEntry { path: doc.path.clone(), class: doc.class, covered, basis }
@@ -383,9 +408,14 @@ fn doc_coverage(docs: &[SourceDoc], index: &NodeIndex, docs_root: &Path) -> DocC
     DocCoverageReport { entries }
 }
 
-/// Matches an `arc-plan.md` to its arc node via its containing directory's
-/// structural coordinate (reusing [`parse_prefix`]/[`arc_number`] — the same
-/// derivation [`crate::selfhost::self_host`] uses to mint it).
+/// **Pre-`source` fallback** (reached only when the primary `source.paths`
+/// check in [`doc_coverage`] misses): matches an `arc-plan.md` to its arc node
+/// via its containing directory's structural coordinate (reusing
+/// [`parse_prefix`]/[`arc_number`] — the same derivation
+/// [`crate::selfhost::self_host`] uses to mint it). A **named** arc directory
+/// has no such coordinate at all — see [`arc_coordinate`]'s doc — so this
+/// fallback can never resolve one; the primary check is what actually closes
+/// that gap (F-7) for a source-bearing named-arc node.
 fn match_arc(relative: &Path, index: &NodeIndex) -> (bool, &'static str) {
     let Some(arc_dir) = relative.parent().and_then(Path::file_name).and_then(|s| s.to_str()) else {
         return (false, "unrecognized path shape (no containing directory)");
@@ -517,16 +547,19 @@ fn dir_label(dir: &Path) -> String {
 /// the former post-MVP `arc07`/`arc08` — the hardcoded A1–A6 cap this used to
 /// apply is removed, not widened.
 ///
-/// **Known heuristic limitation (disclosed, not fixed here):** a named arc's
-/// actual `number` is an *assigned handle* ([`crate::selfhost::named_arc_number`])
-/// that depends on the sorted list of every named arc directory in the
-/// corpus — information a single directory name can't recover on its own.
-/// This function therefore still cannot resolve a coordinate for a named
-/// arc, so the doc-coverage/representation detectors report a named arc's
-/// docs as heuristically uncovered even after `self_host` mints it a real
-/// node. Per ODD-0025 §5, this is exactly the class of heuristic gap the
-/// `source` record (once wired into coverage as an exact set-difference,
-/// arc-migration-fidelity s06+) is meant to close — not re-derived here.
+/// **Structural-fallback limitation (by design, not fixed here):** a named
+/// arc's actual `number` is a *name-derived handle*
+/// ([`crate::selfhost::named_arc_number`], v1.9) computed from a hash of the
+/// slug plus collision-handling against the arcs already assigned earlier in
+/// the same pass — information a single directory name can't recover on its
+/// own (there is no "just re-derive it" from the name alone once collisions
+/// are possible). This function therefore still cannot resolve a coordinate
+/// for a named arc, so [`representation`]'s dir-vs-node count still reports
+/// a named arc directory as unrepresented by its own accounting. The
+/// **doc-coverage** detector no longer has this gap (arc-migration-fidelity
+/// s05, F-7): [`doc_coverage`]'s primary `source.paths` check resolves a
+/// source-bearing named-arc node directly, exactly as ODD-0025 §5 anticipated
+/// — this structural coordinate is only the pre-`source` fallback now.
 fn arc_coordinate(dir_name: &str) -> Option<u32> {
     parse_prefix(dir_name, "arc").filter(|(_, minor)| minor.is_none()).map(|(major, _)| major)
 }

@@ -216,8 +216,8 @@ fn selfhost_imports_numbered_and_named_arcs_with_handles() {
     assert!(nodes.contains_key(&(NodeType::Arc, arc_number(1))), "numbered arc imported");
     assert!(nodes.contains_key(&(NodeType::Arc, arc_number(7))), "post-MVP arc07 imported");
 
-    // The named arc is the only one — index 0 — so it takes the base handle.
-    let named_number = named_arc_number(0);
+    // The named arc is the only one, so its slug-derived handle is unbumped.
+    let named_number = named_arc_number("arc-custom-thing", &std::collections::BTreeSet::new());
     assert!(
         nodes.contains_key(&(NodeType::Arc, named_number)),
         "named arc assigned handle {named_number}"

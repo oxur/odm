@@ -163,7 +163,15 @@ pub struct Created {
 pub enum SkipReason {
     /// A node with this legacy `number` already exists as a document node
     /// (idempotence — M-3), or a duplicate `number` appeared earlier in the run.
+    /// For `self_host` (arc-migration-fidelity s05), this also covers a node
+    /// already matched by its stable `source.paths` (the primary idempotence
+    /// key, F-1).
     AlreadyExists,
+    /// `self_host` matched a pre-`source` legacy node by structural coordinate
+    /// (the one-time transition, arc-migration-fidelity s05 F-2) and backfilled
+    /// its `source` record in place — not re-created, but not an untouched skip
+    /// either.
+    SourcePopulated,
     /// The file could not be read or its frontmatter was invalid.
     Malformed(String),
     /// The frontmatter parsed but could not be mapped (missing number / unknown
@@ -175,6 +183,9 @@ impl std::fmt::Display for SkipReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SkipReason::AlreadyExists => write!(f, "already exists (skipped)"),
+            SkipReason::SourcePopulated => {
+                write!(f, "already exists — source backfilled (coordinate transition)")
+            }
             SkipReason::Malformed(m) => write!(f, "malformed: {m}"),
             SkipReason::Unmappable(e) => write!(f, "{e}"),
         }
@@ -621,6 +632,7 @@ mod tests {
     #[test]
     fn skip_reason_displays_each_variant() {
         assert!(SkipReason::AlreadyExists.to_string().contains("already exists"));
+        assert!(SkipReason::SourcePopulated.to_string().contains("source backfilled"));
         assert!(SkipReason::Malformed("bad".into()).to_string().contains("malformed: bad"));
         assert!(
             SkipReason::Unmappable(MapError::MissingNumber)
