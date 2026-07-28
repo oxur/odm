@@ -2,10 +2,81 @@
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-07-26** (§0; the §§1–7 body below it still reflects 2026-07-07 and reads as history). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-07-28** (§0d — current; §§0c–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
+
+---
+
+## 0d. Resume update — 2026-07-28 (Migration Fidelity arc mostly landed; verify CC's s08 next — START HERE)
+
+**This is the current "read first." §§0c–0 below are prior resumes, now history.** You are **CDC** —
+the independent planner/verifier in the CDC/CC collaboration on `odm`. Your loop: **draw** each slice's
+open set (`slice-doc.md` / `ledger.md` / `cc-prompt.md`), **CDC-verify** CC's implementation reports
+(writing `cdc-verification.md`), and **maintain the arc-plan** via bubble-up. CC implements; you plan
+and verify. Peer frame, own your errors, calibrated honesty (collaboration-framework).
+
+### The arc and where it stands
+**`arc-migration-fidelity/`** (release-blocking, P-12 DoD path) makes migration faithful/verifiable and
+repairs odm's own self-hosted corpus (was 44 stubs / 6-of-12 arcs / 0 provenance) to 100%. Model ODD:
+**ODD-0025** (Accepted; you authored it). Arc-plan: **`arc-migration-fidelity/arc-plan.md` — v2.9**.
+
+- **s01–s07 CLOSED.** s04–s07 **CDC-verified PASS**. s07 was the arc's **first live mutation** — the
+  live corpus is now faithful: **77 nodes, 0 stubs, 61 source-bearing, all 12 arcs represented**, `check`
+  green (committed on the `odm` branch, `7b4eb57`).
+- **s08 — source-path portability: DRAWN, CC-ready** (`slice08-source-path-portability/`). **← your
+  pickup is verifying CC's s08 report.** It relativizes `source.paths` (absolute today → repo-content-root
+  relative) and live-rewrites the 61 nodes. The crux/risk: the **transition-safe `by_source` guard**
+  (F-4) — an absolute-stored node and a relative-discovered lookup must collapse to the same key, or the
+  rewrite mints 61 duplicates. The dry-run MUST show **61 rewrites / 0 creates**; any create = guard
+  wrong = stop.
+- **s09** coverage enforcement (artifact mint + doc-coverage into `check` + `coverage.rs` Findings 2–3 +
+  the 14 design/research nodes' `source`), **s10** synthesis + L-8b, **s11** reconcile run — planned.
+
+### How to CDC-verify a report (the method that's worked)
+Read `closing-report.md` + `ledger.md` + the committed artifacts, then **reproduce, don't just attest**:
+- **Live store** = `.worktrees/odm/` (orphan `odm` branch), nodes under `nodes/`. **Plan tree** =
+  `.worktrees/1.0.x/docs/design-v1.0.0/`. On the device both are under `mnt/odm/` (`device_bash`).
+- **Constraints:** git is unreachable in the VM; there is no runnable `odm`/cargo (the built binaries are
+  macOS — Exec-format-error on Linux). So cargo/`check`/`orient`/git rows are **attested-by-CC → CI**;
+  everything about *store state* you reproduce by **direct file read** + independent recomputation:
+  count stubs/source-bearing/schema; enumerate the source-less plan nodes (should be exactly project +
+  retired); **recompute the body-hash gate yourself** (no stored hash: re-read each node's `source.paths`,
+  normalize `trim+lf`, compare to body — remap the `/Users/oubiwann/...` prefix to `mnt/odm/` to resolve
+  files, until s08 makes them relative); **coverage set-difference** = plan-tree `arc-plan.md`/`slice-doc.md`
+  vs node `source.paths`.
+- **Assess each finding's severity independently** — elevate if warranted (I raised s07's absolute-path
+  finding from "routine follow-up" to s08's own slice). Ratify/adjust the MF bubble-up. Write
+  `cdc-verification.md` in the slice dir; then update `arc-plan.md`: flip the slice to **CDC-verified
+  PASS**, carry findings forward.
+
+### Mechanics / gotchas
+- **Ground-truth before every arc-plan edit** (`device_bash cat`/`grep`) — a stale mount-cache once
+  served an old version and nearly reverted bubble-ups. Edit in place via **python truncate-rewrite**
+  (`sed -i`'s unlink is blocked); anchor on ASCII substrings (unicode em/en-dashes bite `.replace`).
+- Deliver docs with **SendUserFile → device_commit_files** (needs the *real* returned `file_uuid`;
+  target `/Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/.../slice-dir/`).
+- **Renumbering** slices is an accepted operation — record the mapping in a new arc-plan history entry;
+  don't rewrite old history entries.
+
+### Decided model / standing preferences (don't relitigate)
+- **ODD-0025:** `origin` (why) / `source` (where content came from — stored) / `provenance` (derived,
+  reserved). 1:1 verbatim bodies + a **hard body-hash gate** (`normalize`=trim+lf, **no stored hash**).
+  Project node (synthesis) and **retired** nodes are excluded from 1:1 `source`. `author`/`version` are
+  document-node fields (N/A on the frontmatter-less plan corpus).
+- **s05:** `source.paths` is the **identity key**; `number` is a display handle, keys nothing for
+  correctness ("don't keep running into the number thing"). **s08 makes that key portable** — absolute
+  paths reintroduced the same class of fragility via the path, which is why it's its own slice.
+- **Operator preferences:** collaboration-framework peer frame; **build capability, then live run,
+  unbundled** (s06/s07, s08); don't defer needlessly; own errors plainly.
+- **s11 carry:** living plan docs drift from their migrated snapshots the instant they're re-edited, and
+  `reconcile_source` *rejects* a non-stub whose body ≠ source — s11's arc-close reconcile must treat a
+  legitimate source change as update-to-re-snapshot, not drift-to-reject.
+
+### Canonical files
+`arc-migration-fidelity/{arc-plan.md (v2.9), design-notes.md}`; `docs/design/04-accepted/0025-migration-fidelity-model.md`;
+each `slice0N-*/` holds its `{slice-doc,ledger,cc-prompt,closing-report,cdc-verification}.md`.
 
 ---
 
