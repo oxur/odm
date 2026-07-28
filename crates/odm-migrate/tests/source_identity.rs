@@ -357,6 +357,58 @@ fn repair_excludes_the_project_node() {
     );
 }
 
+// ----- s06 F-5: the project node is excluded via *every* path, incl. the ---
+// ----- self_host coordinate→source transition (the exact CDC v2.1 finding) -
+
+#[test]
+fn selfhost_transition_excludes_the_project_node_from_source() {
+    let docs = TempDir::new().unwrap();
+    let root = docs.path();
+    // The real `project-plan.md` — deliberately NOT what the pre-existing
+    // node's body says, so a would-be ungated 1:1 stamp would be detectable
+    // as wrong even without a hash-mismatch error (it would just silently
+    // "succeed" and give the project a `source` it should never have).
+    write(root, "project-plan.md", "# Test Project\n\nThe real plan-of-record content.\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    // A pre-source legacy project node at exactly this run's coordinate
+    // (`PROJECT_NUMBER`), with a synthesis-shaped body — standing in for the
+    // live corpus's real project node (`replan.rs::vision_from_plan`).
+    let id = persist_legacy_node_with_body(
+        &store,
+        PROJECT_NUMBER,
+        NodeType::Project,
+        "odm",
+        "# odm\n\n# Vision\n\nSynthesized vision text, not the source verbatim.\n",
+    );
+
+    // Reached via `self_host`'s coordinate→source **transition**, not
+    // `repair` — the exact path the CDC v2.1 finding flagged as ungated.
+    let report = self_host(&store, root, Mode::Commit).expect("self-host does not error");
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|s| s.number == Some(PROJECT_NUMBER)
+                && matches!(s.reason, SkipReason::AlreadyExists)),
+        "the project is recognized by coordinate but never queued for the gated backfill: {:?}",
+        report.skipped.iter().map(|s| s.number).collect::<Vec<_>>()
+    );
+
+    let nodes = store.load_all().unwrap();
+    let project = nodes.iter().find(|d| d.frontmatter().id() == id).unwrap();
+    assert!(
+        project.frontmatter().source().is_none(),
+        "no 1:1 `source` via the transition path either"
+    );
+    assert_eq!(
+        project.body(),
+        "# odm\n\n# Vision\n\nSynthesized vision text, not the source verbatim.\n",
+        "the synthesis body is untouched"
+    );
+}
+
 // ----- F-7: source-based coverage matching resolves a named arc ------------
 
 #[test]

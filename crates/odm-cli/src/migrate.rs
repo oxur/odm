@@ -101,12 +101,29 @@ pub(crate) fn migrate(
     Ok(())
 }
 
-/// The plan-set derivation: imports a `design-vX.Y.Z/` plan set (project + arcs
-/// + slices) as work nodes.
+/// The plan-set derivation: **reconciles, then imports** a `design-vX.Y.Z/`
+/// plan set (project + arcs + slices) as work nodes.
 ///
 /// Reached only through `migrate` now. `self-host` was folded into it by RH C-5
 /// (F-14) and the surviving top-level spelling was removed by C-4, per ODD-0023
 /// §5 — one verb, whose derivation the tree's shape selects.
+///
+/// Runs the full migration-fidelity flow in **load-bearing order**
+/// (arc-migration-fidelity s06 F-2/F-3): [`odm_migrate::selfhost::repair`]
+/// **first** — repairs stub bodies and gated-backfills `source` onto every
+/// existing faithful node (the project excluded, ODD-0025 §2.3) — **then**
+/// [`odm_migrate::selfhost::self_host`], so the import's source-keyed
+/// idempotence (s05) finds every already-reconciled node by its now-populated
+/// `source.paths`, not just the ones that already had one. Reordering these
+/// would reintroduce exactly the gap s06 closed — a reconciled-before-import
+/// invariant, not an incidental sequence.
+///
+/// **No new flag**: both steps run unconditionally as part of the self-host
+/// path (a deliberate default-on choice — the command inventory documents no
+/// `--repair`/`--reconcile` opt-in, and `repair` is idempotent + gated + safe,
+/// so gating it behind a flag would only add a foot-gun: a plain `odm migrate`
+/// that silently skips reconciliation). Both steps already honor `--dry-run`
+/// identically (preview counts, write nothing).
 fn self_host_inner(
     store: &Store,
     plan_root: &Path,
@@ -116,13 +133,18 @@ fn self_host_inner(
 ) -> anyhow::Result<()> {
     let plan_root = plan_root.to_path_buf();
     let mode = Mode::from_dry_run(dry_run);
+
+    let repair_report = odm_migrate::selfhost::repair(store, &plan_root, mode)
+        .with_context(|| format!("reconciling the plan set at {}", plan_root.display()))?;
     let report = odm_migrate::selfhost::self_host(store, &plan_root, mode)
         .with_context(|| format!("self-hosting the plan set at {}", plan_root.display()))?;
 
+    render_repair(&repair_report, out)?;
     render_self_host(&report, out)?;
     let status = format!(
-        "{}: {} created, {} skipped{}",
+        "{}: {} reconciled, {} created, {} skipped{}",
         if report.dry_run { "self-host (dry-run)" } else { "self-host" },
+        repair_report.repaired_count(),
         report.created_count(),
         report.skipped_count(),
         if report.dry_run { " — nothing written" } else { "" },
@@ -132,6 +154,36 @@ fn self_host_inner(
     } else {
         term::success(err, &status)?
     }
+    Ok(())
+}
+
+/// The reconcile (repair/backfill) table's columns.
+const RECONCILE_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME", "ID"];
+
+/// Renders the reconcile pass: every existing node `repair` touched (a stub
+/// body replaced, or a faithful node gated-backfilled with `source`).
+/// Silent when there was nothing to reconcile — a fresh store's first
+/// self-host run has no existing nodes, so this table would otherwise render
+/// empty on every ordinary run.
+fn render_repair(
+    report: &odm_migrate::selfhost::RepairReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.repaired.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would reconcile" } else { "reconciled" };
+    let title = if report.dry_run { "RECONCILE (DRY RUN)" } else { "RECONCILE" };
+    let mut table = Themed::new(title, &RECONCILE_COLUMNS);
+    for r in &report.repaired {
+        table.row([verb.to_string(), r.number.to_string(), r.name.clone(), r.id.to_string()]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.repaired_count(),
+        if report.dry_run { "to reconcile" } else { "reconciled" }
+    ));
+    writeln!(out, "{}", table.render())?;
     Ok(())
 }
 

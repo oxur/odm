@@ -271,12 +271,29 @@ pub fn self_host(
         }
         if let Some(existing_doc) = by_coordinate.get(&key) {
             ids.insert(key, existing_doc.frontmatter().id());
-            skipped.push(Skipped {
-                number: Some(node.number),
-                path: plan_root.to_path_buf(),
-                reason: SkipReason::SourcePopulated,
-            });
-            to_populate.push((node, existing_doc.clone()));
+            let excluded = node.node_type == NodeType::Project
+                || existing_doc.frontmatter().retired().is_some();
+            if excluded {
+                // The project's body is a synthesis, never a 1:1 migration
+                // (ODD-0025 §2.3); a retired node is a historical record, not
+                // live work (`replan.rs`'s established principle) — either is
+                // recognized by coordinate, never queued for the gated backfill
+                // below (arc-migration-fidelity s06 F-1/F-5/F-10, CDC v2.1
+                // finding: this transition used to stamp `source` onto the
+                // project ungated, and carried no retired guard at all).
+                skipped.push(Skipped {
+                    number: Some(node.number),
+                    path: plan_root.to_path_buf(),
+                    reason: SkipReason::AlreadyExists,
+                });
+            } else {
+                skipped.push(Skipped {
+                    number: Some(node.number),
+                    path: plan_root.to_path_buf(),
+                    reason: SkipReason::SourcePopulated,
+                });
+                to_populate.push((node, existing_doc.clone()));
+            }
             continue;
         }
 
@@ -286,21 +303,18 @@ pub fn self_host(
     }
 
     // The one-time coordinate→source transition (F-2): backfill `source` onto
-    // each matched legacy node **in place** — id/edges/status/number untouched,
-    // only `source`/`updated`/schema change — the same "clone the frontmatter,
-    // mutate only the delta" pattern [`repair`] uses.
-    if !mode.is_dry_run() {
-        for (node, existing_doc) in &to_populate {
-            let source_path = body_source_path(node);
-            let mut new_fm = existing_doc.frontmatter().clone();
-            new_fm.set_updated(today);
-            new_fm.stamp_schema();
-            let new_fm = new_fm.with_source(crate::fidelity::build_source(
-                vec![source_path],
-                source_class(node.node_type),
-                today,
-            ));
-            let new_document = Document::new(new_fm, existing_doc.body().to_string());
+    // each matched legacy node **in place**, through the same gated,
+    // project-excluding [`reconcile_source`] policy [`repair`] uses (s06 F-1 —
+    // one `source`-population policy, not two). `to_populate` never contains
+    // the project node (excluded above), so this is `Some` for every entry;
+    // the `if let` still holds generically should that ever change. The gate
+    // runs even under `--dry-run` — a dry run still catches a drifted body,
+    // it just doesn't write (mirrors [`repair`]).
+    for (node, existing_doc) in &to_populate {
+        let Some(new_document) = reconcile_source(existing_doc, node, today)? else {
+            continue;
+        };
+        if !mode.is_dry_run() {
             store
                 .persist(&new_document)
                 .map_err(|source| MigrateError::Persist { number: node.number, source })?;
@@ -421,13 +435,22 @@ impl RepairReport {
     }
 }
 
-/// Repairs / backfills every `arc`/`slice` work node in `store` that lacks a
-/// `source` record, **update-in-place** (ODD-0025 §2.8, generalized past the
-/// stub filter by arc-migration-fidelity s05 F-4/F-5/F-6): matches it to its
-/// plan-set source under `plan_root` by structural coordinate (the same
-/// discovery [`self_host`] uses — a node without `source` predates this arc's
-/// identity model, so coordinate is the only handle available), then:
+/// Reconciles one existing node's `source` record against its plan-set
+/// source, **update-in-place** (ODD-0025 §2.8) — the single gated,
+/// project-excluding policy [`repair`] and [`self_host`]'s coordinate→source
+/// transition both use (arc-migration-fidelity s06 F-1/F-5/F-10, unifying
+/// what CDC's v2.1 finding identified as two independent `source`-backfill
+/// paths, one of them ungated).
 ///
+/// Returns `Ok(None)` for the **project** node, or a **retired** one, without
+/// touching or reading anything else: the project's body is a *synthesis* of
+/// `project-plan.md` §1 (`replan.rs::vision_from_plan`), never a 1:1 migration
+/// (ODD-0025 §2.3), so it can never pass the gate below (F-6); a retired node
+/// is a historical record, not live work — `replan.rs`'s established
+/// principle, extended here so a tombstone that happens to share a coordinate
+/// with a live plan directory is never silently rewritten.
+///
+/// For any other node:
 /// - **A stub** ([`crate::fidelity::is_stub_body`], ≤ 1 non-blank body line —
 ///   the exact predicate the coverage detector, s01, counts by; not re-derived
 ///   here, F-8-s04) has its body **replaced** with the verbatim source text
@@ -435,21 +458,74 @@ impl RepairReport {
 /// - **A faithful non-stub node** keeps its **existing** body untouched; the
 ///   hard body-hash gate ([`crate::fidelity::verify_body_hash`]) verifies it
 ///   against the source body — a match is a content no-op that only adds
-///   `source` (F-4); a **mismatch is surfaced** as
-///   [`MigrateError::BodyHashMismatch`], not swallowed (F-5) — the run stops
-///   there rather than silently backfilling over drift.
+///   `source` (s05 F-4); a **mismatch is surfaced** as
+///   [`MigrateError::BodyHashMismatch`], not swallowed (s05 F-5) — the caller
+///   stops there rather than silently backfilling over drift.
 ///
-/// Either way `id`, `edges`, and `status` are preserved (only `body` — for a
-/// stub — plus `source`, `updated`, and the schema marker change), via
-/// [`Store::persist`] (which overwrites by id — **no `delete`**).
+/// Either way the returned `Document` carries the same `id`/`edges`/`status`/
+/// `number` — only `body` (stub case), `source`, `updated`, and the schema
+/// marker change. The caller decides whether to persist it (both `repair` and
+/// `self_host` skip the write, but not the gate, under `--dry-run`).
 ///
-/// **The project node is excluded** (F-6): its body is a *synthesis* of
-/// `project-plan.md` §1 (`replan.rs::vision_from_plan`), not a 1:1 migration
-/// (ODD-0025 §2.3), so it can never pass the 1:1 gate here — it is left alone,
-/// not an error, pending the synthesis treatment (s08). A node with no
-/// matching plan-set entry (its source directory has since moved or been
-/// removed) is likewise left untouched, not an error — repair only ever
-/// touches nodes it can faithfully resolve a source for.
+/// # Errors
+///
+/// [`MigrateError::SourceRead`] if `plan_node`'s source body can't be read;
+/// [`MigrateError::BodyHashMismatch`] if a non-stub body has drifted from it.
+fn reconcile_source(
+    document: &Document,
+    plan_node: &PlanNode,
+    today: NaiveDate,
+) -> Result<Option<Document>, MigrateError> {
+    if plan_node.node_type == NodeType::Project || document.frontmatter().retired().is_some() {
+        return Ok(None);
+    }
+    let fm = document.frontmatter();
+    let source_path = body_source_path(plan_node);
+    let source_body = std::fs::read_to_string(&source_path)
+        .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
+
+    // A stub's body is worthless and is replaced outright; a faithful
+    // non-stub body is kept as-is — the gate below proves it matches the
+    // source rather than blindly overwriting a possibly hand-edited body.
+    let new_body = if crate::fidelity::is_stub_body(document.body()) {
+        source_body.clone()
+    } else {
+        document.body().to_string()
+    };
+
+    let mut new_fm = fm.clone();
+    new_fm.set_updated(today);
+    new_fm.stamp_schema();
+    let new_fm = new_fm.with_source(crate::fidelity::build_source(
+        vec![source_path],
+        source_class(plan_node.node_type),
+        today,
+    ));
+
+    let new_document = Document::new(new_fm, new_body);
+    crate::fidelity::verify_body_hash(
+        &source_body,
+        new_document.body(),
+        format!("#{} ({}) reconcile", fm.number(), fm.node_type()),
+    )?;
+    Ok(Some(new_document))
+}
+
+/// Repairs / backfills every work node in `store` that lacks a `source`
+/// record, **update-in-place** (ODD-0025 §2.8, generalized past the stub
+/// filter by arc-migration-fidelity s05 F-4/F-5/F-6): matches it to its
+/// plan-set source under `plan_root` by structural coordinate (the same
+/// discovery [`self_host`] uses — a node without `source` predates this arc's
+/// identity model, so coordinate is the only handle available), then
+/// reconciles it via [`reconcile_source`] — the project node and any retired
+/// node are excluded there, so no explicit filter is needed here.
+///
+/// `id`, `edges`, and `status` are preserved (only `body` — for a stub — plus
+/// `source`, `updated`, and the schema marker change), via [`Store::persist`]
+/// (which overwrites by id — **no `delete`**). A node with no matching
+/// plan-set entry (its source directory has since moved or been removed) is
+/// left untouched, not an error — repair only ever touches nodes it can
+/// faithfully resolve a source for.
 ///
 /// Idempotent: a node that already carries `source` is left alone, so
 /// re-running `repair` is always safe.
@@ -468,46 +544,15 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
     let mut repaired = Vec::new();
     for document in &corpus {
         let fm = document.frontmatter();
-        // The project is excluded (F-6): its body is a synthesis, not a 1:1
-        // migration (ODD-0025 §2.3) — it can never pass the gate below.
-        if !matches!(fm.node_type(), NodeType::Arc | NodeType::Slice) {
-            continue;
-        }
-        if fm.retired().is_some() || fm.source().is_some() {
+        if fm.source().is_some() {
             continue;
         }
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
             continue; // no plan-set source to repair from — left as-is
         };
-
-        let source_path = body_source_path(plan_node);
-        let source_body = std::fs::read_to_string(&source_path)
-            .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
-
-        // A stub's body is worthless and is replaced outright; a faithful
-        // non-stub body is kept as-is — the gate below proves it matches the
-        // source rather than blindly overwriting a possibly hand-edited body.
-        let new_body = if crate::fidelity::is_stub_body(document.body()) {
-            source_body.clone()
-        } else {
-            document.body().to_string()
+        let Some(new_document) = reconcile_source(document, plan_node, today)? else {
+            continue; // the project node, or a retired node — excluded (F-6)
         };
-
-        let mut new_fm = fm.clone();
-        new_fm.set_updated(today);
-        new_fm.stamp_schema();
-        let new_fm = new_fm.with_source(crate::fidelity::build_source(
-            vec![source_path],
-            source_class(plan_node.node_type),
-            today,
-        ));
-
-        let new_document = Document::new(new_fm, new_body);
-        crate::fidelity::verify_body_hash(
-            &source_body,
-            new_document.body(),
-            format!("#{} ({}) repair", fm.number(), fm.node_type()),
-        )?;
 
         repaired.push(Repaired {
             number: fm.number(),
@@ -853,5 +898,132 @@ mod tests {
         assert_eq!(terminal_index(NodeType::Arc, WorkStatus::Active), 2);
         assert_eq!(terminal_index(NodeType::Slice, WorkStatus::Closed), 3);
         assert_eq!(terminal_index(NodeType::Slice, WorkStatus::Planned), 0);
+    }
+
+    // ----- s06 F-1/F-5/F-10: reconcile_source is the one gated, project- ----
+    // ----- excluding `source`-population policy -----------------------------
+
+    #[test]
+    fn reconcile_source_excludes_the_project_node() {
+        let node = PlanNode {
+            node_type: NodeType::Project,
+            number: PROJECT_NUMBER,
+            name: "odm".to_string(),
+            parent_key: None,
+            status: WorkStatus::Active,
+            // A path that does not exist: exclusion must happen *before* any
+            // attempt to read a source body — the project is never gated.
+            source: Path::new("/nonexistent/project-plan.md").to_path_buf(),
+        };
+        let fm = Frontmatter::new(
+            Id::new(),
+            PROJECT_NUMBER,
+            NodeType::Project,
+            "odm",
+            today(),
+            today(),
+            Origin::Planned,
+        );
+        let document =
+            Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());
+
+        let result = reconcile_source(&document, &node, today());
+        assert!(
+            matches!(result, Ok(None)),
+            "the project is excluded outright, not gated and rejected: {result:?}"
+        );
+    }
+
+    #[test]
+    fn reconcile_source_excludes_a_retired_node() {
+        let node = PlanNode {
+            node_type: NodeType::Slice,
+            number: slice_number(1, 1, None),
+            name: "Tombstone".to_string(),
+            parent_key: Some((NodeType::Arc, arc_number(1))),
+            status: WorkStatus::Planned,
+            // A path that does not exist: a retired node is excluded before
+            // any attempt to read a source body, same as the project.
+            source: Path::new("/nonexistent/slice-doc.md").to_path_buf(),
+        };
+        let mut fm = Frontmatter::new(
+            Id::new(),
+            slice_number(1, 1, None),
+            NodeType::Slice,
+            "Tombstone",
+            today(),
+            today(),
+            Origin::Planned,
+        );
+        fm.retire("superseded by a later slice", today());
+        let document = Document::new(fm, "# Tombstone\n".to_string());
+
+        let result = reconcile_source(&document, &node, today());
+        assert!(
+            matches!(result, Ok(None)),
+            "a retired node is a historical record, never reconciled: {result:?}"
+        );
+    }
+
+    #[test]
+    fn reconcile_source_gates_a_drifted_non_stub_body() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let source_dir = tmp.path().join("arc01-alpha");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::write(source_dir.join("arc-plan.md"), "# Arc 01\n\nThe real content.\n").unwrap();
+
+        let node = PlanNode {
+            node_type: NodeType::Arc,
+            number: arc_number(1),
+            name: "Arc 01".to_string(),
+            parent_key: Some((NodeType::Project, PROJECT_NUMBER)),
+            status: WorkStatus::Active,
+            source: source_dir,
+        };
+        let fm = Frontmatter::new(
+            Id::new(),
+            arc_number(1),
+            NodeType::Arc,
+            "Arc 01",
+            today(),
+            today(),
+            Origin::Planned,
+        );
+        let document = Document::new(fm, "# Arc 01\n\nA drifted, different body.\n".to_string());
+
+        let err = reconcile_source(&document, &node, today()).unwrap_err();
+        assert!(matches!(err, MigrateError::BodyHashMismatch { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn reconcile_source_backfills_a_faithful_non_stub_body_as_a_no_op() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let source_dir = tmp.path().join("arc01-alpha");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let body = "# Arc 01\n\nThe real, faithful content.\n";
+        std::fs::write(source_dir.join("arc-plan.md"), body).unwrap();
+
+        let node = PlanNode {
+            node_type: NodeType::Arc,
+            number: arc_number(1),
+            name: "Arc 01".to_string(),
+            parent_key: Some((NodeType::Project, PROJECT_NUMBER)),
+            status: WorkStatus::Active,
+            source: source_dir,
+        };
+        let fm = Frontmatter::new(
+            Id::new(),
+            arc_number(1),
+            NodeType::Arc,
+            "Arc 01",
+            today(),
+            today(),
+            Origin::Planned,
+        );
+        let document = Document::new(fm, body.to_string());
+
+        let reconciled = reconcile_source(&document, &node, today()).unwrap().unwrap();
+        assert_eq!(reconciled.body(), body, "content no-op — the existing body is kept verbatim");
+        assert!(reconciled.frontmatter().source().is_some(), "source backfilled");
     }
 }
