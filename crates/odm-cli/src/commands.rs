@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
@@ -523,6 +523,26 @@ fn display_max_width(root: &Path) -> Option<usize> {
     let text = StoreHome::resolve(root).operational_text();
     let value: toml::Value = text.parse().ok()?;
     value.get("display")?.get("max_width")?.as_integer().and_then(|n| usize::try_from(n).ok())
+}
+
+/// The `[coverage] scan_root` setting from the operational config
+/// (arc-migration-fidelity s09 F-5): the docs tree `check`'s doc-coverage
+/// rule scans, resolved relative to `root` if given as a relative path.
+///
+/// Read from the raw text like [`display_max_width`], not through
+/// `StoreConfig` — same rationale, a scan-root setting is not author
+/// identity. **Absent by default, and that absence is deliberate**: the key
+/// does not exist in the live store's config today, so this rule stays a
+/// no-op there until a follow-on live-run slice adds it — turning the rule on
+/// against the real corpus is gated behind the snapshot → dry-run → fire
+/// protocol (pre-mint, the live corpus has ~211 uncovered docs by
+/// construction, which would make `check` red the moment this key appears).
+fn coverage_scan_root(root: &Path) -> Option<PathBuf> {
+    let text = StoreHome::resolve(root).operational_text();
+    let value: toml::Value = text.parse().ok()?;
+    let configured = value.get("coverage")?.get("scan_root")?.as_str()?;
+    let path = Path::new(configured);
+    Some(if path.is_absolute() { path.to_path_buf() } else { root.join(path) })
 }
 
 /// `show X` — node + edges + way-finding (parent and children). Data → `out`.
@@ -1605,6 +1625,38 @@ fn aggregate(
                 detail: "the project states no vision (no `# Vision` section in its body)"
                     .to_string(),
                 fix: format!("add a `# Vision` section to {}", file.display()),
+            });
+        }
+    }
+
+    // (c3) doc-coverage (MF-1/MF-6, arc-migration-fidelity s09 F-5): any `.md`
+    // under the configured scan root with no covering node is an Error — "no
+    // file left behind" as a mechanically enforced property, built on s08's
+    // portable relative `source.paths` key (`odm_migrate::coverage::run`'s
+    // primary, exact match). `None` (no `[coverage] scan_root` configured) is
+    // the ordinary case today — see `coverage_scan_root`'s doc for why that's
+    // deliberate, not a gap.
+    if let Some(scan_root) = coverage_scan_root(root) {
+        let coverage_report = odm_migrate::coverage::run(store, &scan_root)
+            .context("running doc-coverage for `check`")?;
+        for uncovered in coverage_report.doc_coverage.uncovered() {
+            entries.push(CheckEntry {
+                severity: Severity::Error,
+                code: "uncovered-doc",
+                node: None,
+                number: None,
+                name: None,
+                detail: format!(
+                    "`{}` ({}) has no covering node — {}",
+                    uncovered.path.display(),
+                    uncovered.class.as_str(),
+                    uncovered.basis
+                ),
+                fix: format!(
+                    "mint a node for `{}` (`odm migrate --coverage` / the artifact minter), \
+                     or remove the file",
+                    uncovered.path.display()
+                ),
             });
         }
     }
