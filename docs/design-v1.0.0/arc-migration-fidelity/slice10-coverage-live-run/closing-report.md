@@ -2,12 +2,15 @@
 
 > **Arc:** Migration Fidelity (`arc-migration-fidelity`) · **Slice:** 10 · **Feeds:** MF-1, MF-3, MF-5,
 > MF-6 · **Realizes:** ODD-0025 §2.5/§2.6/§2.7 (live), plus five operator-directed additions beyond the
-> original scope (below) · **Assignment:** `cc-prompt.md` · **Ledger:** `ledger.md` (F-1…F-15) ·
-> **Implemented by:** CC · **Date:** 2026-07-29
-> **Branches:** `odm` (the live mint, commit `355404a`, atop known-good `7226797`) + `release/1.0.x`
-> (six commits: the F-11…F-14 capability fixes, the F-15 display feature) · **Evidence class:** live,
-> direct-read-of-committed-store (class-(b)) for F-1…F-9, fixture-attested (class-(a)) for F-11…F-15's
-> code, reproduced against the live corpus for F-11…F-15's outcome.
+> original scope (below) · **Assignment:** `cc-prompt.md`, `cc-prompt-iteration1.md` · **Ledger:**
+> `ledger.md` (F-1…F-21: base F-1…F-15, iteration 1 F-16…F-21) · **Implemented by:** CC ·
+> **Date:** 2026-07-29 (base + iteration 1, same day)
+> **Branches:** `odm` (the live mint `355404a` atop known-good `7226797`; the iteration-1 corrective
+> `2fc25f5` atop `355404a`) + `release/1.0.x` (base: six commits, the F-11…F-14 capability fixes + the
+> F-15 display feature; iteration 1: two commits, `ff68186` the seam fix + guard + fixtures, `3eddf38`
+> the `canonicalize_source_paths` live-fix mechanism) · **Evidence class:** live,
+> direct-read-of-committed-store (class-(b)) for F-1…F-9 and F-18…F-19, fixture-attested (class-(a)) for
+> F-11…F-17's code, reproduced against the live corpus for F-11…F-15/F-19's outcome.
 
 ## What shipped
 
@@ -61,10 +64,69 @@ test — each is disclosed below with what was found, what was fixed, and how it
 | F-14 | Decomposition-drift fix | **done** | `is_work()`-only children; 2 tests; 0 live drift findings post-mint (was 4, reproduced pre-fix). |
 | F-15 | `odm list` promotion | **done** | Pure display change; 9 tests; 250/251 live cross-check. |
 
-**Rows: 15. Done: 15. Deferred: 0. No-op: 0.** No silent drops: the slice-doc's "Out" items (the
-capability itself — that's s09; synthesis/L-8b — s11; the arc-close reconcile run incl. living-doc-drift
-— s12) are confirmed untouched. The 2 drifted design/research nodes (F-6) are a **new**, disclosed item
-for s12's reconcile to pick up, not a silent gap.
+**Rows: 15. Done: 15 (1 later corrected — see Iteration 1). Deferred: 0. No-op: 0.** No silent drops: the
+slice-doc's "Out" items (the capability itself — that's s09; synthesis/L-8b — s11; the arc-close
+reconcile run incl. living-doc-drift — s12) are confirmed untouched. The 2 drifted design/research nodes
+(F-6) are a **new**, disclosed item for s12's reconcile to pick up, not a silent gap.
+
+## Iteration 1 — source-path portability regression (CDC finding)
+
+**What regressed.** CDC verification of the base close (above) reproduced the live store and found a
+silent portability regression: the 4 design nodes minted this slice (#22 store-home, #23 command-surface,
+#24 id-scheme, #25 migration-fidelity) carried **absolute** `source.paths` — CDC v2.8 Finding 1's exact
+bug, which s08 fixed and drove to 0 across the whole corpus. Root cause: the design/ODD import path
+(`mapping::build_node`) was the one node-creation seam never routed through `fidelity::relativize`,
+unlike `artifact.rs`/`notes.rs`/`mapping::backfill_source`, which already relativized correctly. `odm
+check` passed green at the base close only because the doc-coverage matcher relativizes stored paths
+*before* comparing — the s08 transition-tolerance masked the regression, and nothing enforced "a stored
+`source.paths` must be relative" as an invariant in its own right. This falsifies F-10's "no model drift"
+claim from the base close (re-dispositioned in `ledger.md`, not silently overwritten).
+
+**The fix.** Two parts, landed as two `release/1.0.x` commits before any live write:
+
+1. **The seam** (`ff68186`): `mapping::build_node` now relativizes `source_path` against the plan-tree
+   anchor before storing it — the one missing call site, brought in line with every other creation path.
+2. **The durable invariant** (`ff68186`): `odm_core::check` gains an **unconditional** Error rule,
+   `absolute-source-path` — any `source.paths` entry that is absolute or `.worktrees/`-anchored, on any
+   node type, fails `check`. Unlike `[coverage] scan_root`, no config gate — there is no legitimate
+   absolute case. This is the point of iteration 1: had this rule existed at the base close, the
+   regression would have gone red immediately, not slipped through silently.
+3. **The live-fix mechanism** (`3eddf38`): `mapping::canonicalize_source_paths`, `backfill_source`'s
+   complement — that pass only ever touches *sourceless* nodes, and these 4 already had a (malformed)
+   `source`, so it was invisible to every existing reconcile pass. Wired into the default `odm migrate`
+   flow alongside `backfill_source`, with its own dry-run-aware, idempotent CANONICALIZE report.
+
+**The guard, proven against the real regression (F-18).** Built the freshly-fixed release binary and ran
+`odm check` against the live store **before** the corrective rewrite (still at `355404a`, still carrying
+the 4 absolute paths): the new rule fired exactly 4 times, naming exactly `#22`/`#23`/`#24`/`#25` and no
+others across the full 369-node corpus. This is the strongest evidence available that the guard catches
+the *actual* regression, not just a synthetic fixture shape.
+
+**Before/after counts (F-19, the live rewrite).** Snapshot fingerprint
+`be63aa49b738eb0eadb7b9cf2f4d6df1212a0ab7ce202ca745e4f267e927b485` over 369 node files at `355404a`.
+`odm migrate docs/design --dry-run` adjudicated to exactly **4 canonicalize / 0 create / 0 upgrade / 2
+drift (skipped, the pre-existing ODD-0013/0020 case, untouched)**; fingerprint unchanged after the
+dry-run. Fired as commit `2fc25f5` on `odm`, atop `355404a`. `git diff 355404a..2fc25f5`: exactly 4
+files, exactly one `source.paths` line changed in each, nothing else — same ids, same bodies, same
+schema, same dates. Node count 369 → 369 (0 net create/delete). Post-fire: `odm check` shows **0**
+`absolute-source-path` findings (was 4); the 2 pre-existing, unrelated `uncovered-doc` findings (this
+iteration's own two not-yet-artifact-minted planning docs) are unchanged before/after. `odm orient` is
+byte-identical across 2 runs. A second `odm migrate docs/design` reports `0 path(s) canonicalized` —
+idempotent. Coverage: 371 covered (unchanged from the base close), 373 total (+2 for this iteration's
+own docs, disclosed, not this regression's concern).
+
+## Ledger — per-row walk (iteration 1)
+
+| ID | Criterion | Status | Disposition |
+|----|-----------|--------|-------------|
+| F-16 | Seam fixed | **done** | `mapping::build_node` now relativizes; new regression test green. |
+| F-17 | Durable invariant enforced | **done** | Unconditional `absolute-source-path` Error rule; 7 new fixture tests (4 `odm-core`, 3 `odm-cli`). |
+| F-18 | Reproduce-the-bug evidence | **done** | Live `odm check` before the rewrite: exactly 4 findings, naming exactly the 4 known nodes. After: 0. |
+| F-19 | Live rewrite | **done** | One revertible commit `2fc25f5` atop `355404a`; `git diff` confirms path-string-only change; idempotent; `orient` byte-stable. |
+| F-20 | Optional ODD-0025 §4 companion | **deferred (flagged)** | Would introduce fresh body drift on node #25, one of the 4 in-scope nodes — skipped per the cc-prompt's own allowance. |
+| F-21 | `ROLLUP.md` staleness (disclosed) | **deferred (flagged)** | Stale since before this iteration; incidental regeneration during verification reverted to keep the diff scoped. |
+
+**Rows: 6. Done: 4. Deferred (flagged, disclosed): 2. No-op: 0.**
 
 ## Verification
 
@@ -83,6 +145,17 @@ for s12's reconcile to pick up, not a silent gap.
 | `orient` / `rollup --dry-run` ×2 | byte-identical |
 | Structural cross-check, artifact containment | 250/251 files match exactly; 1 explained (F-5) |
 | Structural cross-check, note tagging | 31/31 notes correctly tagged/uncontained |
+| **Iteration 1** — `cargo test --workspace --all-features` | 0 failed, checked after each of the 2 iteration-1 commits |
+| **Iteration 1** — `cargo clippy --workspace --all-targets --all-features -- -D warnings` | clean |
+| **Iteration 1** — `cargo fmt --check` | clean |
+| **Iteration 1** — Snapshot fingerprint | `be63aa49b738eb0eadb7b9cf2f4d6df1212a0ab7ce202ca745e4f267e927b485` (369 files), unchanged after `--dry-run` |
+| **Iteration 1** — Dry-run vs. fire | identical: 4 canonicalize / 0 create / 0 upgrade / 2 drift (skipped, pre-existing) |
+| **Iteration 1** — Live commit | `2fc25f5` on `odm`, atop `355404a`; 4 files, 1 line each |
+| **Iteration 1** — `odm check`, `absolute-source-path` findings | before: 4 (naming exactly #22/#23/#24/#25); after: 0 |
+| **Iteration 1** — Node count | 369 → 369 (0 net create/delete) |
+| **Iteration 1** — `odm orient` ×2 | byte-identical |
+| **Iteration 1** — Re-run idempotence | `0 path(s) canonicalized` on second `odm migrate docs/design` |
+| **Iteration 1** — Coverage post-fire | 371/373 covered (371 unchanged from base close; +2 total = this iteration's own 2 not-yet-minted docs, disclosed) |
 
 ## Deviations / findings (flagged, per the working agreement)
 
@@ -132,6 +205,27 @@ can recover, and outside `--follow`'s reach (it cannot see across a repository b
 decision: accepted as-is, not chased further.** The dates are still a strict improvement over the prior
 "always today" behavior, and are honestly the best this repository's own history can produce.
 
+### Iteration 1: two disclosed, deferred items (F-20, F-21)
+
+**F-20 — the optional ODD-0025 §4 companion, skipped.** `cc-prompt-iteration1.md` explicitly allowed
+folding in a one-line ODD-0025 §4 wording fix (`artifact/v1.0` → the actually-delivered `artifact/v1.1`)
+*if trivial*. The text edit itself is trivial, but ODD-0025 is node #25's own source file — one of the
+exact 4 nodes this iteration's hard gate requires stay byte-identical. Editing it would silently drift
+node #25's body from its (now-edited) source, the same living-doc-drift class s08's CDC verification
+already found on the active arc-plan node. Rather than introduce a *new* instance of that drift inside an
+iteration whose entire discipline is "only the path string changes," this was skipped and flagged per the
+cc-prompt's own explicit allowance — a real, worthwhile fix, just not one that belongs inside this
+iteration's tight blast radius. Natural home: s12 (reconcile), alongside the 2 already-drifted design
+nodes from F-6.
+
+**F-21 — `ROLLUP.md` found stale on `release/1.0.x`, unrelated to this regression.** Running `odm rollup`
+twice for the F-19 byte-stability check regenerated the committed `ROLLUP.md` with a 1042-insertion diff
+— it still shows pre-RH-C-2 taxonomy labels (`odd #9`) against a corpus that has read `design`/`research`
+since the C-2 restamp, so it has been stale since at least before this session's live runs began, not
+caused by this iteration. Reverted the incidental regeneration (`git checkout -- ROLLUP.md`) so this
+iteration's `release/1.0.x` diff stays scoped to its own two commits. Flagged as a separate, disclosed
+housekeeping item — not silently regenerated here, not silently left dirty either.
+
 ### `[coverage] scan_root` is wider than the original ledger anticipated
 
 The original F-7 language expected activating coverage would need careful scoping (the s09 cc-prompt's
@@ -179,5 +273,33 @@ additions, all disclosed above and in the ledger. Every s10-scoped "In" item lan
   gap (12/12 arcs, all slices, confirmed).
 - **s11 (synthesis + L-8b) is next**, unblocked.
 - **s12 (reconcile run)** picks up: the living-doc-drift reconcile for the active arc node (s08 CDC
-  finding) **and now also** the 2 drifted design/research nodes (ODD-0013, ODD-0020) this slice found and
-  correctly declined to silently backfill.
+  finding), the 2 drifted design/research nodes (ODD-0013, ODD-0020) this slice found and correctly
+  declined to silently backfill, **and now also** F-20's ODD-0025 §4 wording touch-up (deferred here for
+  the same drift-avoidance reason).
+
+## Bubble-up addendum — iteration 1 (CDC finding + fix)
+
+**Did iteration 1 deliver what CDC's finding required?** Yes. CDC reproduced the live store after the
+base close and found the exact CDC v2.8 Finding 1 bug had recurred on one seam (4 nodes, absolute
+`source.paths`), masked by the coverage matcher's own transition tolerance. This iteration: (1) fixed the
+seam so no future `migrate` run can reproduce it; (2) added an unconditional `check` rule so the *class*
+of bug — not just this instance — is caught immediately, not silently, at any future recurrence; (3)
+proved the rule against the real regression before fixing it (4 → 0), not just against synthetic
+fixtures; (4) fired the corrective rewrite as one revertible, verified commit. **MF-1/MF-6's "coverage
+enforced live" now rests on a durably self-checking foundation** — the specific gap that let this
+regression through green is itself now a hard-gated invariant.
+
+**What this revealed that the base close's own verification didn't catch:** the base close's F-10 row
+("no model drift") was asserted from a code-level review (grep for `unsafe`, confirm the identity axis
+unchanged) rather than from re-running `check` with a rule that could have caught this specific
+regression — because that rule didn't exist yet. This is not a process failure so much as the textbook
+case LEDGER-DISCIPLINE's CDC-independence exists for: the doer's self-verification and the independent
+verifier's reproduction-from-artifacts can catch different things, and here they did. The fix is
+structural (a durable check rule), not just a one-time data correction, precisely so this class of gap
+doesn't require a second independent catch next time.
+
+**Arc-ledger update (supersedes/extends the base bubble-up above):** MF-1/MF-6 stay **done**, now with
+the added qualifier "durably enforced" (the invariant that made the regression possible is itself
+checked). s10 does **not** flip to CDC-verified PASS on the base close alone — it requires CDC to
+reproduce iteration 1's two claims (0 absolute `source.paths` remain; the `absolute-source-path` rule is
+present and unconditional) against the committed store and code before the slice is fully closed.
