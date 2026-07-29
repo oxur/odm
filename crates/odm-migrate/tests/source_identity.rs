@@ -102,8 +102,12 @@ fn selfhost_idempotence_keys_on_source_not_number() {
 
     // A node at a number `discover()` would never compute for arc01
     // (`arc_number(1) == 1100`), but with exactly the source path `self_host`
-    // would compute for it.
-    let source_path = root.join("arc01-alpha/arc-plan.md");
+    // would compute for it. `self_host` canonicalizes `plan_root` internally
+    // (arc-migration-fidelity s08 F-1) before deriving its anchor, so this
+    // must match against the same canonicalized form, not the raw `TempDir`
+    // path (which can differ, e.g. a `/tmp` → `/private/tmp` symlink).
+    let canonical_root = root.canonicalize().unwrap();
+    let source_path = canonical_root.join("arc01-alpha/arc-plan.md");
     let id = persist_source_bearing_node(
         &store,
         9999,
@@ -415,6 +419,12 @@ fn selfhost_transition_excludes_the_project_node_from_source() {
 fn coverage_source_based_matching_resolves_a_named_arc() {
     let docs = TempDir::new().unwrap();
     let root = docs.path();
+    // A `.git` marker at the repo root, same as any real checkout — so
+    // `self_host`'s and `coverage::run`'s independently-derived anchors
+    // (arc-migration-fidelity s08 F-1/F-6) converge on the same git
+    // toplevel even though the two calls start from different subpaths
+    // below it, exactly as they do in production.
+    std::fs::write(root.join(".git"), "gitdir: fake\n").unwrap();
     let design_root = root.join("design-v1.0.0");
     write(&design_root, "project-plan.md", "# Test Project\n");
     write(&design_root, "arc-store-home/arc-plan.md", "# Named arc\n");

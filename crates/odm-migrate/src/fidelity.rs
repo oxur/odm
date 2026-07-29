@@ -10,6 +10,8 @@
 //! reintroduces a transformation (e.g. a synthesized heading) is caught
 //! immediately rather than silently reproducing the 44-stub regression.
 
+use std::path::{Path, PathBuf};
+
 use chrono::NaiveDate;
 use odm_core::frontmatter::Source;
 use sha2::{Digest as _, Sha256};
@@ -91,6 +93,89 @@ pub fn build_source(
     }
 }
 
+/// Finds the git toplevel worktree root containing `start` — the anchor a
+/// plan tree's storable paths relativize against (ODD-0025 §2.2,
+/// arc-migration-fidelity s08 F-1). Walks up looking for a `.git` entry; a
+/// **linked worktree's `.git` is a file**, not a directory (it holds a
+/// `gitdir: …` pointer), so this checks existence, not `is_dir()` — the same
+/// shape `odm_store::config`'s private `repo_root` helper uses, reimplemented
+/// here rather than exposed cross-crate, since this concern is local to how
+/// `source.paths` gets stored.
+///
+/// `start` must be absolute; a relative `start` would make the `.exists()`
+/// probes implicitly (and fragilely) cwd-relative.
+#[must_use]
+pub fn git_toplevel(start: &Path) -> Option<PathBuf> {
+    let mut dir = Some(start);
+    while let Some(d) = dir {
+        if d.join(".git").exists() {
+            return Some(d.to_path_buf());
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+/// The anchor `plan_root`'s storable paths relativize against: the git
+/// toplevel of the worktree containing it (**never** a multi-worktree
+/// layout's superproject root — anchoring there would bake in
+/// `.worktrees/1.0.x/`, s08's whole reason for existing), or `plan_root`
+/// itself if it isn't inside a git repo at all (a plan tree used standalone).
+#[must_use]
+pub fn anchor_for(plan_root: &Path) -> PathBuf {
+    git_toplevel(plan_root).unwrap_or_else(|| plan_root.to_path_buf())
+}
+
+/// Relativizes `path` to `anchor` into **canonical** form (ODD-0025 §2.2,
+/// arc-migration-fidelity s08 F-1/F-2): forward slashes, no leading `/`, no
+/// `./`/`..` components, no trailing slash — identical regardless of whether
+/// `path` arrived absolute or already relative, and regardless of how many
+/// `.`/`..`/trailing-slash decorations the original argument carried (`Path`'s
+/// own component model already normalizes those away; only `..` needs
+/// explicit handling here, via popping the last collected part).
+///
+/// Case is preserved, **not** folded (s08 F-2's decided case rule): paths are
+/// always derived from an actual directory listing (`discover`/`enumerate_docs`
+/// walk `read_dir`/`WalkDir`, never echo a user-typed argument's spelling), so
+/// the stored case always matches the filesystem's — and therefore git's —
+/// tracked case, on any OS, without needing a filesystem-dependent fold that
+/// would risk collapsing two distinctly-named files on a general (non-macOS)
+/// checkout.
+///
+/// This is the sole seam through which a path becomes a stored `source.paths`
+/// entry or a `by_source` lookup key; paired with [`resolve_from_anchor`] for
+/// the opposite direction (s08 F-3) — one anchor, both directions, so they
+/// cannot drift.
+#[must_use]
+pub fn relativize(anchor: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(anchor).unwrap_or(path);
+    let mut parts: Vec<String> = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(part) => parts.push(part.to_string_lossy().into_owned()),
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            std::path::Component::CurDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {}
+        }
+    }
+    parts.join("/")
+}
+
+/// Resolves a stored (canonical, anchor-relative) `source.paths` entry back
+/// to an absolute filesystem path — the exact inverse of [`relativize`],
+/// through the same anchor (s08 F-3), for [`crate::selfhost::reconcile_source`]'s
+/// read. Also correctly resolves a still-absolute legacy entry (pre-s08):
+/// [`Path::join`] replaces the whole path outright when the joined-on
+/// argument is itself absolute, so no separate branch is needed for the
+/// transition case.
+#[must_use]
+pub fn resolve_from_anchor(anchor: &Path, stored: &str) -> PathBuf {
+    anchor.join(stored)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,5 +216,80 @@ mod tests {
         assert_eq!(source.normalization, "trim+lf");
         assert!(source.migrated_by.starts_with("odm-migrate/"));
         assert_eq!(source.class, "arc-plan");
+    }
+
+    // ----- s08 F-1/F-2/F-3: anchor + relativize + resolve -----------------
+
+    #[test]
+    fn git_toplevel_finds_a_worktrees_own_git_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let toplevel = tmp.path().join("worktree-root");
+        let nested = toplevel.join("docs/design-v1.0.0/arc01-alpha");
+        std::fs::create_dir_all(&nested).unwrap();
+        // A linked worktree's `.git` is a FILE, not a directory.
+        std::fs::write(toplevel.join(".git"), "gitdir: /elsewhere/.git/worktrees/x\n").unwrap();
+
+        assert_eq!(git_toplevel(&nested), Some(toplevel.clone()));
+        assert_eq!(git_toplevel(&toplevel), Some(toplevel));
+    }
+
+    #[test]
+    fn git_toplevel_is_none_outside_any_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let nested = tmp.path().join("no-git-here");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert_eq!(git_toplevel(&nested), None);
+    }
+
+    #[test]
+    fn anchor_for_falls_back_to_plan_root_without_a_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        assert_eq!(anchor_for(tmp.path()), tmp.path());
+    }
+
+    #[test]
+    fn relativize_strips_the_anchor_and_normalizes() {
+        let anchor = Path::new("/repo/worktree");
+        assert_eq!(
+            relativize(anchor, Path::new("/repo/worktree/docs/design-v1.0.0/arc-plan.md")),
+            "docs/design-v1.0.0/arc-plan.md"
+        );
+    }
+
+    #[test]
+    fn relativize_is_invariant_to_arg_spelling() {
+        let anchor = Path::new("/repo/worktree");
+        // Absolute, already-relative, a `./`-prefixed relative, and one with
+        // an internal `..` all collapse to the identical canonical string.
+        let absolute = Path::new("/repo/worktree/docs/design-v1.0.0/arc-plan.md");
+        let already_relative = Path::new("docs/design-v1.0.0/arc-plan.md");
+        let dot_prefixed = Path::new("./docs/design-v1.0.0/arc-plan.md");
+        let with_dotdot = Path::new("docs/design-v1.0.0/other/../arc-plan.md");
+
+        let expected = "docs/design-v1.0.0/arc-plan.md";
+        assert_eq!(relativize(anchor, absolute), expected);
+        assert_eq!(relativize(anchor, already_relative), expected);
+        assert_eq!(relativize(anchor, dot_prefixed), expected);
+        assert_eq!(relativize(anchor, with_dotdot), expected);
+    }
+
+    #[test]
+    fn relativize_and_resolve_from_anchor_round_trip() {
+        let anchor = Path::new("/repo/worktree");
+        let original = anchor.join("docs/design-v1.0.0/arc-plan.md");
+        let relative = relativize(anchor, &original);
+        assert_eq!(resolve_from_anchor(anchor, &relative), original);
+    }
+
+    #[test]
+    fn resolve_from_anchor_handles_a_legacy_absolute_stored_path() {
+        // A pre-s08 node's `source.paths` entry is still absolute; resolving
+        // it "from" any anchor must still yield that same absolute path
+        // (`Path::join` replaces outright on an absolute second argument) —
+        // the property the transition rewrite (F-4) leans on.
+        let anchor = Path::new("/repo/worktree");
+        let legacy_absolute =
+            "/Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design-v1.0.0/arc-plan.md";
+        assert_eq!(resolve_from_anchor(anchor, legacy_absolute), Path::new(legacy_absolute));
     }
 }

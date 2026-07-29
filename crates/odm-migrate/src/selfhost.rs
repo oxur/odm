@@ -167,10 +167,22 @@ impl SelfHostReport {
         self.created.len()
     }
 
-    /// The number of plan nodes skipped (already present).
+    /// The number of plan nodes skipped (already present) — a superset of
+    /// [`rewritten_count`](Self::rewritten_count): a rewritten node is also
+    /// "not created", just distinguishable in the list by its
+    /// [`SkipReason::PathRewritten`] reason.
     #[must_use]
     pub fn skipped_count(&self) -> usize {
         self.skipped.len()
+    }
+
+    /// The number of matched nodes whose `source.paths` was rewritten to the
+    /// canonical, anchor-relative form (arc-migration-fidelity s08 F-4) —
+    /// counted from `skipped`, not a separate list, since a rewrite is a kind
+    /// of "not created" outcome, just not an untouched one.
+    #[must_use]
+    pub fn rewritten_count(&self) -> usize {
+        self.skipped.iter().filter(|s| matches!(s.reason, SkipReason::PathRewritten)).count()
     }
 }
 
@@ -222,14 +234,30 @@ pub fn self_host(
     plan_root: &Path,
     mode: Mode,
 ) -> Result<SelfHostReport, MigrateError> {
+    // Canonicalize once, up front (arc-migration-fidelity s08 F-1/F-2): every
+    // `PlanNode.source` — and therefore every `body_source_path` — is built by
+    // joining onto `plan_root`, so if `plan_root` itself isn't already
+    // absolute-and-canonical, those derived paths won't line up cleanly
+    // against the (absolute) anchor below, and a caller-spelling difference
+    // (relative arg, extra `..`, a different cwd) could leak into the stored
+    // form. Falls back to the raw path if it doesn't exist (discover() itself
+    // degrades the same way — an empty plan, not an error).
+    let plan_root_buf = plan_root.canonicalize().unwrap_or_else(|_| plan_root.to_path_buf());
+    let plan_root = plan_root_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(plan_root);
+
     let plan = discover(plan_root);
     let today = today();
 
-    // The existing-node identity index: `by_source` (the primary key, F-1) from
-    // every work node that already carries a `source` record; `by_coordinate`
-    // (the one-time transition fallback, F-2) from every work node that does
-    // not — the corpus's pre-slice05 state.
-    let mut by_source: HashMap<std::path::PathBuf, Id> = HashMap::new();
+    // The existing-node identity index: `by_source` (the primary key, F-1)
+    // keyed on the **canonical, anchor-relative** form of every stored
+    // `source.paths` entry — whether the entry itself is already stored
+    // relative (post-s08) or still absolute (pre-s08; s08 F-4's transition
+    // case, since `relativize` tolerates both) — from every work node that
+    // already carries a `source` record; `by_coordinate` (the one-time
+    // transition fallback, F-2) from every work node that does not — the
+    // corpus's pre-slice05 state.
+    let mut by_source: HashMap<String, Document> = HashMap::new();
     let mut by_coordinate: HashMap<(NodeType, u32), Document> = HashMap::new();
     for document in store.load_all().map_err(MigrateError::LoadCorpus)? {
         let fm = document.frontmatter();
@@ -239,7 +267,7 @@ pub fn self_host(
         match fm.source() {
             Some(source) => {
                 for path in &source.paths {
-                    by_source.insert(path.clone(), fm.id());
+                    by_source.insert(crate::fidelity::relativize(&anchor, path), document.clone());
                 }
             }
             None => {
@@ -248,25 +276,44 @@ pub fn self_host(
         }
     }
 
-    // Pass 1 — decide create / transition-populate / skip, minting an id per
-    // creation. `ids` maps every (type, number) **this run** will have wired
-    // (present ∪ minted) so `part_of` can resolve, regardless of what number an
-    // already-existing matched node happens to carry on disk.
+    // Pass 1 — decide create / transition-populate / path-rewrite / skip,
+    // minting an id per creation. `ids` maps every (type, number) **this
+    // run** will have wired (present ∪ minted) so `part_of` can resolve,
+    // regardless of what number an already-existing matched node happens to
+    // carry on disk.
     let mut ids: HashMap<(NodeType, u32), Id> = HashMap::new();
     let mut to_create: Vec<(PlanNode, Id)> = Vec::new();
     let mut to_populate: Vec<(PlanNode, Document)> = Vec::new();
+    let mut to_rewrite: Vec<(PlanNode, Document, String)> = Vec::new();
     let mut skipped = Vec::new();
     for node in plan {
         let key = (node.node_type, node.number);
-        let source_path = body_source_path(&node);
+        let source_key = crate::fidelity::relativize(&anchor, &body_source_path(&node));
 
-        if let Some(&existing_id) = by_source.get(&source_path) {
-            ids.insert(key, existing_id);
-            skipped.push(Skipped {
-                number: Some(node.number),
-                path: plan_root.to_path_buf(),
-                reason: SkipReason::AlreadyExists,
-            });
+        if let Some(existing_doc) = by_source.get(&source_key) {
+            ids.insert(key, existing_doc.frontmatter().id());
+            let stored_is_canonical = existing_doc
+                .frontmatter()
+                .source()
+                .is_some_and(|s| s.paths == [std::path::PathBuf::from(&source_key)]);
+            if stored_is_canonical {
+                skipped.push(Skipped {
+                    number: Some(node.number),
+                    path: plan_root.to_path_buf(),
+                    reason: SkipReason::AlreadyExists,
+                });
+            } else {
+                // s08 F-4, the re-mint guard: matched by the canonical key
+                // derived from a non-canonical stored form (still absolute,
+                // pre-s08) — recognized, never re-created; the stored path
+                // string is corrected in place below.
+                skipped.push(Skipped {
+                    number: Some(node.number),
+                    path: plan_root.to_path_buf(),
+                    reason: SkipReason::PathRewritten,
+                });
+                to_rewrite.push((node, existing_doc.clone(), source_key));
+            }
             continue;
         }
         if let Some(existing_doc) = by_coordinate.get(&key) {
@@ -302,6 +349,29 @@ pub fn self_host(
         to_create.push((node, id));
     }
 
+    // s08 F-4: rewrite each matched-but-non-canonical node's `source.paths`
+    // to the canonical relative form — **only** the path string changes; id,
+    // edges, status, body, schema, and `updated` are all left exactly as
+    // they were (a pure identity-form correction, not a reconcile — so it
+    // runs even under a matched project/retired node, which can never reach
+    // here since those are always canonicalized the same way they're
+    // excluded, via `by_coordinate`/the transition below, not `by_source`).
+    if !mode.is_dry_run() {
+        for (node, existing_doc, canonical_key) in &to_rewrite {
+            let mut new_source = existing_doc
+                .frontmatter()
+                .source()
+                .expect("matched via by_source implies a source record")
+                .clone();
+            new_source.paths = vec![std::path::PathBuf::from(canonical_key)];
+            let new_fm = existing_doc.frontmatter().clone().with_source(new_source);
+            let new_document = Document::new(new_fm, existing_doc.body().to_string());
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: node.number, source })?;
+        }
+    }
+
     // The one-time coordinate→source transition (F-2): backfill `source` onto
     // each matched legacy node **in place**, through the same gated,
     // project-excluding [`reconcile_source`] policy [`repair`] uses (s06 F-1 —
@@ -311,7 +381,7 @@ pub fn self_host(
     // runs even under `--dry-run` — a dry run still catches a drifted body,
     // it just doesn't write (mirrors [`repair`]).
     for (node, existing_doc) in &to_populate {
-        let Some(new_document) = reconcile_source(existing_doc, node, today)? else {
+        let Some(new_document) = reconcile_source(existing_doc, node, &anchor, today)? else {
             continue;
         };
         if !mode.is_dry_run() {
@@ -333,16 +403,17 @@ pub fn self_host(
     // Pass 2 — build each node (schema-stamped, parented, gates from status),
     // import its **verbatim** source body (ODD-0025 §2.1 — no synthesized H1,
     // no header injection; this replaced the stub-body root cause) and attach
-    // its `source` record, then persist **children-up**: slices, then arcs,
-    // then the project root last.
+    // its `source` record (stored relative-and-canonical, s08 F-1), then
+    // persist **children-up**: slices, then arcs, then the project root last.
     let mut built: Vec<(Frontmatter, String)> = Vec::new();
     for (node, id) in &to_create {
         let fm = build_node(node, *id, &ids, &children, today);
         let source_path = body_source_path(node);
         let body = std::fs::read_to_string(&source_path)
             .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
+        let relative = crate::fidelity::relativize(&anchor, &source_path);
         let fm = fm.with_source(crate::fidelity::build_source(
-            vec![source_path],
+            vec![std::path::PathBuf::from(relative)],
             source_class(node.node_type),
             today,
         ));
@@ -474,13 +545,19 @@ impl RepairReport {
 fn reconcile_source(
     document: &Document,
     plan_node: &PlanNode,
+    anchor: &Path,
     today: NaiveDate,
 ) -> Result<Option<Document>, MigrateError> {
     if plan_node.node_type == NodeType::Project || document.frontmatter().retired().is_some() {
         return Ok(None);
     }
     let fm = document.frontmatter();
-    let source_path = body_source_path(plan_node);
+    // Round-trip through the canonical relative form before reading (s08
+    // F-3): write and read share one anchor, so a node's stored `source`
+    // resolves back to the exact file this reads, not a coincidentally-equal
+    // absolute path derived independently.
+    let relative = crate::fidelity::relativize(anchor, &body_source_path(plan_node));
+    let source_path = crate::fidelity::resolve_from_anchor(anchor, &relative);
     let source_body = std::fs::read_to_string(&source_path)
         .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
 
@@ -497,7 +574,7 @@ fn reconcile_source(
     new_fm.set_updated(today);
     new_fm.stamp_schema();
     let new_fm = new_fm.with_source(crate::fidelity::build_source(
-        vec![source_path],
+        vec![std::path::PathBuf::from(relative)],
         source_class(plan_node.node_type),
         today,
     ));
@@ -536,6 +613,12 @@ fn reconcile_source(
 /// read, the hard body-hash gate fails (a drifted non-stub body, F-5), or a
 /// persist fails.
 pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairReport, MigrateError> {
+    // See `self_host`'s matching comment: canonicalize once so every path
+    // derived from `plan_root` lines up cleanly against the anchor (s08 F-1).
+    let plan_root_buf = plan_root.canonicalize().unwrap_or_else(|_| plan_root.to_path_buf());
+    let plan_root = plan_root_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(plan_root);
+
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
     let plan_by_key: HashMap<(NodeType, u32), PlanNode> =
         discover(plan_root).into_iter().map(|n| ((n.node_type, n.number), n)).collect();
@@ -550,7 +633,7 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
             continue; // no plan-set source to repair from — left as-is
         };
-        let Some(new_document) = reconcile_source(document, plan_node, today)? else {
+        let Some(new_document) = reconcile_source(document, plan_node, &anchor, today)? else {
             continue; // the project node, or a retired node — excluded (F-6)
         };
 
@@ -927,7 +1010,7 @@ mod tests {
         let document =
             Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());
 
-        let result = reconcile_source(&document, &node, today());
+        let result = reconcile_source(&document, &node, Path::new("/anchor"), today());
         assert!(
             matches!(result, Ok(None)),
             "the project is excluded outright, not gated and rejected: {result:?}"
@@ -958,7 +1041,7 @@ mod tests {
         fm.retire("superseded by a later slice", today());
         let document = Document::new(fm, "# Tombstone\n".to_string());
 
-        let result = reconcile_source(&document, &node, today());
+        let result = reconcile_source(&document, &node, Path::new("/anchor"), today());
         assert!(
             matches!(result, Ok(None)),
             "a retired node is a historical record, never reconciled: {result:?}"
@@ -991,7 +1074,7 @@ mod tests {
         );
         let document = Document::new(fm, "# Arc 01\n\nA drifted, different body.\n".to_string());
 
-        let err = reconcile_source(&document, &node, today()).unwrap_err();
+        let err = reconcile_source(&document, &node, tmp.path(), today()).unwrap_err();
         assert!(matches!(err, MigrateError::BodyHashMismatch { .. }), "{err:?}");
     }
 
@@ -1022,8 +1105,13 @@ mod tests {
         );
         let document = Document::new(fm, body.to_string());
 
-        let reconciled = reconcile_source(&document, &node, today()).unwrap().unwrap();
+        let reconciled = reconcile_source(&document, &node, tmp.path(), today()).unwrap().unwrap();
         assert_eq!(reconciled.body(), body, "content no-op — the existing body is kept verbatim");
-        assert!(reconciled.frontmatter().source().is_some(), "source backfilled");
+        let source = reconciled.frontmatter().source().expect("source backfilled");
+        assert_eq!(
+            source.paths,
+            vec![Path::new("arc01-alpha/arc-plan.md")],
+            "relative + canonical"
+        );
     }
 }

@@ -243,10 +243,17 @@ pub enum CoverageError {
 /// [`CoverageError::LoadCorpus`] if the store's corpus cannot be loaded.
 pub fn run(store: &Store, docs_root: &Path) -> Result<CoverageReport, CoverageError> {
     let corpus = store.load_all().map_err(CoverageError::LoadCorpus)?;
-    let index = NodeIndex::build(&corpus);
+    // The same anchor `source.paths` is stored relative to (arc-migration-fidelity
+    // s08 F-1/F-6) — canonicalized so the doc-coverage comparison key lines up
+    // with the stored form regardless of how `docs_root` itself was spelled or
+    // reached, the same robustness `self_host`/`repair` need (s08's whole point).
+    let docs_root_buf = docs_root.canonicalize().unwrap_or_else(|_| docs_root.to_path_buf());
+    let docs_root = docs_root_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(docs_root);
+    let index = NodeIndex::build(&corpus, &anchor);
 
     let docs = enumerate_docs(docs_root);
-    let doc_coverage = doc_coverage(&docs, &index, docs_root);
+    let doc_coverage = doc_coverage(&docs, &index, docs_root, &anchor);
     let representation = representation(&docs, &index);
     let stubs = stub_bodies(&corpus);
     let provenance_missing = provenance_absence(&corpus);
@@ -261,15 +268,19 @@ struct NodeIndex {
     arc_numbers: BTreeSet<u32>,
     slice_numbers: BTreeSet<u32>,
     doc_numbers: BTreeSet<u32>,
-    /// Every `source.paths` entry across the whole corpus (arc-migration-fidelity
-    /// s05, F-7, ODD-0025 §5) — the **primary**, exact doc-coverage match. The
-    /// `*_numbers` sets above are the **pre-`source` fallback** (a legacy node
-    /// that predates this arc's identity model), kept only for that transition.
-    source_paths: BTreeSet<PathBuf>,
+    /// Every `source.paths` entry across the whole corpus, in **canonical,
+    /// anchor-relative form** (arc-migration-fidelity s05 F-7 / s08 F-1/F-6,
+    /// ODD-0025 §5) — the **primary**, exact doc-coverage match. Built via
+    /// [`crate::fidelity::relativize`], which tolerates a stored entry that is
+    /// itself still absolute (pre-s08), so this stays correct against a
+    /// not-yet-rewritten corpus too. The `*_numbers` sets above are the
+    /// **pre-`source` fallback** (a legacy node that predates this arc's
+    /// identity model), kept only for that transition.
+    source_paths: BTreeSet<String>,
 }
 
 impl NodeIndex {
-    fn build(corpus: &[Document]) -> Self {
+    fn build(corpus: &[Document], anchor: &Path) -> Self {
         let mut index = Self {
             project_exists: false,
             arc_numbers: BTreeSet::new(),
@@ -293,7 +304,9 @@ impl NodeIndex {
                 NodeType::Adr | NodeType::Note => {}
             }
             if let Some(source) = fm.source() {
-                index.source_paths.extend(source.paths.iter().cloned());
+                index
+                    .source_paths
+                    .extend(source.paths.iter().map(|p| crate::fidelity::relativize(anchor, p)));
             }
         }
         index
@@ -371,16 +384,24 @@ fn classify(relative: &Path) -> DocClass {
 
 // ----- doc-coverage detector (F-3) -------------------------------------------
 
-fn doc_coverage(docs: &[SourceDoc], index: &NodeIndex, docs_root: &Path) -> DocCoverageReport {
+fn doc_coverage(
+    docs: &[SourceDoc],
+    index: &NodeIndex,
+    docs_root: &Path,
+    anchor: &Path,
+) -> DocCoverageReport {
     let entries = docs
         .iter()
         .map(|doc| {
             let absolute = docs_root.join(&doc.path);
-            // Primary: an exact `source.paths` match (ODD-0025 §5, F-7) — this
-            // alone resolves a named arc, which the structural fallbacks below
-            // can never do (a named arc directory has no numbered coordinate to
-            // re-derive; see `arc_coordinate`'s doc).
-            let (covered, basis) = if index.source_paths.contains(&absolute) {
+            // Primary: an exact `source.paths` match (ODD-0025 §5, F-7),
+            // compared in the same canonical, anchor-relative form `source`
+            // is stored in (s08 F-6) — this alone resolves a named arc, which
+            // the structural fallbacks below can never do (a named arc
+            // directory has no numbered coordinate to re-derive; see
+            // `arc_coordinate`'s doc).
+            let key = crate::fidelity::relativize(anchor, &absolute);
+            let (covered, basis) = if index.source_paths.contains(&key) {
                 (true, "source.paths (exact match)")
             } else {
                 match doc.class {

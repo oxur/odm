@@ -172,6 +172,12 @@ pub enum SkipReason {
     /// its `source` record in place — not re-created, but not an untouched skip
     /// either.
     SourcePopulated,
+    /// `self_host` matched an existing node by its stable identity, but the
+    /// node's stored `source.paths` was in a non-canonical form (still
+    /// absolute, pre-arc-migration-fidelity-s08) — rewritten in place to the
+    /// canonical, anchor-relative form (s08 F-4). Not re-created; only the
+    /// path *string* changed, nothing else.
+    PathRewritten,
     /// The file could not be read or its frontmatter was invalid.
     Malformed(String),
     /// The frontmatter parsed but could not be mapped (missing number / unknown
@@ -185,6 +191,9 @@ impl std::fmt::Display for SkipReason {
             SkipReason::AlreadyExists => write!(f, "already exists (skipped)"),
             SkipReason::SourcePopulated => {
                 write!(f, "already exists — source backfilled (coordinate transition)")
+            }
+            SkipReason::PathRewritten => {
+                write!(f, "already exists — source.paths rewritten to canonical form")
             }
             SkipReason::Malformed(m) => write!(f, "malformed: {m}"),
             SkipReason::Unmappable(e) => write!(f, "{e}"),
@@ -633,6 +642,7 @@ mod tests {
     fn skip_reason_displays_each_variant() {
         assert!(SkipReason::AlreadyExists.to_string().contains("already exists"));
         assert!(SkipReason::SourcePopulated.to_string().contains("source backfilled"));
+        assert!(SkipReason::PathRewritten.to_string().contains("canonical form"));
         assert!(SkipReason::Malformed("bad".into()).to_string().contains("malformed: bad"));
         assert!(
             SkipReason::Unmappable(MapError::MissingNumber)
