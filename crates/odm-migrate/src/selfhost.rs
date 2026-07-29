@@ -120,7 +120,12 @@ const NAMED_ARC_SLOTS: u32 = 1_000_000;
 
 /// A stable (FNV-1a) hash of an arc slug — deterministic and recomputable
 /// from the slug alone, with no dependency on any other arc in the corpus.
-fn slug_hash(slug: &str) -> u32 {
+///
+/// `pub(crate)`: the artifact minter ([`crate::artifact`]) reuses this same
+/// technique — hash a stable string into a dedicated number band, collision-
+/// bump against what's already taken — to derive an artifact's `number`
+/// handle from its own relative path.
+pub(crate) fn slug_hash(slug: &str) -> u32 {
     let mut hash: u32 = 0x811c_9dc5;
     for byte in slug.as_bytes() {
         hash ^= u32::from(*byte);
@@ -915,7 +920,10 @@ fn h1_or_slug(path: &Path, fallback: &str) -> String {
 }
 
 /// The first Markdown H1 (`# …`) in a file, if it can be read and has one.
-fn first_h1(path: &Path) -> Option<String> {
+///
+/// `pub(crate)`: the artifact minter ([`crate::artifact`]) reuses this for a
+/// supporting doc's name, the same way a plan node's name is derived.
+pub(crate) fn first_h1(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     text.lines().find_map(|line| line.strip_prefix("# ").map(|h| h.trim().to_string()))
 }

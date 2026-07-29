@@ -15,13 +15,19 @@
 //! [`classify_type`]: `research` iff its `tags` include `research`, else
 //! `design` (ODD-0013 §2.2 v2.0).
 
+use std::collections::HashMap;
+use std::path::Path;
+
 use chrono::NaiveDate;
-use odm_core::frontmatter::Frontmatter;
+use odm_core::frontmatter::{Document, Frontmatter};
 use odm_core::gates::GateSet;
 use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
+use odm_store::Store;
 
-use crate::legacy::LegacyFrontmatter;
+use crate::legacy::{self, LegacyDoc, LegacyFrontmatter};
+use crate::selfhost::{RepairReport, Repaired};
+use crate::{MigrateError, Mode};
 
 /// The canonical `design` gate sequence (ODD-0013 §5.1). The migration mapping
 /// is pinned against this; a repo that customizes `[gates.design]` can pass its
@@ -258,6 +264,109 @@ pub fn build_node(
     // understood as v0.1; the new node is v1.0.
     fm.stamp_schema();
     fm
+}
+
+/// Backfills `source` onto every existing `design`/`research` node in `store`
+/// that lacks one — update-in-place (ODD-0025 §2.8), mirroring
+/// [`crate::selfhost::repair`]'s shape but keyed on the **legacy corpus's**
+/// number-based identity: unlike a plan-set arc/slice, a design/research node
+/// has no structural-directory fallback to match by — `number` (the legacy
+/// ODD's own frontmatter field, the pre-s05 identity this document family
+/// still runs on — MF-3's residual scope) is the only handle available.
+///
+/// Matches each sourceless document node to its legacy file under
+/// `legacy_path` by `number` ([`legacy::discover`]/[`legacy::parse_file`], the
+/// same read [`crate::migrate`] uses), then reconciles it exactly as
+/// [`crate::selfhost::reconcile_source`] does for a plan-set node: a stub body
+/// ([`crate::fidelity::is_stub_body`]) is replaced with the verbatim legacy
+/// body; a faithful non-stub body is kept and verified against the source
+/// under the hard body-hash gate ([`crate::fidelity::verify_body_hash`]) — a
+/// mismatch is a hard error, never silently swallowed. Containment is left
+/// untouched: design/research containment is optional (ODD-0025 §2.7), so
+/// this backfill only ever adds `source`, `updated`, and re-stamps the schema
+/// marker.
+///
+/// A node whose legacy `number` has no matching file under `legacy_path`
+/// (moved or removed since) is left untouched, not an error — same
+/// never-touches-what-it-can't-resolve discipline as `repair`. Idempotent: a
+/// node that already carries `source` is skipped, so re-running is safe.
+///
+/// # Errors
+///
+/// [`MigrateError`] if the corpus can't be loaded, the body-hash gate fails
+/// (a drifted non-stub body), or a persist fails.
+pub fn backfill_source(
+    store: &Store,
+    legacy_path: &Path,
+    mode: Mode,
+) -> Result<RepairReport, MigrateError> {
+    let legacy_path_buf = legacy_path.canonicalize().unwrap_or_else(|_| legacy_path.to_path_buf());
+    let legacy_path = legacy_path_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(legacy_path);
+
+    let mut by_number: HashMap<u32, LegacyDoc> = HashMap::new();
+    for path in legacy::discover(legacy_path) {
+        if let Ok(doc) = legacy::parse_file(&path) {
+            if let Some(number) = doc.front.number {
+                by_number.insert(number, doc);
+            }
+        }
+    }
+
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let today = chrono::Utc::now().date_naive();
+    let mut repaired = Vec::new();
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !matches!(fm.node_type(), NodeType::Design | NodeType::Research) {
+            continue;
+        }
+        if fm.source().is_some() {
+            continue;
+        }
+        let Some(legacy_doc) = by_number.get(&fm.number()) else {
+            continue; // no matching legacy source file — left as-is
+        };
+
+        let new_body = if crate::fidelity::is_stub_body(document.body()) {
+            legacy_doc.body.clone()
+        } else {
+            document.body().to_string()
+        };
+        let relative = crate::fidelity::relativize(&anchor, &legacy_doc.path);
+
+        let mut new_fm = fm.clone();
+        new_fm.set_updated(today);
+        new_fm.stamp_schema();
+        let new_fm = new_fm.with_source(crate::fidelity::build_source(
+            vec![std::path::PathBuf::from(relative)],
+            "odd",
+            today,
+        ));
+
+        let new_document = Document::new(new_fm, new_body);
+        crate::fidelity::verify_body_hash(
+            &legacy_doc.body,
+            new_document.body(),
+            format!("#{} ({}) source backfill", fm.number(), fm.node_type()),
+        )?;
+
+        repaired.push(Repaired {
+            number: fm.number(),
+            id: fm.id(),
+            name: new_document.frontmatter().name().to_string(),
+            node_type: fm.node_type(),
+        });
+
+        if !mode.is_dry_run() {
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    repaired.sort_by_key(|r| r.number);
+    Ok(RepairReport { repaired, dry_run: mode.is_dry_run() })
 }
 
 /// Records the document gates from the start of the sequence up to and including
