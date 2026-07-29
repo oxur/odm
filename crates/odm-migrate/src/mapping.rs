@@ -278,58 +278,35 @@ pub fn build_node(
     fm
 }
 
-/// One node `backfill_source` could not reconcile: its legacy source has
-/// **drifted** since it was migrated — the body no longer matches, byte-for-
-/// byte after normalization, the current legacy file (arc-migration-fidelity
-/// s10, surfaced while running `backfill_source` live against `docs/design`:
-/// ODD-0013 and ODD-0020, both actively amended throughout this rebuild,
-/// hit exactly this).
-///
-/// `backfill_source` never overwrites a body it cannot verify (the hard
-/// body-hash gate, ODD-0025 §2.1) — but rather than aborting the *whole*
-/// batch on the first drifted node (as a single-node caller of
-/// [`crate::fidelity::verify_body_hash`] would via `?`), a drift is a
-/// **per-node skip**, disclosed here, not swallowed and not fatal: the other,
-/// undrifted nodes in the same run still get backfilled. The node itself is
-/// left completely untouched (no `source`, no body change) — reconciling a
-/// living-doc drift is the arc's `s12` reconcile-run's job (the same gap
-/// s08's CDC verification surfaced for an actively-edited arc-plan node);
-/// this only ever reports it.
-#[derive(Debug, Clone)]
-pub struct Drifted {
-    /// The node's number (unchanged — nothing was written).
-    pub number: u32,
-    /// The node's identity.
-    pub id: Id,
-    /// The node's name.
-    pub name: String,
-    /// The node's type (`design` or `research`).
-    pub node_type: NodeType,
-}
-
 /// The outcome of a [`backfill_source`] run.
 #[derive(Debug, Clone)]
 pub struct BackfillReport {
-    /// Nodes backfilled (or, under `--dry-run`, that would be backfilled).
+    /// Nodes whose body was an s04-era stub, replaced outright (or, under
+    /// `--dry-run`, that would be).
     pub repaired: Vec<Repaired>,
-    /// Nodes skipped because their legacy source has drifted — see
-    /// [`Drifted`]'s doc for why this is a report, not a failure.
-    pub drifted: Vec<Drifted>,
+    /// Nodes whose non-stub body no longer matched their current legacy
+    /// source — legitimately amended since an earlier, out-of-band import —
+    /// and were **re-snapshotted** to the current content (arc-migration-
+    /// fidelity s12 F-1). Before s12 this bucket was a per-node *skip*
+    /// (recorded as drifted, left untouched); ODD-0013 and ODD-0020 hit
+    /// exactly this live (s10) and are the reason it now reconciles instead.
+    pub reconciled: Vec<Repaired>,
     /// Whether this was a dry run (nothing written).
     pub dry_run: bool,
 }
 
 impl BackfillReport {
-    /// The number of nodes backfilled (or planned, under `--dry-run`).
+    /// The number of stub bodies replaced (or planned, under `--dry-run`).
     #[must_use]
     pub fn repaired_count(&self) -> usize {
         self.repaired.len()
     }
 
-    /// The number of nodes skipped as drifted.
+    /// The number of non-stub bodies re-snapshotted from a changed source
+    /// (or planned, under `--dry-run`).
     #[must_use]
-    pub fn drifted_count(&self) -> usize {
-        self.drifted.len()
+    pub fn reconciled_count(&self) -> usize {
+        self.reconciled.len()
     }
 }
 
@@ -343,25 +320,45 @@ impl BackfillReport {
 ///
 /// Matches each sourceless document node to its legacy file under
 /// `legacy_path` by `number` ([`legacy::discover`]/[`legacy::parse_file`], the
-/// same read [`crate::migrate`] uses), then reconciles it exactly as
-/// [`crate::selfhost::reconcile_source`] does for a plan-set node: a stub body
-/// ([`crate::fidelity::is_stub_body`]) is replaced with the verbatim legacy
-/// body; a faithful non-stub body is kept and verified against the source
-/// under the hard body-hash gate ([`crate::fidelity::verify_body_hash`]) — a
-/// mismatch is never silently swallowed **and never aborts the batch**: it is
-/// recorded as [`Drifted`] and the run continues (see that type's doc).
+/// same read [`crate::migrate`] uses; a legacy file that has *moved* is still
+/// found, since `legacy::discover` walks the current tree and matches by
+/// number, never by a remembered path — moved-source re-discovery for the
+/// sourceless case falls out of this for free). The node's body always
+/// becomes the current legacy body: an s04-era stub
+/// ([`crate::fidelity::is_stub_body`]) is replaced outright (`repaired`); a
+/// non-stub body that no longer byte-matches (after normalization) the
+/// current legacy content is **re-snapshotted** to it (`reconciled`) rather
+/// than skipped (arc-migration-fidelity s12 F-1 — see [`BackfillReport`]'s
+/// field docs for why this changed from s09/s10's skip-and-record). Either
+/// way the hard body-hash gate ([`crate::fidelity::verify_body_hash`]) is
+/// checked as a sanity assertion, not a rejection: the body was just set
+/// *from* the legacy content being compared against, so it can only fail on a
+/// genuine normalization bug, never on legitimate drift.
+///
 /// Containment is left untouched: design/research containment is optional
-/// (ODD-0025 §2.7), so this backfill only ever adds `source`, `updated`, and
-/// re-stamps the schema marker.
+/// (ODD-0025 §2.7), so this backfill only ever touches `body`, `source`,
+/// `updated`, and the schema marker.
 ///
 /// A node whose legacy `number` has no matching file under `legacy_path`
-/// (moved or removed since) is left untouched, not an error — same
-/// never-touches-what-it-can't-resolve discipline as `repair`. Idempotent: a
-/// node that already carries `source` is skipped, so re-running is safe.
+/// (removed since, not merely moved) is left untouched, not an error — same
+/// never-touches-what-it-can't-resolve discipline as `repair`. Idempotent for
+/// a different reason than a body-match no-op would give: once a node is
+/// backfilled it carries `source`, so the `fm.source().is_some()` guard
+/// above skips it on any later run — re-running is safe because the node is
+/// no longer sourceless, not because its body happens to already agree.
+///
+/// This is the *migration-fidelity* reconcile (ODD-0025 §2.1/§2.8) — not to
+/// be confused with the unrelated `odm-reconcile` crate / `odm reconcile`
+/// command (arc05, ODD-0013 §5.2's `desired_facts`/`Probe` drift detection).
+/// See [`reconcile_source`] for the sibling operation on a node that
+/// **already has** a `source` (this function only ever touches sourceless
+/// ones).
 ///
 /// # Errors
 ///
-/// [`MigrateError`] if the corpus can't be loaded or a persist fails.
+/// [`MigrateError`] if the corpus can't be loaded, a persist fails, or (only
+/// on a genuine normalization bug, not legitimate drift) the sanity hash
+/// check fails.
 pub fn backfill_source(
     store: &Store,
     legacy_path: &Path,
@@ -370,20 +367,12 @@ pub fn backfill_source(
     let legacy_path_buf = legacy_path.canonicalize().unwrap_or_else(|_| legacy_path.to_path_buf());
     let legacy_path = legacy_path_buf.as_path();
     let anchor = crate::fidelity::anchor_for(legacy_path);
-
-    let mut by_number: HashMap<u32, LegacyDoc> = HashMap::new();
-    for path in legacy::discover(legacy_path) {
-        if let Ok(doc) = legacy::parse_file(&path) {
-            if let Some(number) = doc.front.number {
-                by_number.insert(number, doc);
-            }
-        }
-    }
+    let by_number = legacy_by_number(legacy_path);
 
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
     let today = chrono::Utc::now().date_naive();
     let mut repaired = Vec::new();
-    let mut drifted = Vec::new();
+    let mut reconciled = Vec::new();
     for document in &corpus {
         let fm = document.frontmatter();
         if !matches!(fm.node_type(), NodeType::Design | NodeType::Research) {
@@ -395,50 +384,28 @@ pub fn backfill_source(
         let Some(legacy_doc) = by_number.get(&fm.number()) else {
             continue; // no matching legacy source file — left as-is
         };
+        // Note: no "already matches, skip" no-op check here — this branch
+        // only ever runs on a *sourceless* node, so backfilling `source`
+        // itself is the point regardless of whether the body happens to
+        // already agree; idempotence for this function comes from the
+        // `fm.source().is_some()` guard above (once backfilled, never
+        // revisited). Contrast `reconcile_source`, whose no-op check is over
+        // already-sourced nodes where nothing but a genuine mismatch
+        // justifies a rewrite.
+        let was_stub = crate::fidelity::is_stub_body(document.body());
 
-        let new_body = if crate::fidelity::is_stub_body(document.body()) {
-            legacy_doc.body.clone()
-        } else {
-            document.body().to_string()
-        };
-        let relative = crate::fidelity::relativize(&anchor, &legacy_doc.path);
-        // Real `updated` from the legacy file's own last-touch commit (RH
-        // F-20), not "the day backfill ran" — falls back to `today` only
-        // when git has no record.
-        let (_, updated) = crate::fidelity::git_derived_dates(&anchor, &legacy_doc.path, today);
-
-        let mut new_fm = fm.clone();
-        new_fm.set_updated(updated);
-        new_fm.stamp_schema();
-        let new_fm = new_fm.with_source(crate::fidelity::build_source(
-            vec![std::path::PathBuf::from(relative)],
-            "odd",
-            today,
-        ));
-
-        let new_document = Document::new(new_fm, new_body);
-        if crate::fidelity::verify_body_hash(
-            &legacy_doc.body,
-            new_document.body(),
-            format!("#{} ({}) source backfill", fm.number(), fm.node_type()),
-        )
-        .is_err()
-        {
-            drifted.push(Drifted {
-                number: fm.number(),
-                id: fm.id(),
-                name: fm.name().to_string(),
-                node_type: fm.node_type(),
-            });
-            continue;
-        }
-
-        repaired.push(Repaired {
+        let new_document = snapshot_from_legacy(fm, legacy_doc, &anchor, today)?;
+        let entry = Repaired {
             number: fm.number(),
             id: fm.id(),
             name: new_document.frontmatter().name().to_string(),
             node_type: fm.node_type(),
-        });
+        };
+        if was_stub {
+            repaired.push(entry);
+        } else {
+            reconciled.push(entry);
+        }
 
         if !mode.is_dry_run() {
             store
@@ -448,8 +415,203 @@ pub fn backfill_source(
     }
 
     repaired.sort_by_key(|r| r.number);
-    drifted.sort_by_key(|d| d.number);
-    Ok(BackfillReport { repaired, drifted, dry_run: mode.is_dry_run() })
+    reconciled.sort_by_key(|r| r.number);
+    Ok(BackfillReport { repaired, reconciled, dry_run: mode.is_dry_run() })
+}
+
+/// Builds the discovered-legacy-file index [`backfill_source`] and
+/// [`reconcile_source`] both key on: every parseable legacy doc under
+/// `legacy_path`, by its frontmatter `number`. Walking the *current* tree
+/// (rather than remembering a stored path) is what makes a moved legacy file
+/// still resolve by identity, for free.
+fn legacy_by_number(legacy_path: &Path) -> HashMap<u32, LegacyDoc> {
+    let mut by_number = HashMap::new();
+    for path in legacy::discover(legacy_path) {
+        if let Ok(doc) = legacy::parse_file(&path)
+            && let Some(number) = doc.front.number
+        {
+            by_number.insert(number, doc);
+        }
+    }
+    by_number
+}
+
+/// Builds a re-snapshotted [`Document`] from `fm` (preserved as-is except for
+/// `source`/`updated`/schema) and `legacy_doc`'s current body — the shared
+/// core [`backfill_source`] and [`reconcile_source`] both use.
+///
+/// # Errors
+///
+/// [`MigrateError::BodyHashMismatch`] only on a genuine normalization bug —
+/// the new body is always set *from* `legacy_doc.body`, so the sanity check
+/// against that same value can only fail if `normalize` itself disagrees with
+/// itself, never on legitimate drift.
+fn snapshot_from_legacy(
+    fm: &Frontmatter,
+    legacy_doc: &LegacyDoc,
+    anchor: &Path,
+    today: NaiveDate,
+) -> Result<Document, MigrateError> {
+    let relative = crate::fidelity::relativize(anchor, &legacy_doc.path);
+    // Real `updated` from the legacy file's own last-touch commit (RH F-20),
+    // not "the day this ran" — falls back to `today` only when git has no
+    // record.
+    let (_, updated) = crate::fidelity::git_derived_dates(anchor, &legacy_doc.path, today);
+
+    let mut new_fm = fm.clone();
+    new_fm.set_updated(updated);
+    new_fm.stamp_schema();
+    let new_fm = new_fm.with_source(crate::fidelity::build_source(
+        vec![std::path::PathBuf::from(relative)],
+        "odd",
+        today,
+    ));
+
+    let new_document = Document::new(new_fm, legacy_doc.body.clone());
+    crate::fidelity::verify_body_hash(
+        &legacy_doc.body,
+        new_document.body(),
+        format!("#{} ({}) source reconcile", fm.number(), fm.node_type()),
+    )?;
+    Ok(new_document)
+}
+
+/// One design/research node [`reconcile_source`] touched: its stored
+/// `source.paths` no longer resolved, its body had drifted from the current
+/// legacy content, or both.
+#[derive(Debug, Clone)]
+pub struct Reconciled {
+    /// The node's number.
+    pub number: u32,
+    /// The node's identity (unchanged — a reconcile never re-mints).
+    pub id: Id,
+    /// The node's name.
+    pub name: String,
+    /// The node's type (`design` or `research`).
+    pub node_type: NodeType,
+    /// Whether the stored `source.paths` no longer resolved and had to be
+    /// re-discovered by number (arc-migration-fidelity s12 F-2 — e.g. the
+    /// s11 L-8b `01-draft/`→`04-accepted/` moves).
+    pub path_moved: bool,
+    /// Whether the body no longer matched the current legacy content and was
+    /// re-snapshotted (s12 F-1).
+    pub body_drifted: bool,
+}
+
+/// The outcome of a [`reconcile_source`] run.
+#[derive(Debug, Clone)]
+pub struct ReconcileSourceReport {
+    /// Nodes reconciled (path rewritten, body re-snapshotted, or both) — or,
+    /// under `--dry-run`, that would be.
+    pub reconciled: Vec<Reconciled>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl ReconcileSourceReport {
+    /// The number of nodes reconciled (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn reconciled_count(&self) -> usize {
+        self.reconciled.len()
+    }
+}
+
+/// Reconciles every **already-sourced** `design`/`research` node in `store`
+/// against its legacy file, under `legacy_path` — [`backfill_source`]'s
+/// sibling and complement: that function only ever touches a *sourceless*
+/// node; this one only ever touches a node that already carries a `source`.
+///
+/// For each such node:
+/// - resolve the stored `source.paths` entry via `anchor`
+///   ([`crate::fidelity::resolve_from_anchor`]); if the file exists there,
+///   that is the current legacy source;
+/// - otherwise, the legacy file has **moved** (arc-migration-fidelity s12
+///   F-2 — the s11 L-8b `01-draft/`→`04-accepted/` renames are the concrete
+///   case): re-discover it by `number` ([`legacy_by_number`], the same
+///   current-tree walk [`backfill_source`] uses), and rewrite `source.paths`
+///   to the s08-relative canonical form of its new location
+///   ([`crate::fidelity::relativize`]);
+/// - if neither resolves, the node is left untouched, not an error (same
+///   never-touches-what-it-can't-find discipline as `repair`/
+///   `backfill_source`).
+///
+/// Once the current legacy file is found, the node's body is compared
+/// (byte-for-byte after normalization): already faithful is a no-op; drifted
+/// is **re-snapshotted** to the current content (s12 F-1) — this is the
+/// living-plan-node policy (s12 F-3, ODD-0025 amended): reconcile always
+/// re-establishes fidelity to *whatever the source currently says*, with no
+/// special exclusion for a still-changing source, since the §2.1 gate is
+/// migration-time-only (re-verified only when reconcile itself runs, never
+/// continuously). `id`, tags, component, `author`/`version`, and gate status
+/// are preserved untouched — only `body`, `source`, `updated`, and the schema
+/// marker change.
+///
+/// # Errors
+///
+/// [`MigrateError`] if the corpus can't be loaded, a persist fails, or (only
+/// on a genuine normalization bug) the sanity hash check fails.
+pub fn reconcile_source(
+    store: &Store,
+    legacy_path: &Path,
+    mode: Mode,
+) -> Result<ReconcileSourceReport, MigrateError> {
+    let legacy_path_buf = legacy_path.canonicalize().unwrap_or_else(|_| legacy_path.to_path_buf());
+    let legacy_path = legacy_path_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(legacy_path);
+    let by_number = legacy_by_number(legacy_path);
+
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let today = chrono::Utc::now().date_naive();
+    let mut reconciled = Vec::new();
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !matches!(fm.node_type(), NodeType::Design | NodeType::Research) {
+            continue;
+        }
+        let Some(source) = fm.source() else {
+            continue; // sourceless — backfill_source's territory
+        };
+        let Some(stored) = source.paths.first() else {
+            continue; // malformed (empty paths) — nothing to resolve from
+        };
+
+        let resolved = crate::fidelity::resolve_from_anchor(&anchor, &stored.to_string_lossy());
+        let (legacy_doc, path_moved) = if resolved.is_file() {
+            match legacy::parse_file(&resolved) {
+                Ok(doc) => (doc, false),
+                Err(_) => continue, // unparsable at the stored path — leave untouched
+            }
+        } else {
+            let Some(doc) = by_number.get(&fm.number()) else {
+                continue; // moved or removed, and not re-discoverable — left as-is
+            };
+            (doc.clone(), true)
+        };
+
+        let body_drifted = document.body() != legacy_doc.body;
+        if !path_moved && !body_drifted {
+            continue; // already faithful and already canonical — no-op (F-6)
+        }
+
+        let new_document = snapshot_from_legacy(fm, &legacy_doc, &anchor, today)?;
+        reconciled.push(Reconciled {
+            number: fm.number(),
+            id: fm.id(),
+            name: new_document.frontmatter().name().to_string(),
+            node_type: fm.node_type(),
+            path_moved,
+            body_drifted,
+        });
+
+        if !mode.is_dry_run() {
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    reconciled.sort_by_key(|r| r.number);
+    Ok(ReconcileSourceReport { reconciled, dry_run: mode.is_dry_run() })
 }
 
 /// The outcome of a [`canonicalize_source_paths`] run.

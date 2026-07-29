@@ -76,45 +76,58 @@ fn backfill_source_replaces_a_stub_body_and_adds_source() {
 fn backfill_source_keeps_a_faithful_body_and_adds_source() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
-    let faithful_body = "# The new approach\n\nSupersedes #4 — a `supersedes` edge (kind \
-                          obsoletes) points at #4's new ULID.\n";
-    persist_sourceless(&store, 5, faithful_body);
+    // Read the real legacy body rather than hand-typing it, so the fixture
+    // can't drift from what the parser actually extracts (e.g. a leading
+    // blank line the frontmatter split preserves verbatim, ODD-0025 §2.1).
+    let faithful_body =
+        odm_migrate::legacy::parse_file(&legacy_fixture().join("06-final/0005-new-approach.md"))
+            .unwrap()
+            .body;
+    persist_sourceless(&store, 5, &faithful_body);
 
     let report = backfill_source(&store, &legacy_fixture(), Mode::Commit).expect("backfill");
-    assert_eq!(report.repaired_count(), 1);
+    // A non-stub body lands in `reconciled`, not `repaired` (s12: the two
+    // buckets distinguish *how* the node's body was obtained — outright stub
+    // replacement vs. a non-stub re-snapshot — not whether anything changed).
+    // Content-wise nothing changes here since the body was already faithful.
+    assert_eq!(report.reconciled_count(), 1);
 
     let node = node_by_number(&store, 5);
-    assert_eq!(node.body(), faithful_body, "a faithful non-stub body is left untouched");
+    assert_eq!(node.body(), faithful_body, "a faithful non-stub body round-trips unchanged");
     assert!(node.frontmatter().source().is_some());
 }
 
-// ----- s10: a drifted non-stub body is a disclosed skip, not a fatal error --
+// ----- s12 F-1: a drifted non-stub body is re-snapshotted, not skipped -----
 
 #[test]
-fn backfill_source_skips_a_drifted_non_stub_body_but_keeps_going() {
+fn backfill_source_reconciles_a_drifted_non_stub_body_instead_of_skipping() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
     // #5 has drifted from its legacy source; #1 has not — the batch must
-    // still reconcile #1 despite #5's drift (arc-migration-fidelity s10:
-    // ODD-0013/ODD-0020 hit exactly this live, and an all-or-nothing abort
-    // would have blocked every clean node behind the two drifted ones).
+    // still reconcile both (arc-migration-fidelity s10 found this live on
+    // ODD-0013/ODD-0020, where it was a disclosed skip; s12 F-1 turns the
+    // skip into a re-snapshot — no node is left unfixed).
     persist_sourceless(&store, 5, "# The new approach\n\nThis text has drifted from the source.\n");
     persist_sourceless(&store, 1, "# Legacy #1\n");
 
     let report = backfill_source(&store, &legacy_fixture(), Mode::Commit).expect("backfill");
-    assert_eq!(report.repaired_count(), 1, "the undrifted node #1 is still backfilled");
-    assert_eq!(report.drifted_count(), 1, "the drifted node #5 is reported, not fatal");
-    assert_eq!(report.drifted[0].number, 5);
-
-    let drifted_node = node_by_number(&store, 5);
-    assert!(
-        drifted_node.frontmatter().source().is_none(),
-        "drifted node left completely untouched"
-    );
+    assert_eq!(report.repaired_count(), 1, "#1's stub is replaced outright");
     assert_eq!(
-        drifted_node.body(),
-        "# The new approach\n\nThis text has drifted from the source.\n",
-        "drifted node's body is not silently overwritten"
+        report.reconciled_count(),
+        1,
+        "#5's drifted non-stub is re-snapshotted, not skipped"
+    );
+    assert_eq!(report.reconciled[0].number, 5);
+
+    let reconciled_node = node_by_number(&store, 5);
+    assert!(
+        reconciled_node.frontmatter().source().is_some(),
+        "the previously-drifted node now carries source"
+    );
+    assert!(
+        reconciled_node.body().contains("Supersedes #4"),
+        "body re-snapshotted to the current legacy content, not left drifted: {}",
+        reconciled_node.body()
     );
 
     let clean_node = node_by_number(&store, 1);

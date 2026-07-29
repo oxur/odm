@@ -10,8 +10,8 @@ use anyhow::Context as _;
 use odm_core::NodeType;
 use odm_migrate::coverage::{CoverageReport, DocClass};
 use odm_migrate::mapping::{
-    CanonicalizeReport, DocGates, backfill_source, canonical_design_gates,
-    canonical_research_gates, canonicalize_source_paths,
+    CanonicalizeReport, DocGates, ReconcileSourceReport, backfill_source, canonical_design_gates,
+    canonical_research_gates, canonicalize_source_paths, reconcile_source,
 };
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::{Store, StoreHome};
@@ -109,10 +109,24 @@ pub(crate) fn migrate(
         .with_context(|| format!("backfilling source onto {}", legacy.display()))?;
     render_backfill(&backfill_report, out)?;
 
+    // `backfill_source`'s complement (arc-migration-fidelity s12): a node
+    // that already carries a `source` is invisible to the backfill pass
+    // above. This re-establishes fidelity for it — re-discovering a moved
+    // legacy file by number and rewriting `source.paths`, and/or
+    // re-snapshotting a body that no longer matches the current legacy
+    // content — the migration-fidelity reconcile (not the unrelated
+    // `odm reconcile` / `odm-reconcile` desired-facts command).
+    let reconcile_report = reconcile_source(store, &legacy, mode)
+        .with_context(|| format!("reconciling source for {}", legacy.display()))?;
+    render_reconcile_source(&reconcile_report, out)?;
+
     // `backfill_source`'s complement (arc-migration-fidelity s10 iteration 1):
     // a node that already carries a `source` — however it got one — is
     // invisible to the backfill pass above; this canonicalizes its path form
-    // in place if it isn't already repo-content-root-relative.
+    // in place if it isn't already repo-content-root-relative. Runs after
+    // `reconcile_source` above: that pass already writes canonical paths for
+    // any node it touches, so this only ever has leftover pure-path-form
+    // cases (an absolute-but-still-resolving path) to canonicalize.
     let canonicalize_report = canonicalize_source_paths(store, &legacy, mode)
         .with_context(|| format!("canonicalizing source.paths under {}", legacy.display()))?;
     render_canonicalize(&canonicalize_report, out)?;
@@ -122,11 +136,12 @@ pub(crate) fn migrate(
 
     render(&report, out)?;
     let status = format!(
-        "{}: {} reconciled, {} drifted (skipped), {} path(s) canonicalized, {} created, \
-         {} upgraded, {} skipped, {} warning(s){}",
+        "{}: {} reconciled, {} re-snapshotted, {} source-reconciled, {} path(s) canonicalized, \
+         {} created, {} upgraded, {} skipped, {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
         backfill_report.repaired_count(),
-        backfill_report.drifted_count(),
+        backfill_report.reconciled_count(),
+        reconcile_report.reconciled_count(),
         canonicalize_report.rewritten_count(),
         report.created_count(),
         report.upgraded_count(),
@@ -240,37 +255,84 @@ fn render_repair(
 }
 
 /// Renders the design/research `source`-backfill pass
-/// ([`odm_migrate::mapping::backfill_source`]): a reconcile row per node
-/// backfilled, plus a `drift (skipped)` row per node whose legacy source has
-/// diverged (arc-migration-fidelity s10 — see
-/// [`odm_migrate::mapping::Drifted`]'s doc for why this is a report, not a
-/// failure). Silent when there is nothing to report.
+/// ([`odm_migrate::mapping::backfill_source`]): a `backfilled` row per
+/// sourceless node whose stub body was replaced outright, plus a
+/// `reconciled` row per sourceless node whose non-stub body no longer
+/// matched its current legacy source and was re-snapshotted to it
+/// (arc-migration-fidelity s12 F-1 — before s12 this second case was a
+/// `drift (skipped)` row; see [`odm_migrate::mapping::BackfillReport`]'s
+/// field docs). Silent when there is nothing to report.
 fn render_backfill(
     report: &odm_migrate::mapping::BackfillReport,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    if report.repaired.is_empty() && report.drifted.is_empty() {
+    if report.repaired.is_empty() && report.reconciled.is_empty() {
         return Ok(());
     }
-    let verb = if report.dry_run { "would reconcile" } else { "reconciled" };
-    let title = if report.dry_run { "RECONCILE (DRY RUN)" } else { "RECONCILE" };
+    let backfilled_verb = if report.dry_run { "would backfill" } else { "backfilled" };
+    let reconciled_verb = if report.dry_run { "would reconcile" } else { "reconciled" };
+    let title = if report.dry_run { "BACKFILL (DRY RUN)" } else { "BACKFILL" };
     let mut table = Themed::new(title, &RECONCILE_COLUMNS);
     for r in &report.repaired {
-        table.row([verb.to_string(), r.number.to_string(), r.name.clone(), r.id.to_string()]);
-    }
-    for d in &report.drifted {
         table.row([
-            "drift (skipped)".to_string(),
-            d.number.to_string(),
-            d.name.clone(),
-            d.id.to_string(),
+            backfilled_verb.to_string(),
+            r.number.to_string(),
+            r.name.clone(),
+            r.id.to_string(),
+        ]);
+    }
+    for r in &report.reconciled {
+        table.row([
+            reconciled_verb.to_string(),
+            r.number.to_string(),
+            r.name.clone(),
+            r.id.to_string(),
         ]);
     }
     table.summary(format!(
-        "Total: {} {}, {} drifted (skipped, unchanged)",
+        "Total: {} {}, {} {}",
         report.repaired_count(),
+        if report.dry_run { "to backfill" } else { "backfilled" },
+        report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" },
-        report.drifted_count()
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// Renders [`odm_migrate::mapping::reconcile_source`]'s pass over
+/// already-sourced design/research nodes (arc-migration-fidelity s12 F-1/
+/// F-2): a row per node whose stored path was re-discovered by number
+/// (moved), body was re-snapshotted (drifted), or both. Silent when there is
+/// nothing to report.
+fn render_reconcile_source(
+    report: &ReconcileSourceReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.reconciled.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would reconcile" } else { "reconciled" };
+    let title = if report.dry_run { "SOURCE RECONCILE (DRY RUN)" } else { "SOURCE RECONCILE" };
+    let mut table = Themed::new(title, &RECONCILE_COLUMNS);
+    for r in &report.reconciled {
+        let note = match (r.path_moved, r.body_drifted) {
+            (true, true) => "moved+drifted",
+            (true, false) => "moved",
+            (false, true) => "drifted",
+            (false, false) => "unchanged", // unreachable in practice (F-6's no-op skips it)
+        };
+        table.row([
+            format!("{verb} ({note})"),
+            r.number.to_string(),
+            r.name.clone(),
+            r.id.to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.reconciled_count(),
+        if report.dry_run { "to reconcile" } else { "reconciled" },
     ));
     writeln!(out, "{}", table.render())?;
     Ok(())

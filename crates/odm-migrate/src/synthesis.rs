@@ -26,7 +26,9 @@
 //!
 //! This module builds a synthesis node **in memory**; it is a capability,
 //! not a live-store operation — firing a synthesis on `.worktrees/odm` is
-//! s12's job, not this one's (arc-migration-fidelity s11 scope).
+//! s13's job (arc-migration-fidelity s11 built the general mechanism; s12
+//! adds [`apply_project_vision`], the project-vision-specific application
+//! of it).
 
 use std::path::PathBuf;
 
@@ -200,6 +202,79 @@ pub fn build_synthesis(
     });
 
     Ok(fm)
+}
+
+/// Why [`apply_project_vision`] could not build the vision synthesis.
+#[derive(Debug, thiserror::Error)]
+pub enum VisionApplyError {
+    /// `plan_root`'s `project-plan.md` has no `# Definition of done` section
+    /// for [`crate::replan::vision_from_plan`] to extract.
+    #[error("no vision text found in {0}'s project-plan.md (no Definition-of-done section)")]
+    NoVisionText(std::path::PathBuf),
+    /// The synthesis itself could not be built (see [`SynthesisError`]).
+    #[error(transparent)]
+    Synthesis(#[from] SynthesisError),
+}
+
+/// The project-vision re-cast (MF-7's live half; arc-migration-fidelity s12
+/// F-4): builds the **editorial-merge synthesis** node that supersedes the
+/// 1:1 `project-plan` node, using [`crate::replan::vision_from_plan`] for the
+/// distillation and [`build_synthesis`] for the verified construction —
+/// replacing `replan::restamp`'s bespoke body-patch (which injected the
+/// vision text directly into the project node's own body, violating the 1:1
+/// rule ODD-0025 §2.1 requires of a *migrated* node) with the modeled
+/// mechanism.
+///
+/// Takes the **already-persisted** 1:1 `project_plan` node's identity,
+/// canonical `source.paths` entry, and verbatim body — this function does
+/// not mint or verify that node; the caller (`self_host`, in the live path)
+/// already did. `plan_root` is read only to extract the vision text.
+///
+/// This performs no I/O beyond that one read, and never persists anything —
+/// firing it live (deciding the vision node's id/number and writing both
+/// documents) is s13's job.
+///
+/// # Errors
+///
+/// [`VisionApplyError::NoVisionText`] if `plan_root`'s `project-plan.md` has
+/// no `Definition of done` section; [`VisionApplyError::Synthesis`] if the
+/// synthesis itself can't be built (e.g. a missing attestation).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_project_vision(
+    project_plan_id: Id,
+    project_plan_source_path: std::path::PathBuf,
+    project_plan_body: &str,
+    plan_root: &std::path::Path,
+    vision_id: Id,
+    vision_number: u32,
+    created: NaiveDate,
+    updated: NaiveDate,
+    attestation: Attestation,
+) -> Result<(Frontmatter, String), VisionApplyError> {
+    let vision_body = crate::replan::vision_from_plan(plan_root)
+        .ok_or_else(|| VisionApplyError::NoVisionText(plan_root.to_path_buf()))?;
+
+    let source = SynthesisSource {
+        path: project_plan_source_path,
+        body: project_plan_body.to_string(),
+        node: project_plan_id,
+    };
+    let fm = build_synthesis(
+        vision_id,
+        vision_number,
+        NodeType::Project,
+        "Vision".to_string(),
+        created,
+        updated,
+        &vision_body,
+        std::slice::from_ref(&source),
+        SynthesisType::EditorialMerge,
+        SupersedeKind::Updates,
+        Some(&attestation),
+        "vision",
+        updated,
+    )?;
+    Ok((fm, vision_body))
 }
 
 #[cfg(test)]

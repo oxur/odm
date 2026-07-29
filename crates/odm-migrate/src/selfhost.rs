@@ -392,7 +392,8 @@ pub fn self_host(
     // runs even under `--dry-run` — a dry run still catches a drifted body,
     // it just doesn't write (mirrors [`repair`]).
     for (node, existing_doc) in &to_populate {
-        let Some(new_document) = reconcile_source(existing_doc, node, &anchor, today)? else {
+        let Some(new_document) = reconcile_source(existing_doc, node, &anchor, today, false)?
+        else {
             continue;
         };
         if !mode.is_dry_run() {
@@ -541,27 +542,38 @@ impl RepairReport {
 ///   the exact predicate the coverage detector, s01, counts by; not re-derived
 ///   here, F-8-s04) has its body **replaced** with the verbatim source text
 ///   (ODD-0025 §2.1's original repair case, s04).
-/// - **A faithful non-stub node** keeps its **existing** body untouched; the
-///   hard body-hash gate ([`crate::fidelity::verify_body_hash`]) verifies it
-///   against the source body — a match is a content no-op that only adds
+/// - **A faithful non-stub node** keeps its **existing** body untouched when
+///   `force_resnapshot` is `false` (the [`repair`] path, unchanged since s04):
+///   the hard body-hash gate ([`crate::fidelity::verify_body_hash`]) verifies
+///   it against the source body — a match is a content no-op that only adds
 ///   `source` (s05 F-4); a **mismatch is surfaced** as
 ///   [`MigrateError::BodyHashMismatch`], not swallowed (s05 F-5) — the caller
 ///   stops there rather than silently backfilling over drift.
+/// - When `force_resnapshot` is `true` (the [`reconcile`] path, arc-migration-
+///   fidelity s12 F-1), a non-stub body is **also** replaced — the whole point
+///   of reconcile is "make this node match its source, whatever the source
+///   currently says" — so the gate below always trivially holds (the body was
+///   just set *from* what it is being verified against): a genuine mismatch
+///   here could only mean a normalization bug, never legitimate drift. This is
+///   the s12 F-5 distinction: stub-repair and non-stub-reconcile are the same
+///   underlying mechanism, selected per call site, never conflated silently.
 ///
 /// Either way the returned `Document` carries the same `id`/`edges`/`status`/
-/// `number` — only `body` (stub case), `source`, `updated`, and the schema
-/// marker change. The caller decides whether to persist it (both `repair` and
-/// `self_host` skip the write, but not the gate, under `--dry-run`).
+/// `number` — only `body`, `source`, `updated`, and the schema marker change.
+/// The caller decides whether to persist it (`repair`, `self_host`, and
+/// `reconcile` all skip the write, but not the gate, under `--dry-run`).
 ///
 /// # Errors
 ///
 /// [`MigrateError::SourceRead`] if `plan_node`'s source body can't be read;
-/// [`MigrateError::BodyHashMismatch`] if a non-stub body has drifted from it.
+/// [`MigrateError::BodyHashMismatch`] if a non-stub body has drifted from it
+/// (only reachable when `force_resnapshot` is `false`).
 fn reconcile_source(
     document: &Document,
     plan_node: &PlanNode,
     anchor: &Path,
     today: NaiveDate,
+    force_resnapshot: bool,
 ) -> Result<Option<Document>, MigrateError> {
     if plan_node.node_type == NodeType::Project || document.frontmatter().retired().is_some() {
         return Ok(None);
@@ -576,10 +588,10 @@ fn reconcile_source(
     let source_body = std::fs::read_to_string(&source_path)
         .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
 
-    // A stub's body is worthless and is replaced outright; a faithful
-    // non-stub body is kept as-is — the gate below proves it matches the
-    // source rather than blindly overwriting a possibly hand-edited body.
-    let new_body = if crate::fidelity::is_stub_body(document.body()) {
+    // A stub's body is worthless and is always replaced outright; a faithful
+    // non-stub body is kept as-is *unless* the caller asked for a forced
+    // re-snapshot (s12 F-1/F-5) — the gate below proves either way.
+    let new_body = if force_resnapshot || crate::fidelity::is_stub_body(document.body()) {
         source_body.clone()
     } else {
         document.body().to_string()
@@ -652,7 +664,8 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
             continue; // no plan-set source to repair from — left as-is
         };
-        let Some(new_document) = reconcile_source(document, plan_node, &anchor, today)? else {
+        let Some(new_document) = reconcile_source(document, plan_node, &anchor, today, false)?
+        else {
             continue; // the project node, or a retired node — excluded (F-6)
         };
 
@@ -672,6 +685,117 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
 
     repaired.sort_by_key(|r| r.number);
     Ok(RepairReport { repaired, dry_run: mode.is_dry_run() })
+}
+
+/// The outcome of a [`reconcile`] run.
+#[derive(Debug, Clone)]
+pub struct ReconcileReport {
+    /// Nodes reconciled (source rewritten, body re-snapshotted, or both) —
+    /// or, under `--dry-run`, that would be.
+    pub reconciled: Vec<crate::mapping::Reconciled>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl ReconcileReport {
+    /// The number of nodes reconciled (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn reconciled_count(&self) -> usize {
+        self.reconciled.len()
+    }
+}
+
+/// Reconciles every **already-sourced** `arc`/`slice` node in `store` against
+/// its current plan-set source under `plan_root` (arc-migration-fidelity
+/// s12) — [`repair`]'s complement, the way
+/// [`crate::mapping::reconcile_source`] complements
+/// [`crate::mapping::backfill_source`] for the design/research family: that
+/// function only ever touches a *sourceless* node; this one only ever
+/// touches a node that already carries a `source`. The project node is
+/// excluded (ODD-0025 §2.3 — its re-cast is the separate vision-apply path);
+/// a retired node is a historical record, never reconciled.
+///
+/// For each eligible node, [`discover`] is re-run over `plan_root` and
+/// matched by `(type, number)` — the same structural key `self_host`/
+/// `repair` already use. Since `discover` walks the **current** plan tree,
+/// this is simultaneously the moved-source re-discovery (s12 F-2 — an arc or
+/// slice directory relocating is not a case this arc's live corpus has hit,
+/// but the mechanism is identical to the design/research family's and is
+/// fixture-proven the same way) and the up-to-date source for a body-drift
+/// comparison (s12 F-1 — the concrete case: the *active* arc-plan.md, edited
+/// throughout this very arc, s08's CDC verification). [`reconcile_source`]
+/// is called with `force_resnapshot = true`: a non-stub body that no longer
+/// matches is re-snapshotted, not rejected — this is the **living-plan-node
+/// policy** (s12 F-3, ODD-0025 amended): reconcile always re-establishes
+/// fidelity to whatever the source currently says, with no special exclusion
+/// for a still-changing source, since the §2.1 gate is migration-time-only.
+///
+/// A node with no matching plan-set entry (the arc/slice itself, not merely
+/// its file, is gone) is left untouched, not an error. Idempotent: a node
+/// already canonical-path **and** body-faithful is a no-op, so re-running is
+/// safe (s12 F-6).
+///
+/// # Errors
+///
+/// [`MigrateError`] if the corpus can't be loaded, a source body can't be
+/// read, or a persist fails.
+pub fn reconcile(
+    store: &Store,
+    plan_root: &Path,
+    mode: Mode,
+) -> Result<ReconcileReport, MigrateError> {
+    let plan_root_buf = plan_root.canonicalize().unwrap_or_else(|_| plan_root.to_path_buf());
+    let plan_root = plan_root_buf.as_path();
+    let anchor = crate::fidelity::anchor_for(plan_root);
+
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let plan_by_key: HashMap<(NodeType, u32), PlanNode> =
+        discover(plan_root).into_iter().map(|n| ((n.node_type, n.number), n)).collect();
+
+    let today = today();
+    let mut reconciled = Vec::new();
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !matches!(fm.node_type(), NodeType::Arc | NodeType::Slice) {
+            continue; // project excluded (§2.3); design/research is mapping.rs's
+        }
+        if fm.source().is_none() {
+            continue; // sourceless — repair()'s territory
+        }
+        let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
+            continue; // no current plan-set entry to reconcile against — left as-is
+        };
+        let Some(new_document) = reconcile_source(document, plan_node, &anchor, today, true)?
+        else {
+            continue; // retired — excluded
+        };
+
+        let old_path = fm.source().and_then(|s| s.paths.first()).cloned();
+        let new_path = new_document.frontmatter().source().and_then(|s| s.paths.first()).cloned();
+        let path_moved = old_path != new_path;
+        let body_drifted = document.body() != new_document.body();
+        if !path_moved && !body_drifted {
+            continue; // already canonical and faithful — no-op (F-6)
+        }
+
+        reconciled.push(crate::mapping::Reconciled {
+            number: fm.number(),
+            id: fm.id(),
+            name: new_document.frontmatter().name().to_string(),
+            node_type: fm.node_type(),
+            path_moved,
+            body_drifted,
+        });
+
+        if !mode.is_dry_run() {
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    reconciled.sort_by_key(|r| r.number);
+    Ok(ReconcileReport { reconciled, dry_run: mode.is_dry_run() })
 }
 
 /// The persist order rank: slices (0) before arcs (1) before the project (2), so
@@ -1041,7 +1165,7 @@ mod tests {
         let document =
             Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());
 
-        let result = reconcile_source(&document, &node, Path::new("/anchor"), today());
+        let result = reconcile_source(&document, &node, Path::new("/anchor"), today(), false);
         assert!(
             matches!(result, Ok(None)),
             "the project is excluded outright, not gated and rejected: {result:?}"
@@ -1072,7 +1196,7 @@ mod tests {
         fm.retire("superseded by a later slice", today());
         let document = Document::new(fm, "# Tombstone\n".to_string());
 
-        let result = reconcile_source(&document, &node, Path::new("/anchor"), today());
+        let result = reconcile_source(&document, &node, Path::new("/anchor"), today(), false);
         assert!(
             matches!(result, Ok(None)),
             "a retired node is a historical record, never reconciled: {result:?}"
@@ -1105,7 +1229,7 @@ mod tests {
         );
         let document = Document::new(fm, "# Arc 01\n\nA drifted, different body.\n".to_string());
 
-        let err = reconcile_source(&document, &node, tmp.path(), today()).unwrap_err();
+        let err = reconcile_source(&document, &node, tmp.path(), today(), false).unwrap_err();
         assert!(matches!(err, MigrateError::BodyHashMismatch { .. }), "{err:?}");
     }
 
@@ -1136,7 +1260,8 @@ mod tests {
         );
         let document = Document::new(fm, body.to_string());
 
-        let reconciled = reconcile_source(&document, &node, tmp.path(), today()).unwrap().unwrap();
+        let reconciled =
+            reconcile_source(&document, &node, tmp.path(), today(), false).unwrap().unwrap();
         assert_eq!(reconciled.body(), body, "content no-op — the existing body is kept verbatim");
         let source = reconciled.frontmatter().source().expect("source backfilled");
         assert_eq!(
