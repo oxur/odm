@@ -256,8 +256,9 @@ pub fn build_node(
     if let Some(version) = &front.version {
         fm = fm.with_version(version.clone());
     }
+    let relative = crate::fidelity::relativize(anchor, source_path);
     fm = fm.with_source(crate::fidelity::build_source(
-        vec![source_path.to_path_buf()],
+        vec![std::path::PathBuf::from(relative)],
         "odd",
         migrated_on,
     ));

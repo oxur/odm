@@ -14,6 +14,7 @@ use odm_core::frontmatter::{Document, Frontmatter, Source};
 use odm_core::{Id, NodeType, Origin};
 use odm_migrate::Mode;
 use odm_migrate::coverage;
+use odm_migrate::migrate;
 use odm_migrate::selfhost::{arc_number, repair, self_host, slice_number};
 use odm_store::Store;
 use tempfile::TempDir;
@@ -303,4 +304,31 @@ fn coverage_set_difference_stable_across_roots() {
         report_b.doc_coverage.total(),
         "identical inventory size regardless of absolute root"
     );
+}
+
+// ----- s10 iteration 1: the design/ODD import seam relativizes source.paths -
+
+/// Regression test for the seam CDC found missing (s10 iteration 1): the
+/// legacy ODD importer (`mapping::build_node`) stored `source_path` verbatim
+/// instead of routing it through `fidelity::relativize` like every other
+/// creation path (`artifact.rs`, `notes.rs`, `mapping::backfill_source`) —
+/// the exact CDC v2.8 Finding 1 bug, reintroduced on this one seam.
+#[test]
+fn migrate_stores_relative_canonical_source_paths() {
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+
+    let legacy_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-data/legacy");
+    migrate(&store, &legacy_path, Mode::Commit).expect("migrate");
+
+    let nodes = store.load_all().expect("load_all");
+    let five = nodes.iter().find(|d| d.frontmatter().number() == 5).expect("legacy #5 imported");
+    let source = five.frontmatter().source().expect("source present");
+    assert_eq!(source.paths.len(), 1);
+    let stored = source.paths[0].to_string_lossy().into_owned();
+
+    assert_eq!(stored, "test-data/legacy/06-final/0005-new-approach.md", "{stored}");
+    assert!(!stored.starts_with('/'), "{stored}");
+    assert!(!Path::new(&stored).is_absolute(), "{stored}");
+    assert!(!stored.contains(".worktrees"), "{stored}");
 }

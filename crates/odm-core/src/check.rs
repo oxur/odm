@@ -136,6 +136,18 @@ pub enum Violation {
         /// The offending schema marker (e.g. `"design/v1.1"`).
         schema: String,
     },
+    /// A `source.paths` entry is not repo-content-root-relative — absolute, or
+    /// anchored at a `.worktrees/` superproject root instead of the content
+    /// root (arc-migration-fidelity s08 F-1's portability invariant).
+    /// **Unconditional** — unlike coverage, there is no legitimate absolute
+    /// `source.paths` case, so this needs no config gate (s10 iteration 1: the
+    /// durable enforcement s08's data-only rewrite lacked, added after a
+    /// regression reintroduced 4 absolute paths and slipped through `check`
+    /// green because nothing enforced the invariant).
+    AbsoluteSourcePath {
+        /// The offending path, exactly as stored.
+        path: std::path::PathBuf,
+    },
 }
 
 /// Validates the structure of a node corpus, returning all findings.
@@ -183,6 +195,7 @@ pub fn content_validity(nodes: &[Frontmatter]) -> Vec<Finding> {
     for fm in &ordered {
         check_field_validity(fm, &mut findings);
         check_schema_version(fm, &mut findings);
+        check_source_paths(fm, &mut findings);
     }
     findings
 }
@@ -242,6 +255,36 @@ fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
             ));
         }
     }
+}
+
+/// Portability of `source.paths` (arc-migration-fidelity s08 F-1, enforced as
+/// an invariant since s10 iteration 1): every stored path must be
+/// repo-content-root-relative. Unconditional — there is no legitimate
+/// absolute `source.paths` case, so (unlike the `[coverage]` scan) this needs
+/// no config gate.
+fn check_source_paths(fm: &Frontmatter, findings: &mut Vec<Finding>) {
+    let Some(source) = fm.source() else {
+        return;
+    };
+    for path in &source.paths {
+        if !is_portable_source_path(path) {
+            findings.push(finding(fm, Violation::AbsoluteSourcePath { path: path.clone() }));
+        }
+    }
+}
+
+/// Whether a stored `source.paths` entry is portable: not absolute, and not
+/// anchored at a `.worktrees/` superproject root (which would bake in the
+/// worktree name — the same portability bug an absolute path is, one anchor
+/// level up; arc-migration-fidelity s08 F-1).
+fn is_portable_source_path(path: &std::path::Path) -> bool {
+    if path.is_absolute() {
+        return false;
+    }
+    !matches!(
+        path.components().next(),
+        Some(std::path::Component::Normal(first)) if first == ".worktrees"
+    )
 }
 
 /// Schema-version validity (ODD-0020 §5): a node stamped with a schema newer than

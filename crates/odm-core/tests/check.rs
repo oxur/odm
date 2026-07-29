@@ -464,4 +464,87 @@ mod content {
             "a v1.0 node is still supported after the v1.1 bump"
         );
     }
+
+    // ----- s10 iteration 1: absolute `source.paths` is an enforced invariant -
+
+    #[test]
+    fn absolute_source_path_is_flagged_as_error() {
+        // arc-migration-fidelity s08 F-1's portability invariant, now enforced
+        // unconditionally (s10 iteration 1) rather than only true by
+        // convention: an absolute `source.paths` entry is a reported Error,
+        // naming the offending node.
+        use odm_core::frontmatter::Source;
+
+        let bad = odd(A, 1, "Doc").with_source(Source {
+            paths: vec!["/Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design/x.md".into()],
+            class: "odd".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/1.0.0".to_string(),
+            migrated_on: day(),
+        });
+        let findings = content_validity(&[bad]);
+        assert!(
+            findings.iter().any(|f| f.node == id(A)
+                && matches!(&f.violation, Violation::AbsoluteSourcePath { path }
+                    if path.to_string_lossy().starts_with("/Users"))),
+            "absolute source.paths flagged, naming the node: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn worktrees_anchored_source_path_is_flagged_as_error() {
+        // The superproject-anchor variant of the same bug (s08's other
+        // portability failure mode): a relative path that nonetheless bakes
+        // in the `.worktrees/<name>` segment is just as unportable as an
+        // absolute one, and is flagged the same way.
+        use odm_core::frontmatter::Source;
+
+        let bad = odd(A, 1, "Doc").with_source(Source {
+            paths: vec![".worktrees/1.0.x/docs/design/x.md".into()],
+            class: "odd".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/1.0.0".to_string(),
+            migrated_on: day(),
+        });
+        let findings = content_validity(&[bad]);
+        assert!(
+            findings.iter().any(|f| matches!(&f.violation, Violation::AbsoluteSourcePath { .. })),
+            ".worktrees/-anchored source.paths flagged: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn relative_source_path_is_green() {
+        // The 254-node mint-all's own shape (arc-migration-fidelity s09/s10):
+        // a canonical, content-root-relative path produces no finding.
+        use odm_core::frontmatter::Source;
+
+        let good = odd(A, 1, "Doc").with_source(Source {
+            paths: vec!["docs/design-v1.0.0/arc01-alpha/arc-plan.md".into()],
+            class: "arc-plan".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/1.0.0".to_string(),
+            migrated_on: day(),
+        });
+        assert!(
+            content_validity(&[good])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::AbsoluteSourcePath { .. })),
+            "a canonical relative source.paths produces no finding"
+        );
+    }
+
+    #[test]
+    fn a_node_with_no_source_is_unaffected() {
+        // The guard only fires when `source` is present at all — a sourceless
+        // node (e.g. one of the pre-s09/s12 design/research nodes) is not a
+        // portability violation, just an absence.
+        let sourceless = odd(A, 1, "Doc");
+        assert!(
+            content_validity(&[sourceless])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::AbsoluteSourcePath { .. })),
+            "no source at all is not an absolute-path violation"
+        );
+    }
 }

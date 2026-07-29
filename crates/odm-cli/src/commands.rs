@@ -1295,6 +1295,7 @@ fn violation_label(v: &Violation) -> &'static str {
         Violation::DanglingReenterWhen { .. } => "dangling-reenter_when",
         Violation::FieldNotValidForType { .. } => "wrong-type-field",
         Violation::UnsupportedSchema { .. } => "unsupported-schema",
+        Violation::AbsoluteSourcePath { .. } => "absolute-source-path",
         // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
         // generically rather than failing the build when they appear.
         _ => "violation",
@@ -1335,6 +1336,9 @@ fn violation_detail(v: &Violation) -> String {
         }
         Violation::UnsupportedSchema { schema } => {
             format!("schema {schema:?} is newer than this binary supports")
+        }
+        Violation::AbsoluteSourcePath { path } => {
+            format!("`source.paths` entry {} is not repo-content-root-relative", path.display())
         }
         _ => "structural violation".to_string(),
     }
@@ -1381,6 +1385,9 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
         }
         Violation::UnsupportedSchema { .. } => {
             format!("upgrade odm, or edit {file}'s `schema:` to a version this binary supports")
+        }
+        Violation::AbsoluteSourcePath { .. } => {
+            format!("edit {file}: rewrite `source.paths` relative to the repo content root")
         }
         _ => format!("inspect {file}"),
     }
