@@ -255,6 +255,12 @@ fn display_status_color(label: &str) -> Option<TabledColor> {
 ///
 /// `adr` and `note` are deliberately uncoloured: no colour has been chosen for
 /// them, and inventing one here would be a decision made by omission.
+/// `artifact` joins them **by decision, not omission** (arc-migration-fidelity
+/// s09): ODD-0025 §2.5 draws it as distinct from — and lower-attention than —
+/// the governing/informing document types (`design`/`research`) that get warm
+/// hues here specifically to draw the eye; a process-execution supporting doc
+/// (a ledger, a report) is not "consulted-and-decided-by" the way those are,
+/// so it stays uncoloured on the same rationale, not an oversight.
 pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
     let (r, g, b) = match node_type {
         NodeType::Project => (212, 110, 197), // magenta
@@ -265,7 +271,7 @@ pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
         // (HSL 84.7% / 61.6%, hue rotated 19.5° → 0°), so the two read as one
         // family at one weight rather than either shouting over the other.
         NodeType::Research => (240, 74, 74), // red
-        NodeType::Adr | NodeType::Note => return None,
+        NodeType::Adr | NodeType::Note | NodeType::Artifact => return None,
     };
     Some(TabledColor::rgb_fg(r, g, b))
 }

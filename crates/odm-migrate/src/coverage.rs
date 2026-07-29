@@ -31,8 +31,10 @@ use odm_core::frontmatter::Document;
 use odm_store::{Store, StoreError};
 use walkdir::WalkDir;
 
+use std::collections::HashMap;
+
 use crate::legacy;
-use crate::selfhost::{arc_number, parse_prefix, slice_number};
+use crate::selfhost::{arc_number, named_arc_number, parse_prefix, slice_number, slice_position};
 
 /// A source document's coarse classification (F-2). A closed set matching the
 /// canonical shapes the `1.0.x` corpus (and the general planning-corpus
@@ -200,7 +202,9 @@ pub struct StubEntry {
     pub name: String,
 }
 
-/// One provenance-absence finding (F-6): a node carrying no `provenance` key.
+/// One provenance-absence finding (F-6): a node carrying no `source` sub-map
+/// (the stored lineage record — see [`provenance_absence`]'s doc for why
+/// `source`, not a `provenance` key, is the right thing to check).
 #[derive(Debug, Clone)]
 pub struct ProvenanceEntry {
     /// The node's number.
@@ -301,7 +305,13 @@ impl NodeIndex {
                 NodeType::Design | NodeType::Research => {
                     index.doc_numbers.insert(fm.number());
                 }
-                NodeType::Adr | NodeType::Note => {}
+                // `Artifact` nodes are minted with `source` from the start
+                // (s09) — there is no pre-`source` legacy state to fall back
+                // from, so no number-based fallback set is needed for them
+                // (unlike `Design`/`Research`, whose live corpus predates
+                // `source` entirely). They match via `source_paths` below,
+                // same as every other type.
+                NodeType::Adr | NodeType::Note | NodeType::Artifact => {}
             }
             if let Some(source) = fm.source() {
                 index
@@ -524,12 +534,12 @@ fn representation(docs: &[SourceDoc], index: &NodeIndex) -> RepresentationGap {
         .filter_map(|d| d.path.parent())
         .collect();
     gap.total_arc_dirs = arc_dirs.len();
+    let arc_dir_numbers = resolve_arc_dir_numbers(&arc_dirs);
     for arc_dir in &arc_dirs {
-        let name = dir_label(arc_dir);
-        let represented = arc_coordinate(&name)
-            .is_some_and(|major| index.arc_numbers.contains(&arc_number(major)));
+        let represented =
+            arc_dir_numbers.get(arc_dir).is_some_and(|n| index.arc_numbers.contains(n));
         if !represented {
-            gap.missing_arcs.push(name);
+            gap.missing_arcs.push(dir_label(arc_dir));
         }
     }
 
@@ -542,17 +552,62 @@ fn representation(docs: &[SourceDoc], index: &NodeIndex) -> RepresentationGap {
     for slice_dir in &slice_dirs {
         let slice_name = dir_label(slice_dir);
         let arc_name = slice_dir.parent().map(dir_label).unwrap_or_default();
-        let represented = arc_coordinate(&arc_name).is_some_and(|major| {
-            parse_prefix(&slice_name, "slice").is_some_and(|(smaj, smin)| {
-                index.slice_numbers.contains(&slice_number(major, smaj, smin))
-            })
-        });
+        // `arc_num + slice_position(...)`, not `slice_number(arc_num, ...)`:
+        // `slice_number` re-derives `arc_number(arc_major)` from a **raw**
+        // arc major, which `arc_num` (already the final handle — either
+        // `arc_number(major)` or a named arc's own name-derived handle) is
+        // not; adding the position offset directly is what `discover()`
+        // itself does for both numbered and named arcs alike.
+        let represented = slice_dir
+            .parent()
+            .and_then(|arc_dir| arc_dir_numbers.get(arc_dir))
+            .is_some_and(|&arc_num| {
+                parse_prefix(&slice_name, "slice").is_some_and(|(smaj, smin)| {
+                    index.slice_numbers.contains(&(arc_num + slice_position(smaj, smin)))
+                })
+            });
         if !represented {
             gap.missing_slices.push(format!("{arc_name}/{slice_name}"));
         }
     }
 
     gap
+}
+
+/// Resolves every arc directory in `arc_dirs` to the `number` it would be (or
+/// was) minted with — mirroring [`crate::selfhost::discover`]'s own two-phase
+/// derivation exactly: a numbered directory (`arcNN-*`) via [`arc_number`]; a
+/// **named** directory (`arc-<slug>`) via [`named_arc_number`], collision-
+/// handled against the handles already assigned to *other named dirs* earlier
+/// in the same sorted pass (`arc_dirs` is a `BTreeSet<&Path>`, the same `Ord`
+/// [`crate::selfhost::discover`]'s own `named.sort()` uses, so the two passes
+/// agree on ordering and therefore on collision handling too).
+///
+/// **CDC v2.8 Finding 2 (s09 F-6):** [`representation`] used to only resolve
+/// the numbered case ([`arc_coordinate`]) — a named arc directory has no
+/// `arcNN` coordinate to re-derive from the name alone, so it always read
+/// unrepresented even once its node existed (the "8/12" undercount: 4 named
+/// arcs, permanently missing). Recomputing the name-derived key here — the
+/// same key [`crate::selfhost::self_host`] minted it with — closes that gap:
+/// a named arc with a matching node is now counted represented.
+fn resolve_arc_dir_numbers<'a>(arc_dirs: &BTreeSet<&'a Path>) -> HashMap<&'a Path, u32> {
+    let mut numbers = HashMap::new();
+    for &dir in arc_dirs {
+        if let Some(major) = arc_coordinate(&dir_label(dir)) {
+            numbers.insert(dir, arc_number(major));
+        }
+    }
+    let mut named_taken: BTreeSet<u32> = BTreeSet::new();
+    for &dir in arc_dirs {
+        if arc_coordinate(&dir_label(dir)).is_some() {
+            continue;
+        }
+        let slug = dir_label(dir);
+        let number = named_arc_number(&slug, &named_taken);
+        named_taken.insert(number);
+        numbers.insert(dir, number);
+    }
+    numbers
 }
 
 /// A directory's own name (the last path component), as a label for the report.
@@ -568,19 +623,20 @@ fn dir_label(dir: &Path) -> String {
 /// the former post-MVP `arc07`/`arc08` — the hardcoded A1–A6 cap this used to
 /// apply is removed, not widened.
 ///
-/// **Structural-fallback limitation (by design, not fixed here):** a named
-/// arc's actual `number` is a *name-derived handle*
-/// ([`crate::selfhost::named_arc_number`], v1.9) computed from a hash of the
-/// slug plus collision-handling against the arcs already assigned earlier in
-/// the same pass — information a single directory name can't recover on its
-/// own (there is no "just re-derive it" from the name alone once collisions
-/// are possible). This function therefore still cannot resolve a coordinate
-/// for a named arc, so [`representation`]'s dir-vs-node count still reports
-/// a named arc directory as unrepresented by its own accounting. The
-/// **doc-coverage** detector no longer has this gap (arc-migration-fidelity
-/// s05, F-7): [`doc_coverage`]'s primary `source.paths` check resolves a
-/// source-bearing named-arc node directly, exactly as ODD-0025 §5 anticipated
-/// — this structural coordinate is only the pre-`source` fallback now.
+/// **Structural-fallback limitation, by design:** a named arc's actual
+/// `number` is a *name-derived handle* ([`named_arc_number`], v1.9) computed
+/// from a hash of the slug plus collision-handling against the arcs already
+/// assigned earlier in the same pass — information a single directory name
+/// can't recover **in isolation** (there is no "just re-derive it" from one
+/// name alone once collisions are possible). This function therefore still
+/// cannot resolve a coordinate for a named arc on its own. The **doc-coverage**
+/// detector doesn't need it (arc-migration-fidelity s05, F-7):
+/// [`doc_coverage`]'s primary `source.paths` check resolves a source-bearing
+/// named-arc node directly, exactly as ODD-0025 §5 anticipated. The
+/// **representation** detector, which has no `source` to key on, instead
+/// recomputes the handle from the full set of named-arc slugs together —
+/// see [`resolve_arc_dir_numbers`] (s09, F-6) — which *can* replay the same
+/// collision-handling `discover()` used to mint it.
 fn arc_coordinate(dir_name: &str) -> Option<u32> {
     parse_prefix(dir_name, "arc").filter(|(_, minor)| minor.is_none()).map(|(major, _)| major)
 }
@@ -612,35 +668,28 @@ fn stub_bodies(corpus: &[Document]) -> Vec<StubEntry> {
 
 // ----- provenance-absence detector (F-6) -------------------------------------
 
-/// Nodes carrying no `provenance` key. Checked against the node's **emitted**
-/// frontmatter YAML rather than a typed accessor — `Frontmatter` has no typed
-/// `provenance` field yet ([`odm_core::frontmatter::Frontmatter`]; it lands in
-/// arc slice 02), but any `provenance:` block would already round-trip through
-/// the untyped `extra` catch-all, so this check is durable across that change:
-/// it will keep working once the field is typed, without modification here.
+/// Nodes carrying no lineage record.
+///
+/// **CDC v2.8 Finding 3 (s09 F-7):** this used to scan the node's emitted
+/// frontmatter YAML for a literal `provenance:` line — but ODD-0025 §2.0
+/// renamed that key to `source:` back at s02, and `provenance` itself is
+/// **derived-only, never stored** (0013 reserves the name for computed
+/// lineage; the stored record is the distinct `source` sub-map). So the old
+/// scan was checking for a key the corpus can never carry, and silently
+/// flagged every node. **Decision:** retarget to the typed
+/// [`odm_core::frontmatter::Frontmatter::source`] accessor — `source` absent
+/// is the real "no lineage record" signal, and it's exact (no YAML text scan,
+/// no risk of the field moving out of the untyped `extra` catch-all later).
 fn provenance_absence(corpus: &[Document]) -> Vec<ProvenanceEntry> {
     corpus
         .iter()
-        .filter(|d| !has_provenance_key(d))
+        .filter(|d| d.frontmatter().source().is_none())
         .map(|d| ProvenanceEntry {
             number: d.frontmatter().number(),
             node_type: d.frontmatter().node_type(),
             name: d.frontmatter().name().to_string(),
         })
         .collect()
-}
-
-fn has_provenance_key(document: &Document) -> bool {
-    let Ok(text) = document.emit() else { return false };
-    frontmatter_yaml(&text).lines().any(|line| line.starts_with("provenance:"))
-}
-
-/// The YAML block between the opening and closing `---` fences of an emitted
-/// document — mirrors the split [`odm_core::frontmatter::Document::parse`]
-/// performs, so a scan over it sees exactly the frontmatter, never the body.
-fn frontmatter_yaml(text: &str) -> &str {
-    let after_open = text.strip_prefix("---\n").unwrap_or(text);
-    after_open.split("\n---\n").next().unwrap_or(after_open)
 }
 
 #[cfg(test)]
@@ -652,13 +701,5 @@ mod tests {
         let all = DocClass::all();
         let unique: BTreeSet<_> = all.iter().map(|c| c.as_str()).collect();
         assert_eq!(unique.len(), all.len(), "DocClass::all() lists no duplicates");
-    }
-
-    #[test]
-    fn frontmatter_yaml_isolates_the_fence_block() {
-        let text = "---\nid: x\nprovenance:\n  a: b\n---\nbody with\n---\nin it\n";
-        let yaml = frontmatter_yaml(text);
-        assert!(yaml.contains("provenance:"));
-        assert!(!yaml.contains("body with"));
     }
 }

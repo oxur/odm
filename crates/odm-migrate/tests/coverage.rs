@@ -7,11 +7,11 @@
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use odm_core::frontmatter::{Document, Frontmatter};
+use odm_core::frontmatter::{Document, Frontmatter, Source};
 use odm_core::{Id, NodeType, Origin};
 use odm_migrate::Mode;
 use odm_migrate::coverage::{self, DocClass};
-use odm_migrate::selfhost::{arc_number, self_host, slice_number};
+use odm_migrate::selfhost::{arc_number, named_arc_number, self_host, slice_number};
 use odm_store::Store;
 use tempfile::TempDir;
 
@@ -67,7 +67,7 @@ fn persist_node(
     name: &str,
     body: &str,
     retired: bool,
-    extra: Option<(&str, &str)>,
+    source: Option<Source>,
 ) {
     let today = NaiveDate::from_ymd_opt(2026, 7, 27).unwrap();
     let mut fm =
@@ -75,8 +75,8 @@ fn persist_node(
     if retired {
         fm.retire("superseded", today);
     }
-    if let Some((key, value)) = extra {
-        fm.insert_extra(key, value);
+    if let Some(source) = source {
+        fm = fm.with_source(source);
     }
     let document = Document::new(fm, body.to_string());
     store.persist(&document).expect("persist");
@@ -285,6 +285,40 @@ fn coverage_representation() {
     );
 }
 
+// ----- F-6/CDC Finding 2: a named arc *with* a node is now represented -----
+
+#[test]
+fn coverage_representation_resolves_a_named_arc_with_a_node() {
+    let docs = TempDir::new().unwrap();
+    let root = docs.path();
+    let design_root = root.join("design-v1.0.0");
+
+    write(&design_root, "arc-store-home/arc-plan.md", "# Named arc\n");
+    write(&design_root, "arc-store-home/slice01-cc/slice-doc.md", "# S1\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    // The same name-derived handle `discover()`/`self_host()` would mint for
+    // this slug (a lone named arc, so `taken` is empty).
+    let arc_num = named_arc_number("arc-store-home", &std::collections::BTreeSet::new());
+    persist_node(&store, arc_num, NodeType::Arc, "Store home", "# Store home\nbody\n", false, None);
+    persist_node(
+        &store,
+        arc_num + 1,
+        NodeType::Slice,
+        "Slice 01",
+        "# Slice 01\nbody\n",
+        false,
+        None,
+    );
+
+    let report = coverage::run(&store, root).expect("coverage run");
+    let rep = &report.representation;
+
+    assert!(rep.missing_arcs.is_empty(), "the named arc now resolves via its name-derived key");
+    assert!(rep.missing_slices.is_empty(), "its slice resolves via the same key + offset");
+}
+
 // ----- F-5: stub bodies — ≤ 1 non-blank line, tombstones excluded -----------
 
 #[test]
@@ -320,30 +354,31 @@ fn coverage_stubs() {
     assert_eq!(numbers, vec![100], "only the non-retired work-node stub is reported");
 }
 
-// ----- F-6: provenance-absence — durable across the untyped extra field ----
+// ----- F-6/CDC Finding 3: provenance-absence — retargeted to `source:` -----
 
 #[test]
 fn coverage_provenance_absence() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
 
-    persist_node(&store, 200, NodeType::Slice, "No provenance", "# X\nbody\n", false, None);
-    persist_node(
-        &store,
-        201,
-        NodeType::Slice,
-        "Has provenance",
-        "# Y\nbody\n",
-        false,
-        Some(("provenance", "migrated")),
-    );
+    let today = NaiveDate::from_ymd_opt(2026, 7, 27).unwrap();
+    let source = Source {
+        paths: vec![PathBuf::from("design-v1.0.0/arc01-alpha/slice01-aa/slice-doc.md")],
+        class: "slice-doc".to_string(),
+        normalization: "trim+lf".to_string(),
+        migrated_by: "odm-migrate/1.0.0".to_string(),
+        migrated_on: today,
+    };
+
+    persist_node(&store, 200, NodeType::Slice, "No source", "# X\nbody\n", false, None);
+    persist_node(&store, 201, NodeType::Slice, "Has source", "# Y\nbody\n", false, Some(source));
 
     let docs = TempDir::new().unwrap();
     let report = coverage::run(&store, docs.path()).expect("coverage run");
 
     let numbers: Vec<u32> = report.provenance_missing.iter().map(|p| p.number).collect();
-    assert!(numbers.contains(&200), "the node with no provenance key is reported");
-    assert!(!numbers.contains(&201), "the node carrying a provenance key is not reported");
+    assert!(numbers.contains(&200), "the node with no `source` sub-map is reported");
+    assert!(!numbers.contains(&201), "the node carrying a `source` sub-map is not reported");
 }
 
 // ----- F-7: --coverage (here: `run`) is read-only ---------------------------

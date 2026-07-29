@@ -84,7 +84,13 @@ pub const fn arc_number(major: u32) -> u32 {
 /// (`slice05` → 5) or, for a fractional slice (`slice05.1`), `MM*10 + k`
 /// (→ 51). Shared by [`slice_number`] (numbered arcs) and named-arc slice
 /// numbering ([`discover`]) so both derive a slice's offset identically.
-fn slice_position(slice_major: u32, slice_minor: Option<u32>) -> u32 {
+///
+/// `pub(crate)`: the coverage detector ([`crate::coverage`]) reuses this to
+/// derive a named arc's slice numbers directly from its own name-derived
+/// handle (arc-migration-fidelity s09, F-6) — `slice_number` can't be reused
+/// there since it re-derives `arc_number(arc_major)` from a **raw major**,
+/// which a named arc's handle is not.
+pub(crate) fn slice_position(slice_major: u32, slice_minor: Option<u32>) -> u32 {
     slice_minor.map_or(slice_major, |k| slice_major * 10 + k)
 }
 

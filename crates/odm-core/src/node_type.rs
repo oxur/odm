@@ -37,6 +37,14 @@ pub enum NodeType {
     Adr,
     /// A free-form note.
     Note,
+    /// A process-execution supporting document (`ledger`, `cc-prompt`,
+    /// `cdc-verification`, `closing-report`, ADR/amendment/UAT, and every
+    /// generated report incl. `coverage-report.md`) — ODD-0025 §2.5,
+    /// arc-migration-fidelity s09. Distinct from the governing/informing
+    /// document types: it carries no work-gates or ordering and is not itself
+    /// consulted-and-decided-by like a design doc. American spelling, matching
+    /// this codebase's other type identifiers.
+    Artifact,
 }
 
 impl NodeType {
@@ -52,6 +60,7 @@ impl NodeType {
             NodeType::Research => "research",
             NodeType::Adr => "adr",
             NodeType::Note => "note",
+            NodeType::Artifact => "artifact",
         }
     }
 
@@ -61,10 +70,17 @@ impl NodeType {
         matches!(self, NodeType::Project | NodeType::Arc | NodeType::Slice)
     }
 
-    /// Returns `true` for document nodes (`design`/`research`/`adr`/`note`).
+    /// Returns `true` for document nodes (`design`/`research`/`adr`/`note`/`artifact`).
     #[must_use]
     pub fn is_document(self) -> bool {
-        matches!(self, NodeType::Design | NodeType::Research | NodeType::Adr | NodeType::Note)
+        matches!(
+            self,
+            NodeType::Design
+                | NodeType::Research
+                | NodeType::Adr
+                | NodeType::Note
+                | NodeType::Artifact
+        )
     }
 
     /// Returns the node types allowed as containment children of `self` in the
@@ -83,7 +99,8 @@ impl NodeType {
             | NodeType::Design
             | NodeType::Research
             | NodeType::Adr
-            | NodeType::Note => &[],
+            | NodeType::Note
+            | NodeType::Artifact => &[],
         }
     }
 }
@@ -114,6 +131,7 @@ impl FromStr for NodeType {
             "research" => Ok(NodeType::Research),
             "adr" => Ok(NodeType::Adr),
             "note" => Ok(NodeType::Note),
+            "artifact" => Ok(NodeType::Artifact),
             _ => Err(ParseNodeTypeError(s.to_owned())),
         }
     }
