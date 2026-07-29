@@ -19,7 +19,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design/04-accepted/0024-id-scheme-retain-ulid.md
+  - docs/design/04-accepted/0024-id-scheme-retain-ulid.md
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0

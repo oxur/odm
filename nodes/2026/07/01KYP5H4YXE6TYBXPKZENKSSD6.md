@@ -20,7 +20,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design/04-accepted/0023-command-surface-node-store-groups.md
+  - docs/design/04-accepted/0023-command-surface-node-store-groups.md
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0

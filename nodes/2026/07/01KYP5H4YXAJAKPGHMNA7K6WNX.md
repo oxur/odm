@@ -15,7 +15,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design/04-accepted/0022-the-odm-store-home-a-dedicated-orphan-branch-in-a-git-worktree.md
+  - docs/design/04-accepted/0022-the-odm-store-home-a-dedicated-orphan-branch-in-a-git-worktree.md
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
