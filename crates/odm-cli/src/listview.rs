@@ -14,7 +14,10 @@
 //!   gate-set (`—` when none), overridden by `retired`/`superseded`.
 //! - **F-8** `NAME` renders work nodes as a containment tree (`project → arc →
 //!   slice` via `part_of`); document nodes have no containment parent, so they
-//!   follow as their own flat group rather than being forced into the tree.
+//!   follow as their own flat group rather than being forced into the tree —
+//!   **except** an `artifact` definitively `part_of` a slice or an arc, which
+//!   is tree-nested under it the same way a slice nests under its arc
+//!   (operator decision, arc-migration-fidelity s10; see [`Group::holds`]).
 //! - **F-6** displayed names are **de-numbered** — display-only; the stored
 //!   `name` is untouched.
 //! - **F-9** the name column is width-bounded with ` ...` elision.
@@ -36,19 +39,33 @@ use oxur_term::table::{TabledColor, helpers};
 /// reads as a question about the corpus rather than about the schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Group {
-    /// Work nodes: `project`/`arc`/`slice` — the plan itself.
+    /// Work nodes: `project`/`arc`/`slice` — the plan itself. Also holds a
+    /// **promoted** `artifact` — one `part_of` a slice or an arc — since it
+    /// belongs to the planning cycle it documents (see [`Group::holds`]).
     Plan,
-    /// Document nodes: `design`/`research`/`adr`/`note` — what the plan is
-    /// grounded in and decided by; consulted, not executed.
+    /// Document nodes: `design`/`research`/`adr`/`note`, and an `artifact`
+    /// **not** promoted into the plan (no `part_of` at all) — what the plan
+    /// is grounded in and decided by; consulted, not executed.
     Reference,
 }
 
 impl Group {
-    /// Whether `node_type` belongs to this group.
-    fn holds(self, node_type: NodeType) -> bool {
+    /// Whether a node belongs to this group.
+    ///
+    /// `promoted` is true for an `artifact` **definitively, deterministically
+    /// connected** to a modeled scope — its `part_of` resolves to a `slice`
+    /// or an `arc` — per the operator's decision (arc-migration-fidelity s10,
+    /// extended from slice-only to also cover arc-/chunk-level artifacts,
+    /// [`promoted_artifacts`]): such an artifact belongs to the planning
+    /// cycle it documents, not to the reference shelf, so it counts as `Plan`
+    /// here (and is tree-nested under its slice/arc, [`work_tree`]) even
+    /// though [`NodeType::is_work`] is still false for it — that predicate is
+    /// unrelated, structural (work-decomposition) semantics, not this
+    /// display grouping.
+    fn holds(self, node_type: NodeType, promoted: bool) -> bool {
         match self {
-            Group::Plan => node_type.is_work(),
-            Group::Reference => !node_type.is_work(),
+            Group::Plan => node_type.is_work() || promoted,
+            Group::Reference => !node_type.is_work() && !promoted,
         }
     }
 }
@@ -253,15 +270,25 @@ fn display_status_color(label: &str) -> Option<TabledColor> {
 /// which also keeps a type distinguishable from the STATUS beside it, since the
 /// status palette is basic ANSI.
 ///
-/// `adr` and `note` are deliberately uncoloured: no colour has been chosen for
-/// them, and inventing one here would be a decision made by omission.
-/// `artifact` joins them **by decision, not omission** (arc-migration-fidelity
-/// s09): ODD-0025 §2.5 draws it as distinct from — and lower-attention than —
-/// the governing/informing document types (`design`/`research`) that get warm
-/// hues here specifically to draw the eye; a process-execution supporting doc
-/// (a ledger, a report) is not "consulted-and-decided-by" the way those are,
-/// so it stays uncoloured on the same rationale, not an oversight.
-pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
+/// `adr`, `note`, and an ordinary (unpromoted) `artifact` are deliberately
+/// uncoloured: no colour has been chosen for them, and inventing one here
+/// would be a decision made by omission — ODD-0025 §2.5 draws `artifact` as
+/// distinct from, and lower-attention than, the governing/informing document
+/// types (`design`/`research`) that get warm hues here specifically to draw
+/// the eye; a process-execution supporting doc (a ledger, a report) is not
+/// "consulted-and-decided-by" the way those are.
+///
+/// A **`promoted`** artifact — one [`Group::holds`] has placed in the
+/// planning tree because it is `part_of` a slice — is the one exception
+/// (operator decision, arc-migration-fidelity s10): it gets a colour, a
+/// lighter, more cyan-leaning blue at slice's own saturation/luminosity (HSL
+/// ~221°/89%/72% → ~195°/88%/78%) — close kin to `slice`'s blue, not a new
+/// family, since the artifact is now read as *part of* that slice's row in
+/// the tree, not a peer type standing on its own.
+pub(crate) fn type_color(node_type: NodeType, promoted: bool) -> Option<TabledColor> {
+    if node_type == NodeType::Artifact {
+        return promoted.then_some(TabledColor::rgb_fg(150, 224, 248));
+    }
     let (r, g, b) = match node_type {
         NodeType::Project => (212, 110, 197), // magenta
         NodeType::Arc => (167, 139, 250),     // violet
@@ -271,7 +298,8 @@ pub(crate) fn type_color(node_type: NodeType) -> Option<TabledColor> {
         // (HSL 84.7% / 61.6%, hue rotated 19.5° → 0°), so the two read as one
         // family at one weight rather than either shouting over the other.
         NodeType::Research => (240, 74, 74), // red
-        NodeType::Adr | NodeType::Note | NodeType::Artifact => return None,
+        NodeType::Artifact => unreachable!("handled above"),
+        NodeType::Adr | NodeType::Note => return None,
     };
     Some(TabledColor::rgb_fg(r, g, b))
 }
@@ -289,6 +317,10 @@ pub(crate) struct NodeRow {
     pub(crate) name: String,
     /// The node id.
     pub(crate) id: Id,
+    /// Whether this is an `artifact` promoted into the planning tree — see
+    /// [`Group::holds`]. Always `false` for every other type; carried so the
+    /// render loop can select [`type_color`]'s promoted hue.
+    pub(crate) promoted: bool,
 }
 
 /// Builds the rows for a `list` render: the work tree first (depth-ordered by
@@ -308,6 +340,13 @@ pub(crate) fn build_rows(
     group: Option<Group>,
 ) -> Vec<Row> {
     let superseded = superseded_ids(all_records);
+    // Structural, view-independent: an artifact's `part_of` resolves to a
+    // `slice` in the corpus. Computed from `all_records` (not `visible`)
+    // because eligibility is a fact about the corpus, not about the current
+    // filters — the *existing* work_tree pattern (a filtered-out parent still
+    // lets its child render, just as a view-root) then handles the case
+    // where the view itself excludes the parent slice.
+    let promoted = promoted_artifacts(all_records);
 
     // Every row filter is applied **before** the tree is derived, never after.
     // The branch glyphs encode "last among siblings", and root-ness is "my
@@ -317,7 +356,7 @@ pub(crate) fn build_rows(
     let visible: Vec<&IndexRecord> = records
         .iter()
         .copied()
-        .filter(|r| group.is_none_or(|g| g.holds(r.node_type)))
+        .filter(|r| group.is_none_or(|g| g.holds(r.node_type, promoted.contains(&r.id))))
         .filter(|r| {
             let display = display_status_of(r, gates, &superseded);
             // The filter accepts both vocabularies: the normalized state the
@@ -335,21 +374,31 @@ pub(crate) fn build_rows(
         .collect();
     let shown: HashSet<Id> = visible.iter().map(|r| r.id).collect();
 
-    // Work nodes: walk the containment tree from its roots so children follow
-    // their parent, and the depth is the indent.
-    let work: Vec<NodeRow> = work_tree(&visible, all_records, &shown)
+    // The planning tree: work nodes, **plus** any promoted artifact — walked
+    // from its roots so children follow their parent, and the depth is the
+    // indent.
+    let work: Vec<NodeRow> = work_tree(&visible, all_records, &shown, &promoted)
         .into_iter()
         .map(|(record, depth, last_at)| {
-            row_for(record, gates, &superseded, date, tree_prefix(depth, &last_at))
+            row_for(
+                record,
+                gates,
+                &superseded,
+                date,
+                tree_prefix(depth, &last_at),
+                promoted.contains(&record.id),
+            )
         })
         .collect();
 
-    // Document nodes: no containment parent, so no tree — a flat group.
-    let mut docs: Vec<&&IndexRecord> = visible.iter().filter(|r| !r.node_type.is_work()).collect();
+    // Reference: document nodes with no containment parent, minus whatever
+    // was just promoted into the tree above — a flat group, no tree.
+    let mut docs: Vec<&&IndexRecord> =
+        visible.iter().filter(|r| !r.node_type.is_work() && !promoted.contains(&r.id)).collect();
     docs.sort_by_key(|r| (r.created, r.number));
     let docs: Vec<NodeRow> = docs
         .into_iter()
-        .map(|record| row_for(record, gates, &superseded, date, String::new()))
+        .map(|record| row_for(record, gates, &superseded, date, String::new(), false))
         .collect();
 
     let mut rows: Vec<Row> = Vec::new();
@@ -370,6 +419,7 @@ fn row_for(
     superseded: &HashSet<Id>,
     date: DateColumn,
     prefix: String,
+    promoted: bool,
 ) -> NodeRow {
     NodeRow {
         date: match date {
@@ -380,7 +430,32 @@ fn row_for(
         status: display_status_of(record, gates, superseded),
         name: format!("{prefix}{}", denumber(&record.title)),
         id: record.id,
+        promoted,
     }
+}
+
+/// The ids of `artifact` nodes **promoted** into the planning tree: those
+/// whose `part_of` resolves (in the full corpus, not just the current view)
+/// to a `slice` **or an `arc`** — "definitively, deterministically connected"
+/// to a modeled scope (operator decision, arc-migration-fidelity s10,
+/// extended from slice-only to also cover arc-/chunk-level artifacts — e.g.
+/// Release Hardening's `C-1`…`C-8` chunk docs, which are `part_of` their arc
+/// directly since there is no chunk node scale, ODD-0025 §2.5). Only a
+/// genuinely **top-level** artifact (no `part_of` at all) is not promoted; it
+/// stays in the reference group, uncoloured, exactly as before.
+fn promoted_artifacts(all_records: &[IndexRecord]) -> HashSet<Id> {
+    let type_of: HashMap<Id, NodeType> = all_records.iter().map(|r| (r.id, r.node_type)).collect();
+    all_records
+        .iter()
+        .filter(|r| r.node_type == NodeType::Artifact)
+        .filter(|r| {
+            matches!(
+                parent_id(r).and_then(|p| type_of.get(&p)),
+                Some(NodeType::Slice) | Some(NodeType::Arc)
+            )
+        })
+        .map(|r| r.id)
+        .collect()
 }
 
 /// The **normalized** state for a node — what the STATUS column shows (F-19).
@@ -431,18 +506,22 @@ fn superseded_ids(all_records: &[IndexRecord]) -> HashSet<Id> {
         .collect()
 }
 
-/// The work nodes in containment order, each with its depth and the
-/// "is-last-child" flag per ancestor level (which decides the branch glyphs).
+/// The planning-tree nodes in containment order — work nodes **plus** any
+/// [`promoted_artifacts`] — each with its depth and the "is-last-child" flag
+/// per ancestor level (which decides the branch glyphs).
 ///
-/// Roots are work nodes with no `part_of` parent *among the shown set* — so a
+/// Roots are tree nodes with no `part_of` parent *among the shown set* — so a
 /// filtered view (`--type slice`) still renders, flat, rather than vanishing
-/// because its parents were filtered out.
+/// because its parents were filtered out. A promoted artifact whose slice
+/// parent is filtered out of the current view becomes a root the same way.
 fn work_tree<'a>(
     records: &[&'a IndexRecord],
     all_records: &[IndexRecord],
     shown: &HashSet<Id>,
+    promoted: &HashSet<Id>,
 ) -> Vec<(&'a IndexRecord, usize, Vec<bool>)> {
-    let work: Vec<&&IndexRecord> = records.iter().filter(|r| r.node_type.is_work()).collect();
+    let work: Vec<&&IndexRecord> =
+        records.iter().filter(|r| r.node_type.is_work() || promoted.contains(&r.id)).collect();
     let parent_of: HashMap<Id, Option<Id>> =
         all_records.iter().map(|r| (r.id, parent_id(r))).collect();
 

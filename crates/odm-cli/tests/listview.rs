@@ -7,8 +7,12 @@
 
 use std::path::Path;
 
+use chrono::NaiveDate;
 use clap::Parser as _;
 use odm_cli::Cli;
+use odm_core::frontmatter::{Document, Frontmatter};
+use odm_core::{Id, NodeType, Origin};
+use odm_store::Store;
 use tempfile::TempDir;
 
 /// The `[gates.*]` config the seeded corpus needs for a meaningful STATUS.
@@ -50,6 +54,38 @@ fn seed(root: &Path) {
     // #6: retired, so it must not appear in a default listing (F-15).
     run(root, &["node", "new", "slice", "Slice 03 — Tombstone", "--parent", "2"]);
     run(root, &["node", "retire", "6", "--because", "created against a stale list"]);
+}
+
+/// Persists an `artifact` node directly (the CLI's `node new` has no verb for
+/// it — artifacts only ever arrive via migration/mint). `parent` sets
+/// `part_of`, when given.
+fn seed_artifact(root: &Path, number: u32, name: &str, parent: Option<Id>) {
+    let today = NaiveDate::from_ymd_opt(2026, 7, 29).unwrap();
+    let mut fm = Frontmatter::new(
+        Id::new(),
+        number,
+        NodeType::Artifact,
+        name,
+        today,
+        today,
+        Origin::Planned,
+    );
+    if let Some(parent) = parent {
+        fm.edges_mut().part_of = Some(parent);
+    }
+    Store::open(root).persist(&Document::new(fm, format!("# {name}\n"))).expect("seed persist");
+}
+
+/// The id of the node with `number`, from a freshly-seeded store.
+fn id_of(root: &Path, number: u32) -> Id {
+    Store::open(root)
+        .load_all()
+        .expect("load_all")
+        .into_iter()
+        .find(|d| d.frontmatter().number() == number)
+        .unwrap_or_else(|| panic!("#{number} not found"))
+        .frontmatter()
+        .id()
 }
 
 /// The visible text of a run, ANSI stripped.
@@ -182,6 +218,121 @@ fn list_renders_the_containment_tree_and_a_document_group() {
     let work_row = out.lines().position(|l| l.contains("Alpha")).expect("a work row");
     assert!(work_row < rule, "work comes above the rule");
     assert!(rule < doc_row, "documents come below it");
+}
+
+// ----- s10: a promoted `artifact` is tree-nested, not left in reference -----
+
+#[test]
+fn list_promotes_a_slice_attached_artifact_into_the_tree() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let alpha_id = id_of(dir.path(), 3); // Slice 01 — Alpha
+    seed_artifact(dir.path(), 100, "Alpha's ledger", Some(alpha_id));
+
+    let out = plain(&run(dir.path(), &["node", "list", "--all"]).out);
+    let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row");
+    let ledger = out.lines().find(|l| l.contains("Alpha's ledger")).expect("ledger row");
+
+    let indent = |line: &str| line.find('─').unwrap_or(0);
+    assert!(indent(ledger) > indent(alpha), "the artifact nests under its slice: {ledger:?}");
+    assert!(ledger.contains(" — "), "status shows the em-dash, unchanged: {ledger:?}");
+
+    // No divider needed above it — it's part of the plan tree, not reference.
+    let ledger_pos = out.lines().position(|l| l == ledger).unwrap();
+    let rule_pos = out.lines().position(|l| l.contains("──────"));
+    assert!(
+        rule_pos.is_none_or(|r| ledger_pos < r),
+        "a slice-promoted artifact sits above the divider, in the tree"
+    );
+}
+
+#[test]
+fn list_promotes_an_arc_attached_artifact_into_the_tree() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let arc_id = id_of(dir.path(), 2); // First arc
+    seed_artifact(dir.path(), 101, "Chunk C-1 cc-prompt", Some(arc_id));
+
+    let out = plain(&run(dir.path(), &["node", "list", "--all"]).out);
+    let arc = out.lines().find(|l| l.contains("First arc")).expect("arc row");
+    let alpha = out.lines().find(|l| l.contains("Alpha")).expect("Alpha row (an arc child)");
+    let chunk = out.lines().find(|l| l.contains("Chunk C-1 cc-prompt")).expect("chunk row");
+
+    // Indent *within the NAME cell* (the 4th `│`-delimited field) — comparing
+    // whole-line offsets is fragile against the TYPE/STATUS columns' own
+    // widths, which vary with the widest cell content across the table
+    // (`artifact` is wider than `slice`), not with tree depth.
+    let name_cell_indent = |line: &str| {
+        let cell = line.split('│').nth(3).unwrap_or_default();
+        cell.find('─').unwrap_or(0)
+    };
+    assert!(
+        name_cell_indent(chunk) > name_cell_indent(arc),
+        "the artifact nests under its arc: {chunk:?}"
+    );
+    assert_eq!(
+        name_cell_indent(chunk),
+        name_cell_indent(alpha),
+        "an arc-attached artifact sits at the same depth as the arc's slice children"
+    );
+}
+
+#[test]
+fn list_does_not_promote_a_top_level_artifact() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    seed_artifact(dir.path(), 102, "A loose report", None);
+
+    let out = plain(&run(dir.path(), &["node", "list", "--all"]).out);
+    let report = out.lines().find(|l| l.contains("A loose report")).expect("report row");
+    assert!(!report.contains('─'), "an uncontained artifact is not tree-rendered: {report:?}");
+
+    // It stays below the divider, in the reference group, alongside the design doc.
+    let rule = out.lines().position(|l| l.contains("──────")).expect("a divider row");
+    let report_pos = out.lines().position(|l| l == report).unwrap();
+    assert!(report_pos > rule, "an uncontained artifact stays in reference: {report:?}");
+}
+
+#[test]
+fn list_promoted_artifact_type_cell_is_cyan_unpromoted_is_uncoloured() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let alpha_id = id_of(dir.path(), 3);
+    seed_artifact(dir.path(), 100, "Alpha's ledger", Some(alpha_id));
+    seed_artifact(dir.path(), 102, "A loose report", None);
+
+    let raw = run(dir.path(), &["node", "list", "--all"]).out;
+    let row_for = |name: &str| {
+        raw.lines().find(|l| l.contains(name)).unwrap_or_else(|| panic!("{name} row")).to_string()
+    };
+    assert!(
+        row_for("Alpha's ledger").contains("\u{1b}[38;2;150;224;248m"),
+        "a promoted artifact gets the cyan-leaning blue"
+    );
+    assert!(
+        !row_for("A loose report").contains("\u{1b}[38;2;150;224;248m"),
+        "an unpromoted artifact stays uncoloured, same as before"
+    );
+}
+
+#[test]
+fn group_plan_includes_promoted_artifacts_reference_excludes_them() {
+    let dir = TempDir::new().unwrap();
+    seed(dir.path());
+    let alpha_id = id_of(dir.path(), 3);
+    seed_artifact(dir.path(), 100, "Alpha's ledger", Some(alpha_id));
+    seed_artifact(dir.path(), 102, "A loose report", None);
+
+    let plan = plain(&run(dir.path(), &["node", "list", "--group", "plan", "--all"]).out);
+    assert!(plan.contains("Alpha's ledger"), "a promoted artifact counts as plan:\n{plan}");
+    assert!(!plan.contains("A loose report"), "an unpromoted one does not:\n{plan}");
+
+    let reference = plain(&run(dir.path(), &["node", "list", "--group", "reference", "--all"]).out);
+    assert!(
+        !reference.contains("Alpha's ledger"),
+        "a promoted artifact is not reference:\n{reference}"
+    );
+    assert!(reference.contains("A loose report"), "an unpromoted one still is:\n{reference}");
 }
 
 // ----- F-6: displayed names are de-numbered ---------------------------------

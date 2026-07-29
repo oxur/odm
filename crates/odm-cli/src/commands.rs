@@ -488,7 +488,7 @@ pub fn list(
                     // STATUS column. See `listview::status_color` for which
                     // palette a given gate comes from, and `type_color` for the
                     // per-type hues.
-                    if let Some(fg) = listview::type_color(node.node_type) {
+                    if let Some(fg) = listview::type_color(node.node_type, node.promoted) {
                         table.color_last(TYPE_COLUMN, fg);
                     }
                     if let Some(fg) = listview::status_color(node.status.label()) {

@@ -52,9 +52,11 @@ pub struct Cli {
 /// Which family of nodes `list` shows.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum GroupArg {
-    /// The plan: `project`/`arc`/`slice`.
+    /// The plan: `project`/`arc`/`slice`, plus any `artifact` `part_of` a
+    /// slice.
     Plan,
-    /// The reference material: `design`/`research`/`adr`/`note`.
+    /// The reference material: `design`/`research`/`adr`/`note`, and any
+    /// `artifact` not `part_of` a slice.
     Reference,
 }
 
