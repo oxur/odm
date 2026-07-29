@@ -402,9 +402,10 @@ pub fn migrate_with_gates(
     // the body that was read, regardless of `--dry-run` (a dry run still catches
     // a fidelity break, it just doesn't write).
     let migrated_on = chrono::Utc::now().date_naive();
+    let anchor = crate::fidelity::anchor_for(legacy_path);
     let edges = resolve_supersedes(&to_create, &planned, &mut report.warnings);
     for (doc, prep, id) in &to_create {
-        let fm = build_node(*id, &doc.front, prep, gates, &doc.path, migrated_on);
+        let fm = build_node(*id, &doc.front, prep, gates, &anchor, &doc.path, migrated_on);
         let fm = attach_supersedes(fm, edges.get(&prep.number).copied());
         let document = Document::new(fm, doc.body.clone());
         crate::fidelity::verify_body_hash(

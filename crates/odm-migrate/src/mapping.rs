@@ -211,11 +211,22 @@ pub fn build_node(
     front: &LegacyFrontmatter,
     prep: &Prepared,
     gates: &DocGates,
+    anchor: &std::path::Path,
     source_path: &std::path::Path,
     migrated_on: chrono::NaiveDate,
 ) -> Frontmatter {
     let node_type = classify_type(&front.tags);
-    let created = front.created.or(front.updated).unwrap_or_else(today);
+    // The legacy frontmatter's own `created`/`updated` are authoritative when
+    // present (they are the doc's real authored dates, which git blame on a
+    // *migrated* node can't recover — the migrate commit isn't the original).
+    // Only when a legacy doc carries **neither** field does this fall back to
+    // the file's own git history (RH F-20) before finally falling back to
+    // "today" (arc-migration-fidelity s10) — closing the one gap this
+    // frontmatter-first design left.
+    let created = front
+        .created
+        .or(front.updated)
+        .unwrap_or_else(|| crate::fidelity::git_derived_dates(anchor, source_path, today()).0);
     let name = front.title.clone().unwrap_or_else(|| format!("ODD-{:04}", prep.number));
 
     let mut fm = Frontmatter::new(
@@ -390,9 +401,13 @@ pub fn backfill_source(
             document.body().to_string()
         };
         let relative = crate::fidelity::relativize(&anchor, &legacy_doc.path);
+        // Real `updated` from the legacy file's own last-touch commit (RH
+        // F-20), not "the day backfill ran" — falls back to `today` only
+        // when git has no record.
+        let (_, updated) = crate::fidelity::git_derived_dates(&anchor, &legacy_doc.path, today);
 
         let mut new_fm = fm.clone();
-        new_fm.set_updated(today);
+        new_fm.set_updated(updated);
         new_fm.stamp_schema();
         let new_fm = new_fm.with_source(crate::fidelity::build_source(
             vec![std::path::PathBuf::from(relative)],
@@ -491,6 +506,7 @@ mod tests {
             &front,
             &prep,
             &gates,
+            std::path::Path::new("."),
             std::path::Path::new("docs/design/04-accepted/0005-x.md"),
             NaiveDate::from_ymd_opt(2026, 7, 27).unwrap(),
         );

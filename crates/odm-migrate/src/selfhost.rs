@@ -418,8 +418,12 @@ pub fn self_host(
     // persist **children-up**: slices, then arcs, then the project root last.
     let mut built: Vec<(Frontmatter, String)> = Vec::new();
     for (node, id) in &to_create {
-        let fm = build_node(node, *id, &ids, &children, today);
         let source_path = body_source_path(node);
+        // Real dates from the plan doc's own git history (RH F-20), not "the
+        // day self-host ran" — falls back to `today` only when git has no
+        // record (an untracked fixture).
+        let (created, updated) = crate::fidelity::git_derived_dates(&anchor, &source_path, today);
+        let fm = build_node(node, *id, &ids, &children, created, updated, today);
         let body = std::fs::read_to_string(&source_path)
             .map_err(|source| MigrateError::SourceRead { path: source_path.clone(), source })?;
         let relative = crate::fidelity::relativize(&anchor, &source_path);
@@ -581,8 +585,12 @@ fn reconcile_source(
         document.body().to_string()
     };
 
+    // Real `updated` from the source file's own last-touch commit (RH F-20),
+    // not "the day repair ran" — falls back to `today` only when git has no
+    // record.
+    let (_, updated) = crate::fidelity::git_derived_dates(anchor, &source_path, today);
     let mut new_fm = fm.clone();
-    new_fm.set_updated(today);
+    new_fm.set_updated(updated);
     new_fm.stamp_schema();
     let new_fm = new_fm.with_source(crate::fidelity::build_source(
         vec![std::path::PathBuf::from(relative)],
@@ -679,11 +687,20 @@ fn persist_rank(node_type: NodeType) -> u8 {
 /// Builds one work node: type/number/name carried, `stamp_schema`'d `<type>/v1.0`,
 /// `part_of` resolved from the parent key, gates reached per `status`, and (for a
 /// closed arc) its `decomposed` set affirmed against its children.
+///
+/// `created`/`updated` are the caller's git-derived dates for the node's own
+/// plan doc (RH F-20, arc-migration-fidelity s10) — real history, not "the
+/// day self-host ran". `today` is kept separate and used only for **gate
+/// evidence** and the `decomposed` affirmation date: those record *when this
+/// run asserted* the reach/affirmation, which is correctly today regardless
+/// of how old the underlying doc is.
 fn build_node(
     node: &PlanNode,
     id: Id,
     ids: &HashMap<(NodeType, u32), Id>,
     children: &BTreeMap<(NodeType, u32), Vec<Id>>,
+    created: NaiveDate,
+    updated: NaiveDate,
     today: NaiveDate,
 ) -> Frontmatter {
     let mut fm = Frontmatter::new(
@@ -691,8 +708,8 @@ fn build_node(
         node.number,
         node.node_type,
         &node.name,
-        today,
-        today,
+        created,
+        updated,
         Origin::Planned,
     );
     fm.stamp_schema();

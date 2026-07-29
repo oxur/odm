@@ -23,7 +23,7 @@
 //! order. `check` v2 (slice06) aggregates these predicates alongside the v1
 //! structural checks.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::frontmatter::Frontmatter;
 use crate::gates::{GateSet, GateSets};
@@ -163,6 +163,7 @@ pub enum Issue {
 #[must_use]
 pub fn integrity(nodes: &[Frontmatter], gates: &GateSets) -> Vec<Finding> {
     let recomp = Recomposition::build(nodes);
+    let types: HashMap<Id, NodeType> = nodes.iter().map(|fm| (fm.id(), fm.node_type())).collect();
 
     let mut ordered: Vec<&Frontmatter> = nodes.iter().collect();
     ordered.sort_by_key(|fm| fm.id());
@@ -170,7 +171,7 @@ pub fn integrity(nodes: &[Frontmatter], gates: &GateSets) -> Vec<Finding> {
     let mut findings = Vec::new();
     for fm in &ordered {
         check_orphan(fm, &recomp, &mut findings);
-        check_decomposition(fm, &recomp, gates, &mut findings);
+        check_decomposition(fm, &recomp, &types, gates, &mut findings);
     }
     findings
 }
@@ -195,9 +196,20 @@ fn check_orphan(fm: &Frontmatter, recomp: &Recomposition, findings: &mut Vec<Fin
 /// The undeveloped-stub, advance-without-decomposition, and drift checks, all of
 /// which apply only to **parent-capable** nodes (those whose type admits
 /// children — `project`/`arc`).
+///
+/// **Work children only** (arc-migration-fidelity s10, surfaced live): a
+/// document-family node (`artifact`/`note`/…) can be `part_of` an arc too
+/// (ODD-0025 §2.5's containment), for an entirely different reason —
+/// attaching a supporting doc to its scope, not decomposing the *work*.
+/// "Decomposition" (ODD-0013 §4.5) is specifically the project→arc→slice work
+/// breakdown, so every check here — stub, undecomposed-parent, and drift —
+/// counts only `kids` whose type is [`NodeType::is_work`]; a mint that adds
+/// artifact/note children to an already-`decomposed`-affirmed arc must not
+/// read as drift.
 fn check_decomposition(
     fm: &Frontmatter,
     recomp: &Recomposition,
+    types: &HashMap<Id, NodeType>,
     gates: &GateSets,
     findings: &mut Vec<Finding>,
 ) {
@@ -205,7 +217,13 @@ fn check_decomposition(
         return; // not parent-capable (slice / document): nothing to decompose
     }
 
-    let kids = recomp.children(fm.id());
+    let kids: Vec<Id> = recomp
+        .children(fm.id())
+        .iter()
+        .copied()
+        .filter(|id| types.get(id).is_some_and(|ty| ty.is_work()))
+        .collect();
+    let kids = kids.as_slice();
 
     // Advancement is only judgeable with a configured gate-set.
     if let Some(gset) = gates.for_type(fm.node_type()) {

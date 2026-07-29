@@ -93,6 +93,43 @@ pub fn build_source(
     }
 }
 
+/// The real `(created, updated)` dates for `source_path`, from `repo_root`'s
+/// git history — RH F-20's mechanism
+/// ([`odm_store::worktree::first_commit_date`]/`last_commit_date`, the same
+/// `git log --diff-filter=A --reverse`/`git log -1` derivation
+/// [`crate::replan::derive_plan`] already uses for `--replan`), now threaded
+/// into the **creation** paths themselves (arc-migration-fidelity s10,
+/// operator-identified: every import path stamped `created` as "the day the
+/// import ran" instead of the file's real history — RH F-20 built the
+/// mechanism but only wired it into the separate, manually-invoked
+/// `--replan` re-derivation, never into `self_host`/`migrate`/the artifact
+/// and note minters themselves).
+///
+/// Falls back to `fallback` for either date git has no record of — an
+/// untracked fixture (tests), or a path outside `repo_root`'s history —
+/// rather than erroring: a missing git record is not a fidelity violation,
+/// it is the honest absence of a fact `verify_body_hash`-style hard-gating
+/// would be the wrong tool for (there is nothing to gate against).
+#[must_use]
+pub fn git_derived_dates(
+    repo_root: &Path,
+    source_path: &Path,
+    fallback: NaiveDate,
+) -> (NaiveDate, NaiveDate) {
+    let relative = source_path.strip_prefix(repo_root).unwrap_or(source_path);
+    let parse =
+        |text: Option<String>| text.and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok());
+    let created = odm_store::worktree::first_commit_date(repo_root, relative)
+        .ok()
+        .and_then(parse)
+        .unwrap_or(fallback);
+    let updated = odm_store::worktree::last_commit_date(repo_root, relative)
+        .ok()
+        .and_then(parse)
+        .unwrap_or(fallback);
+    (created, updated)
+}
+
 /// Finds the git toplevel worktree root containing `start` — the anchor a
 /// plan tree's storable paths relativize against (ODD-0025 §2.2,
 /// arc-migration-fidelity s08 F-1). Walks up looking for a `.git` entry; a
@@ -179,6 +216,71 @@ pub fn resolve_from_anchor(anchor: &Path, stored: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ----- s10 F-H: created/updated come from git history, not "today" ------
+
+    /// A `TempDir` git repo with `relative` committed at `created_on`, then
+    /// touched again (a second commit, same content is fine — git still logs
+    /// it) at `updated_on`. Uses `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` for a
+    /// deterministic, controlled commit date — no dependency on wall-clock
+    /// time, which `Date.now()`-style flakiness would otherwise introduce.
+    fn repo_with_dated_commits(
+        relative: &str,
+        created_on: &str,
+        updated_on: &str,
+    ) -> tempfile::TempDir {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+        let run = |args: &[&str], date: &str| {
+            let status = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .env("GIT_AUTHOR_DATE", format!("{date}T12:00:00"))
+                .env("GIT_COMMITTER_DATE", format!("{date}T12:00:00"))
+                .status()
+                .expect("git available");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["init", "-q"], created_on);
+        run(&["config", "user.email", "test@example.com"], created_on);
+        run(&["config", "user.name", "Test"], created_on);
+
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "first version\n").unwrap();
+        run(&["add", relative], created_on);
+        run(&["commit", "-q", "-m", "add"], created_on);
+
+        std::fs::write(&path, "second version\n").unwrap();
+        run(&["add", relative], updated_on);
+        run(&["commit", "-q", "-m", "touch"], updated_on);
+
+        dir
+    }
+
+    #[test]
+    fn git_derived_dates_reads_real_first_and_last_commit_dates() {
+        let repo = repo_with_dated_commits("docs/x.md", "2020-01-15", "2023-06-30");
+        let fallback = NaiveDate::from_ymd_opt(2026, 7, 29).unwrap();
+
+        let (created, updated) =
+            git_derived_dates(repo.path(), &repo.path().join("docs/x.md"), fallback);
+
+        assert_eq!(created, NaiveDate::from_ymd_opt(2020, 1, 15).unwrap());
+        assert_eq!(updated, NaiveDate::from_ymd_opt(2023, 6, 30).unwrap());
+    }
+
+    #[test]
+    fn git_derived_dates_falls_back_outside_any_repo() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let fallback = NaiveDate::from_ymd_opt(2026, 7, 29).unwrap();
+
+        let (created, updated) =
+            git_derived_dates(dir.path(), &dir.path().join("untracked.md"), fallback);
+
+        assert_eq!(created, fallback, "no git history — falls back, doesn't error");
+        assert_eq!(updated, fallback);
+    }
 
     #[test]
     fn verify_body_hash_passes_on_identical_bodies() {

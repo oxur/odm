@@ -207,14 +207,18 @@ pub fn mint_artifacts(
         let name =
             crate::selfhost::first_h1(&absolute).unwrap_or_else(|| doc.path.display().to_string());
         let contained_by = nearest_scale(&relative, &scale_index);
+        // Real dates from the doc's own git history (RH F-20), not "the day
+        // the mint ran" — falls back to `today` only when git has no record
+        // (an untracked fixture).
+        let (created, updated) = crate::fidelity::git_derived_dates(&anchor, &absolute, today);
 
         let mut fm = Frontmatter::new(
             id,
             number,
             NodeType::Artifact,
             name.clone(),
-            today,
-            today,
+            created,
+            updated,
             Origin::Planned,
         );
         fm.stamp_schema();

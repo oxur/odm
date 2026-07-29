@@ -153,6 +153,24 @@ fn detect_undeveloped_stub() {
     assert_eq!(stubs[0].issue, Issue::UndevelopedStub { gate: "in-progress".to_string() });
 }
 
+#[test]
+fn detect_undeveloped_stub_ignores_document_family_children() {
+    let gates = gates();
+
+    // An arc advanced to "in-progress" with only an `artifact` child (no
+    // slice) is still a stub -- attaching a supporting doc is not
+    // "developing" the work (arc-migration-fidelity s10).
+    let mut working = node('Q', 1, NodeType::Arc);
+    reach(&mut working, &gates, "in-progress");
+    let doc = child('A', 2, NodeType::Artifact, 'Q');
+
+    let findings = integrity(&[working, doc], &gates);
+    assert!(
+        findings.iter().any(|f| matches!(f.issue, Issue::UndevelopedStub { .. })),
+        "a document-only child does not count as development: {findings:?}"
+    );
+}
+
 // ----- H-5: the decomposed-complete assertion is recorded -------------------
 
 #[test]
@@ -197,6 +215,45 @@ fn decomposed_drift_guard() {
         .find(|f| matches!(f.issue, Issue::DecompositionDrift { .. }))
         .expect("drift flagged");
     assert_eq!(drift.issue, Issue::DecompositionDrift { added: vec![], removed: vec![id('Z')] });
+}
+
+// ----- s10: document-family children don't count as decomposition drift ----
+
+#[test]
+fn decomposed_drift_guard_ignores_document_family_children() {
+    let gates = gates();
+
+    // Arc Q affirmed complete against its one slice, X. An `artifact` and a
+    // `note` are later attached (part_of Q, ODD-0025 §2.5's containment) --
+    // real containment, but not *work* decomposition, so this must not read
+    // as drift (arc-migration-fidelity s10, surfaced live: a mint that
+    // attaches supporting docs to an already-`decomposed`-affirmed arc was
+    // incorrectly flagged before this fix).
+    let mut q = node('Q', 1, NodeType::Arc);
+    q.affirm_decomposed(vec![id('X')], day());
+    let x = child('X', 2, NodeType::Slice, 'Q');
+    let artifact = child('A', 3, NodeType::Artifact, 'Q');
+    let note = child('N', 4, NodeType::Note, 'Q');
+
+    let findings = integrity(&[q, x, artifact, note], &gates);
+    assert!(
+        !findings.iter().any(|f| matches!(f.issue, Issue::DecompositionDrift { .. })),
+        "document-family children are not work decomposition: {findings:?}"
+    );
+
+    // But a genuinely new *slice* still triggers drift alongside them.
+    let mut q2 = node('Q', 1, NodeType::Arc);
+    q2.affirm_decomposed(vec![id('X')], day());
+    let x2 = child('X', 2, NodeType::Slice, 'Q');
+    let y2 = child('Y', 5, NodeType::Slice, 'Q');
+    let artifact2 = child('A', 3, NodeType::Artifact, 'Q');
+
+    let findings = integrity(&[q2, x2, y2, artifact2], &gates);
+    let drift = findings
+        .iter()
+        .find(|f| matches!(f.issue, Issue::DecompositionDrift { .. }))
+        .expect("a genuinely new slice still flags drift");
+    assert_eq!(drift.issue, Issue::DecompositionDrift { added: vec![id('Y')], removed: vec![] });
 }
 
 // ----- H-7: advance-toward-done without the assertion -----------------------
