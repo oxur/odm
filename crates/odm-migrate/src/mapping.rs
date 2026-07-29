@@ -26,7 +26,7 @@ use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 
 use crate::legacy::{self, LegacyDoc, LegacyFrontmatter};
-use crate::selfhost::{RepairReport, Repaired};
+use crate::selfhost::Repaired;
 use crate::{MigrateError, Mode};
 
 /// The canonical `design` gate sequence (ODD-0013 §5.1). The migration mapping
@@ -266,6 +266,61 @@ pub fn build_node(
     fm
 }
 
+/// One node `backfill_source` could not reconcile: its legacy source has
+/// **drifted** since it was migrated — the body no longer matches, byte-for-
+/// byte after normalization, the current legacy file (arc-migration-fidelity
+/// s10, surfaced while running `backfill_source` live against `docs/design`:
+/// ODD-0013 and ODD-0020, both actively amended throughout this rebuild,
+/// hit exactly this).
+///
+/// `backfill_source` never overwrites a body it cannot verify (the hard
+/// body-hash gate, ODD-0025 §2.1) — but rather than aborting the *whole*
+/// batch on the first drifted node (as a single-node caller of
+/// [`crate::fidelity::verify_body_hash`] would via `?`), a drift is a
+/// **per-node skip**, disclosed here, not swallowed and not fatal: the other,
+/// undrifted nodes in the same run still get backfilled. The node itself is
+/// left completely untouched (no `source`, no body change) — reconciling a
+/// living-doc drift is the arc's `s12` reconcile-run's job (the same gap
+/// s08's CDC verification surfaced for an actively-edited arc-plan node);
+/// this only ever reports it.
+#[derive(Debug, Clone)]
+pub struct Drifted {
+    /// The node's number (unchanged — nothing was written).
+    pub number: u32,
+    /// The node's identity.
+    pub id: Id,
+    /// The node's name.
+    pub name: String,
+    /// The node's type (`design` or `research`).
+    pub node_type: NodeType,
+}
+
+/// The outcome of a [`backfill_source`] run.
+#[derive(Debug, Clone)]
+pub struct BackfillReport {
+    /// Nodes backfilled (or, under `--dry-run`, that would be backfilled).
+    pub repaired: Vec<Repaired>,
+    /// Nodes skipped because their legacy source has drifted — see
+    /// [`Drifted`]'s doc for why this is a report, not a failure.
+    pub drifted: Vec<Drifted>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl BackfillReport {
+    /// The number of nodes backfilled (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn repaired_count(&self) -> usize {
+        self.repaired.len()
+    }
+
+    /// The number of nodes skipped as drifted.
+    #[must_use]
+    pub fn drifted_count(&self) -> usize {
+        self.drifted.len()
+    }
+}
+
 /// Backfills `source` onto every existing `design`/`research` node in `store`
 /// that lacks one — update-in-place (ODD-0025 §2.8), mirroring
 /// [`crate::selfhost::repair`]'s shape but keyed on the **legacy corpus's**
@@ -281,10 +336,11 @@ pub fn build_node(
 /// ([`crate::fidelity::is_stub_body`]) is replaced with the verbatim legacy
 /// body; a faithful non-stub body is kept and verified against the source
 /// under the hard body-hash gate ([`crate::fidelity::verify_body_hash`]) — a
-/// mismatch is a hard error, never silently swallowed. Containment is left
-/// untouched: design/research containment is optional (ODD-0025 §2.7), so
-/// this backfill only ever adds `source`, `updated`, and re-stamps the schema
-/// marker.
+/// mismatch is never silently swallowed **and never aborts the batch**: it is
+/// recorded as [`Drifted`] and the run continues (see that type's doc).
+/// Containment is left untouched: design/research containment is optional
+/// (ODD-0025 §2.7), so this backfill only ever adds `source`, `updated`, and
+/// re-stamps the schema marker.
 ///
 /// A node whose legacy `number` has no matching file under `legacy_path`
 /// (moved or removed since) is left untouched, not an error — same
@@ -293,13 +349,12 @@ pub fn build_node(
 ///
 /// # Errors
 ///
-/// [`MigrateError`] if the corpus can't be loaded, the body-hash gate fails
-/// (a drifted non-stub body), or a persist fails.
+/// [`MigrateError`] if the corpus can't be loaded or a persist fails.
 pub fn backfill_source(
     store: &Store,
     legacy_path: &Path,
     mode: Mode,
-) -> Result<RepairReport, MigrateError> {
+) -> Result<BackfillReport, MigrateError> {
     let legacy_path_buf = legacy_path.canonicalize().unwrap_or_else(|_| legacy_path.to_path_buf());
     let legacy_path = legacy_path_buf.as_path();
     let anchor = crate::fidelity::anchor_for(legacy_path);
@@ -316,6 +371,7 @@ pub fn backfill_source(
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
     let today = chrono::Utc::now().date_naive();
     let mut repaired = Vec::new();
+    let mut drifted = Vec::new();
     for document in &corpus {
         let fm = document.frontmatter();
         if !matches!(fm.node_type(), NodeType::Design | NodeType::Research) {
@@ -345,11 +401,21 @@ pub fn backfill_source(
         ));
 
         let new_document = Document::new(new_fm, new_body);
-        crate::fidelity::verify_body_hash(
+        if crate::fidelity::verify_body_hash(
             &legacy_doc.body,
             new_document.body(),
             format!("#{} ({}) source backfill", fm.number(), fm.node_type()),
-        )?;
+        )
+        .is_err()
+        {
+            drifted.push(Drifted {
+                number: fm.number(),
+                id: fm.id(),
+                name: fm.name().to_string(),
+                node_type: fm.node_type(),
+            });
+            continue;
+        }
 
         repaired.push(Repaired {
             number: fm.number(),
@@ -366,7 +432,8 @@ pub fn backfill_source(
     }
 
     repaired.sort_by_key(|r| r.number);
-    Ok(RepairReport { repaired, dry_run: mode.is_dry_run() })
+    drifted.sort_by_key(|d| d.number);
+    Ok(BackfillReport { repaired, drifted, dry_run: mode.is_dry_run() })
 }
 
 /// Records the document gates from the start of the sequence up to and including

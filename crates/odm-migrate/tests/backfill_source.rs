@@ -88,16 +88,37 @@ fn backfill_source_keeps_a_faithful_body_and_adds_source() {
     assert!(node.frontmatter().source().is_some());
 }
 
-// ----- F-4: a drifted non-stub body is a hard error, never silently backfilled
+// ----- s10: a drifted non-stub body is a disclosed skip, not a fatal error --
 
 #[test]
-fn backfill_source_rejects_a_drifted_non_stub_body() {
+fn backfill_source_skips_a_drifted_non_stub_body_but_keeps_going() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
+    // #5 has drifted from its legacy source; #1 has not — the batch must
+    // still reconcile #1 despite #5's drift (arc-migration-fidelity s10:
+    // ODD-0013/ODD-0020 hit exactly this live, and an all-or-nothing abort
+    // would have blocked every clean node behind the two drifted ones).
     persist_sourceless(&store, 5, "# The new approach\n\nThis text has drifted from the source.\n");
+    persist_sourceless(&store, 1, "# Legacy #1\n");
 
-    let err = backfill_source(&store, &legacy_fixture(), Mode::Commit).unwrap_err();
-    assert!(matches!(err, odm_migrate::MigrateError::BodyHashMismatch { .. }));
+    let report = backfill_source(&store, &legacy_fixture(), Mode::Commit).expect("backfill");
+    assert_eq!(report.repaired_count(), 1, "the undrifted node #1 is still backfilled");
+    assert_eq!(report.drifted_count(), 1, "the drifted node #5 is reported, not fatal");
+    assert_eq!(report.drifted[0].number, 5);
+
+    let drifted_node = node_by_number(&store, 5);
+    assert!(
+        drifted_node.frontmatter().source().is_none(),
+        "drifted node left completely untouched"
+    );
+    assert_eq!(
+        drifted_node.body(),
+        "# The new approach\n\nThis text has drifted from the source.\n",
+        "drifted node's body is not silently overwritten"
+    );
+
+    let clean_node = node_by_number(&store, 1);
+    assert!(clean_node.frontmatter().source().is_some(), "the clean node was still backfilled");
 }
 
 // ----- F-4: idempotent — an already-sourced node is left alone --------------

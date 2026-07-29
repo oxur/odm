@@ -104,18 +104,20 @@ pub(crate) fn migrate(
     // design/research node against its legacy file **first**, then the
     // ordinary create pass below picks up anything genuinely new (an
     // as-yet-unmigrated ODD). Both steps already honor `--dry-run` identically.
-    let repair_report = backfill_source(store, &legacy, mode)
+    let backfill_report = backfill_source(store, &legacy, mode)
         .with_context(|| format!("backfilling source onto {}", legacy.display()))?;
-    render_repair(&repair_report, out)?;
+    render_backfill(&backfill_report, out)?;
 
     let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &doc_gates)
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
     let status = format!(
-        "{}: {} reconciled, {} created, {} upgraded, {} skipped, {} warning(s){}",
+        "{}: {} reconciled, {} drifted (skipped), {} created, {} upgraded, {} skipped, \
+         {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
-        repair_report.repaired_count(),
+        backfill_report.repaired_count(),
+        backfill_report.drifted_count(),
         report.created_count(),
         report.upgraded_count(),
         report.skipped_count(),
@@ -222,6 +224,43 @@ fn render_repair(
         "Total: {} {}",
         report.repaired_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" }
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// Renders the design/research `source`-backfill pass
+/// ([`odm_migrate::mapping::backfill_source`]): a reconcile row per node
+/// backfilled, plus a `drift (skipped)` row per node whose legacy source has
+/// diverged (arc-migration-fidelity s10 — see
+/// [`odm_migrate::mapping::Drifted`]'s doc for why this is a report, not a
+/// failure). Silent when there is nothing to report.
+fn render_backfill(
+    report: &odm_migrate::mapping::BackfillReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.repaired.is_empty() && report.drifted.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would reconcile" } else { "reconciled" };
+    let title = if report.dry_run { "RECONCILE (DRY RUN)" } else { "RECONCILE" };
+    let mut table = Themed::new(title, &RECONCILE_COLUMNS);
+    for r in &report.repaired {
+        table.row([verb.to_string(), r.number.to_string(), r.name.clone(), r.id.to_string()]);
+    }
+    for d in &report.drifted {
+        table.row([
+            "drift (skipped)".to_string(),
+            d.number.to_string(),
+            d.name.clone(),
+            d.id.to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}, {} drifted (skipped, unchanged)",
+        report.repaired_count(),
+        if report.dry_run { "to reconcile" } else { "reconciled" },
+        report.drifted_count()
     ));
     writeln!(out, "{}", table.render())?;
     Ok(())
