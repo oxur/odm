@@ -10,7 +10,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design-v1.0.0/arc06-migrate-self-host/slice03-schema-versioning/slice-doc.md
+  - docs/design-v1.0.0/arc06-migrate-self-host/slice03-schema-versioning/slice-doc.md
   class: slice-doc
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0

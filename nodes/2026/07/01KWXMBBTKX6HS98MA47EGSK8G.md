@@ -10,7 +10,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design-v1.0.0/arc02-graph-gates-derived-order/slice04-derived-order-and-satisfaction/slice-doc.md
+  - docs/design-v1.0.0/arc02-graph-gates-derived-order/slice04-derived-order-and-satisfaction/slice-doc.md
   class: slice-doc
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0

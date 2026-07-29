@@ -10,7 +10,7 @@ origin: planned
 reserved: false
 source:
   paths:
-  - /Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design-v1.0.0/arc05-reconciliation/slice03-reconcile-command/slice-doc.md
+  - docs/design-v1.0.0/arc05-reconciliation/slice03-reconcile-command/slice-doc.md
   class: slice-doc
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
