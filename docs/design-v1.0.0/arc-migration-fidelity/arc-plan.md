@@ -14,8 +14,8 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
-> **Status:** s01–s08 **closed** (2026-07-28); s04–s07 CDC-verified PASS, s08 attested-by-CC pending
-> CDC. `source.paths` is now repo-content-root-relative and canonical (CDC v2.8 Finding 1 resolved) —
+> **Status:** s01–s08 **closed** (2026-07-28); s04–s08 CDC-verified PASS.
+> `source.paths` is now repo-content-root-relative and canonical (CDC v2.8 Finding 1 resolved) —
 > odm's own corpus: 0 stub bodies / 62 source-bearing plan nodes, all portable / all 12 arcs represented
 > (was 44 stubs / 0 source / 6 of 12, pre-s07). **s09 (coverage enforcement) next**, now unblocked.
 > *Plan late, plan deep.*
@@ -87,10 +87,11 @@ runs the same capability.
 | **s05 — source-based identity** ✅ CLOSED 2026-07-28 (CDC-verified) | Retire `number` as a **correctness key** (F12 — the number problem's root): key `self_host` idempotence + coverage matching on **`source.paths`**, not `(type, number)`; **backfill `source`** onto the already-faithful non-stub nodes (body unchanged, hash-gate-confirmed) so *every* node carries one; make the named-arc handle **name-derived + stable** (cosmetic display only). `number` becomes a pure label nothing keys on — the position-based fragility dissolves permanently. Fixture-verified. | no (fixture-only) | s04 |
 | **s06 — live-run capability** ✅ CLOSED + CDC-verified PASS 2026-07-28 | **Unified the two `source`-backfill paths** (v2.1 finding): a single `reconcile_source()` — gated, project-excluding, and (self-identified extension) retired-excluding — now backs both `self_host`'s `to_populate` transition and `repair()`. **Extended `odm migrate`'s self-host path**: `repair()` now runs before `self_host()` in `self_host_inner`, default-on, no new flag; `repair()`'s only callers were previously tests. **No new verb** (`self-host` folded into `migrate`, C-5); reuses `--dry-run`. **Fixture-verified end-to-end; no live mutation.** `context.json` re-pointing stays with s07 (structurally a live-store operator statement, not a migration artifact — disclosed in the closing report). | no (fixture-only) | s05 |
 | **s07 — live repair run** ✅ CLOSED + CDC-verified PASS 2026-07-28 | Fired the s06 flow on the **live** `.worktrees/odm` corpus behind the full snapshot → dry-run → adjudicate → fire → verify protocol: commit `7b4eb57` (`odm` branch, atop known-good `e2ab628`) repairs the 44 stubs, gated-backfills `source` on the faithful nodes (none existed beyond the stubs — the corpus's one non-stub slice was the retired tombstone), imports the 6 previously-excluded arcs + their 11 slices, stamps `v1.1`. **Opened with** the CDC v2.5 doc-comment fix (`release/1.0.x` commit `b901b12`). **`context.json` deliberately left unchanged** — `migrate` has no code path that writes it; re-pointing operator focus is a separate act this slice doesn't make on the operator's behalf. **Verified:** `check` green, 0 stubs, 0 uncovered arc-plans/slice-docs, 0 `BodyHashMismatch` on re-verify, `orient`/`rollup` byte-stable, fully re-run-idempotent, project + retired node confirmed untouched. **Four pre-existing findings disclosed** (not fixed here): absolute `source.paths`, a report-clarity gap in `representation()`'s named-arc heuristic, a stale `provenance_absence` detector (checks the pre-s02 key name), and 8 genuine (non-blocking) `check` warnings about arcs with no slice subdirectories yet. **Deferred to s08 as scoped:** the 14 design/research nodes' `source` + the ~211 loose-doc coverage. | **yes (live)** | s06 |
-| **s08 — source-path portability** ✅ CLOSED 2026-07-28 (attested-by-CC; CDC pending) | Stores `source.paths` **relative to the repo content root** — `docs/…`, never the checkout/worktree root — via a shared `anchor_for`/`relativize`/`resolve_from_anchor` trio (`fidelity.rs`) anchored on the docs tree's **git toplevel**, one function for both writing and resolving so they can't drift. `self_host`'s `by_source` matching canonicalizes whatever is stored (absolute or relative) and the freshly-discovered path to the same key — the re-mint guard, fixture-proven (`selfhost_transition_rewrites_absolute_source_paths_to_relative`) — plus cross-checkout determinism and coverage stability across two independent roots (6 new tests total). `coverage.rs` updated the same way (a necessary addition beyond the literal file list, driven by its own cross-root criterion). **Live corrective re-migration** rewrote all 61 committed nodes' paths absolute→relative as one commit (`7226797` atop `7b4eb57`) — bodies/ids/schema byte-identical, project + retired untouched, 0 re-mint; the dry-run's one "create" (slice08's own newly-drawn plan node) was investigated and confirmed legitimate before firing, not silently overridden. Closes **CDC v2.8 Finding 1**. | **yes (live)** | s07 |
-| **s09 — coverage enforcement** | Mint the supporting-doc child nodes as `artifact` nodes (F10 mint-all incl. the reports); **wire doc-coverage into `odm check`** (fixing `coverage.rs`'s `representation()` "8/12" clarity gap + the stale `provenance_absence` detector checking the renamed `provenance:` key — CDC v2.8 Findings 2–3); backfill `source` on / attach the 14 design/research nodes (MF-3's residual scope, F7). | yes | s02, s03, s08 |
-| **s10 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
-| **s11 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
+| **s08 — source-path portability** ✅ CLOSED 2026-07-28 + CDC-verified PASS 2026-07-29 | Stores `source.paths` **relative to the repo content root** — `docs/…`, never the checkout/worktree root — via a shared `anchor_for`/`relativize`/`resolve_from_anchor` trio (`fidelity.rs`) anchored on the docs tree's **git toplevel**, one function for both writing and resolving so they can't drift. `self_host`'s `by_source` matching canonicalizes whatever is stored (absolute or relative) and the freshly-discovered path to the same key — the re-mint guard, fixture-proven (`selfhost_transition_rewrites_absolute_source_paths_to_relative`) — plus cross-checkout determinism and coverage stability across two independent roots (6 new tests total). `coverage.rs` updated the same way (a necessary addition beyond the literal file list, driven by its own cross-root criterion). **Live corrective re-migration** rewrote all 61 committed nodes' paths absolute→relative as one commit (`7226797` atop `7b4eb57`) — bodies/ids/schema byte-identical, project + retired untouched, 0 re-mint; the dry-run's one "create" (slice08's own newly-drawn plan node) was investigated and confirmed legitimate before firing, not silently overridden. Closes **CDC v2.8 Finding 1**. | **yes (live)** | s07 |
+| **s09 — coverage enforcement (capability)** | Build the enforcement machinery **fixture-only, no live mutation**: add the `artifact` **`NodeType`** variant (+ `artifact/v1.0`, per-type validity, §2.5 nearest-scale containment); extend `discover()` to reach the **artifact** doc family (mint-all incl. reports, §2.6) **and** the **design/research** family (the 14 nodes' `source`, F7); **wire doc-coverage into `odm check`** as an Error (MF-6), built on s08's portable key; fix `coverage.rs`'s `representation()` "8/12" clarity gap + the stale `provenance_absence` detector (CDC v2.8 Findings 2–3). All `TempDir`-proven; live activation is s10. | no (fixture-only) | s02, s03, s08 |
+| **s10 — coverage live run** | Fire s09's capability on the **live** `.worktrees/odm` corpus behind the s07 snapshot → dry-run → adjudicate → fire → verify protocol: mint the ~211 `artifact` nodes (mint-all), backfill `source` on the 14 design/research nodes, and **flip the enforcing coverage check on** (green only once every doc is covered). One revertible commit; `check`/`orient`/`rollup` green + idempotent after; cross-root stable (s08 key). | **yes (live)** | s09 |
+| **s11 — synthesis + L-8b** | The supersede-based synthesis step (concat hash-gated; editorial-merge attested); re-cast the project vision as a synthesis **superseding** the 1:1 `project-plan` node; reconcile the four L-8b ODDs. | yes | s02, s03 |
+| **s12 — reconcile run** | Run the whole capability over odm's own corpus end-to-end; verify no doc uncovered, no orphan, every body-hash passes, all arcs/slices present, `check`/`orient`/`rollup` green. The arc composition + P-12 acceptance demonstration. | — | all |
 
 *Sizing note:* the heaviest are **s05**/**s06** (identity + live run) and **s07** (children-mint + check-wiring); the live-mutation slices are
 **s06**/**s07** — split at slice-activation if an open set won't fit
@@ -105,17 +106,66 @@ destructive op is fixture-proven before it fires.
 
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
-| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — s01 *detector* exists + ran (CDC-verified); the *enforced check* is s09's job |
+| MF-1 | Doc-coverage check exists and is green on `1.0.x/docs` — every `.md` has a node | run the check on the corpus | serious (no file left behind) | planned — s01 *detector* exists + ran (CDC-verified); the *enforced check* is built in s09 (capability) and goes live-green in s10 |
 | MF-2 | Body-hash gate green across all migrated nodes; zero stub bodies remain | re-migrate + gate; count stubs = 0 | serious | **done** — s07's live run: 0 stub bodies on the committed `odm` corpus (was 44); a second `migrate` run surfaces 0 `BodyHashMismatch` (`slice07-live-run/closing-report.md`); s08's path rewrite (`slice08-source-path-portability/closing-report.md`) touched no body — still 0 stubs, still 0 `BodyHashMismatch` on re-verify; reproduced by direct read of commit `7226797` |
-| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | **done for the plan-node scope** (project/arc/slice) — s07's live run: every eligible live node source-bearing (project + the retired tombstone correctly excluded by design, ODD-0025 §2.3); `author`/`version` N/A (frontmatter-less plan corpus) (`slice07-live-run/closing-report.md`). **s08 strengthened this**: those `source` sub-maps are now portable (`docs/…`-relative, not machine-specific absolute paths) — 62 of 62 eligible live nodes, 0 absolute-path entries (`slice08-source-path-portability/closing-report.md`); reproduced by direct read of commit `7226797`. **Not yet done for the full criterion**: the 14 design/research nodes still carry no `source` — `discover()` structurally cannot reach that type family, so their backfill is explicitly **s09**'s job, not a silent gap |
+| MF-3 | Every migrated node carries a `source` sub-map (+ preserved `author`/`version`) | grep/`check` over the store | correctness | **done for the plan-node scope** (project/arc/slice) — s07's live run: every eligible live node source-bearing (project + the retired tombstone correctly excluded by design, ODD-0025 §2.3); `author`/`version` N/A (frontmatter-less plan corpus) (`slice07-live-run/closing-report.md`). **s08 strengthened this**: those `source` sub-maps are now portable (`docs/…`-relative, not machine-specific absolute paths) — 62 of 62 eligible live nodes, 0 absolute-path entries (`slice08-source-path-portability/closing-report.md`); reproduced by direct read of commit `7226797`. **Not yet done for the full criterion**: the 14 design/research nodes still carry no `source` — `discover()` structurally cannot reach that type family, so their backfill logic lands in **s09** (capability) and fires live in **s10**, not a silent gap |
 | MF-4 | Frontmatter-fidelity check green over originally-present fields | run the check | correctness | planned — mapping specified in ODD-0025 §2.4 |
 | MF-5 | All arcs (incl. the 6 previously-excluded) + all slices represented | count dirs vs nodes = 0 gap | serious | **done** — s07's live run: all 12 plan-tree arcs + their slices now have nodes; doc-coverage set-difference over `source.paths` = 0 uncovered arc-plans/slice-docs (`slice07-live-run/closing-report.md`); s08 confirmed this stays true after the path rewrite (source-based matching is unaffected by the path *form* change, `slice08-source-path-portability/closing-report.md`) and additionally proved it's now **portable** — the same 0-uncovered result holds from any checkout root, not just the authoring machine; reproduced by direct read of commit `7226797`. **Caveat disclosed, not a gap:** `coverage.rs`'s separate `representation()` heuristic still can't resolve a named arc's number from its directory name alone, so `--coverage`'s summary line still reads "8/12" even though the exact criterion (doc-coverage) is 12/12 — a report-clarity finding deferred to s09, not an unrepresented arc |
-| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **mint-all** (ODD-0025 §2.6); s09 mints + wires |
+| MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | planned — F10 **mint-all** (ODD-0025 §2.6); s09 wires the check (capability); s10 mints live |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | planned — model in ODD-0025 §2.3 |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | planned |
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | planned |
 
 ## Version History
+
+### v2.12 — 2026-07-29 — s09 split into capability (s09) + live run (s10); downstream renumbered
+
+**Approved by the operator (option A).** s09-as-scoped bundled a new `NodeType` (`artifact`), the
+discovery reach for two doc families, the `check`-wiring, the two `coverage.rs` fixes, **and two live
+mutations** (mint ~211 `artifact` nodes + backfill the 14 design/research nodes) — an arc's worth of
+work in one context, plus a correctness hazard (the enforcing check goes red on the live corpus if it
+activates before the mint). Split along the arc's own capability-then-live-run seam (the s04/s05,
+s06/s07 precedent):
+
+- **s09 — coverage enforcement (capability)** — the machinery, fixture-only, no live mutation. Open set
+  drawn (`slice09-coverage-enforcement/{slice-doc,ledger,cc-prompt}.md`).
+- **s10 — coverage live run** (NEW) — fire the mint + backfill + flip the check live, behind the s07
+  snapshot → dry-run → adjudicate → fire → verify protocol. Open set drawn (`slice10-coverage-live-run/`).
+- **Renumber:** old **s10 (synthesis + L-8b) → s11**; old **s11 (reconcile run) → s12**. The slice table
+  and the MF-ledger rows (MF-1/MF-3/MF-6) are updated to the s09-capability / s10-live split.
+
+**Mapping note for prior entries:** references to "s11" (reconcile) and the "s10/s11" living-doc-drift
+design question in **v2.11** and earlier use the *pre-renumber* numbering — under this entry the
+reconcile run is **s12** and the coverage live run is **s10**. Prior history entries are left as written.
+
+**Surfaced by:** the s08 CDC verification's sizing assessment + the operator's option-A decision.
+
+### v2.11 — 2026-07-29 — s08 CDC-verified PASS (independent reproduction); arc-node drift routed to s11
+
+**CDC verification: PASS** (`slice08-source-path-portability/cdc-verification.md`). Reproduced — not
+merely attested — against the committed objects (`odm@7226797` vs known-good `7b4eb57`; code
+`release/1.0.x@994d3e5`): 78 nodes / 62 source-bearing / **0 absolute `source.paths`** (was 61) / 0 stubs;
+all 62 relative paths resolve against the plan tree; the `7b4eb57`→`7226797` diff is exactly **61
+modified (one path line each) + 1 added**, ids/bodies/schema otherwise byte-stable; project (`#1000`) +
+retired (`#1605`) untouched (last-touched `b45b122`, pre-s07). The **re-mint guard held**: 0 of 61
+re-minted, keyed via `relativize` on both stored and discovered sides in code. **The dry-run's "1
+create" was independently re-adjudicated** as slice08's own genuinely-new plan node (`#58837408`, no
+prior ULID/number claimant) — CC's investigate-before-firing was correct; its s09+ gate-reading
+refinement ("stop and *investigate* any deviation," clearing it before the irreversible step) is
+ratified. Runtime rows (`check`/`orient`/`rollup`/`clippy`/`llvm-cov`) stay attested-by-CC → CI (the
+macOS binaries won't run on the CDC Linux bridge).
+
+**One reproduced observation, routed — not an s08 defect.** The active arc node (`#58837400`,
+`source → arc-plan.md`) shows body-hash drift vs the live arc-plan (127 lines of status/version-history
+growth; 0.85 similar; a full 377-line body, not a stub). s08 changed only its path line; the drift is the
+living-doc reconcile case already scoped to **s11** — and, structurally, the *active* arc's node can
+never be body-faithful while its arc is in flight (this very entry widens the drift). **Open design
+question for s10/s11:** reconcile a living-plan arc node by re-snapshot on every edit, or treat it
+specially like the project synthesis node (excluded from 1:1 `source`)? Only the active arc drifts; the
+11 closed arcs match. (Surfaced by: slice 08.)
+
+**s08 → CDC-verified PASS.** CDC v2.8 Finding 1 confirmed resolved. **s09 (coverage enforcement)
+unblocked and next.**
 
 ### v2.10 — 2026-07-28 — s08 (source-path portability) closed; CDC v2.8 Finding 1 resolved
 
