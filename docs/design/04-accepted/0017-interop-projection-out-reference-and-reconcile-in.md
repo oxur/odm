@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [interop, federation, export, reconcile, cross-team, evangelism]
 created: 2026-06-20
-updated: 2026-06-20
-state: Draft
+updated: 2026-07-29
+state: Accepted
 supersedes: null
 superseded-by: null
-version: 1.0
+version: 1.1
 ---
 
 # Interop — projection out, reference-and-reconcile in
@@ -142,3 +142,20 @@ directory structures (targets are vocab-map + template, not custom emitters).
   and desired-fact reconcile share one mechanism.
 - **Q-4** Identity of external nodes: do they get a normal ULID `id` (yes) plus the
   `{system, external_id}` as the reconcilable key (yes)? Confirm at the arc.
+
+## Version History
+
+### v1.1 — 2026-07-29 — L-8b: `state` corrected to Accepted (release-gate housekeeping)
+
+**`state: Draft` → `Accepted`.** L-8 (`arc-release-hardening/uat-coverage-audit.md` §L-8) flagged that
+this document — the thesis governing interop across every downstream arc that cites it (arc02, arc03,
+arc06, arc-llm-command-surface, arc-release-hardening, and this arc) — was carrying `Draft` while
+functioning as decided, binding architecture: multiple built, closed arcs already depend on and cite
+its federate-don't-convert thesis as settled. A document this widely load-bearing reading "draft" is
+exactly the authority-vs-directory drift odm exists to prevent. Corrected as a pre-release housekeeping
+item (arc-migration-fidelity **s11**, L-8b — reconcile before v1.0.0 ships). The open questions in §6
+remain genuinely open (a design decision can be Accepted while leaving implementation-detail questions
+for the realizing arc) — this correction is about the document's own authority, not about resolving
+those questions. **Doc-tree only**: this file is relocated `01-draft/` → `04-accepted/` in the same
+change (`git mv`, history preserved). The corresponding **node's** gate vector is not touched here —
+that is **s12**'s reconcile, not this edit's.

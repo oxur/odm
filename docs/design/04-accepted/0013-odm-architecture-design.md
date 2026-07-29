@@ -5,11 +5,11 @@ author: "topological sort"
 component: All
 tags: [architecture, design, node-graph, dag, reconciliation]
 created: 2026-06-20
-updated: 2026-07-27
-state: Draft
+updated: 2026-07-29
+state: Accepted
 supersedes: null
 superseded-by: null
-version: 2.4
+version: 2.5
 ---
 
 # odm — Architecture & Design (v-major rebuild)
@@ -584,6 +584,21 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.5 — 2026-07-29 — L-8b: `state` corrected to Accepted (release-gate housekeeping)
+
+**`state: Draft` → `Accepted`.** L-8 (`arc-release-hardening/uat-coverage-audit.md` §L-8) flagged that
+this document's `state:` frontmatter — its **authority**, per §9's own model (a design doc's authority
+is its `state:`-derived gate reach, not its directory) — had drifted from what its own history already
+shows: this doc's own amendments (0019/0020, both `Accepted`, both applied by real, shipped slices —
+v2.4 above) already assume ODD-0013 itself is settled, normative architecture, not an open draft. A
+`Draft`-labeled document cannot correctly be amended by `Accepted` documents; the amendment chain is
+itself the evidence the label was stale. Corrected as a pre-release housekeeping item
+(arc-migration-fidelity **s11**, L-8b — reconcile before v1.0.0 ships), folding in the 0019/0020
+amendment context per L-8b's instruction. **Doc-tree only**: this file is relocated
+`01-draft/` → `04-accepted/` in the same change (`git mv`, history preserved) so the browsable view
+agrees with the corrected `state:`. The corresponding **node's** gate vector is not touched here — that
+is **s12**'s reconcile, not this edit's.
 
 ### v2.4 — 2026-07-27 — Migration Fidelity amendments (ODD-0025 §4)
 
