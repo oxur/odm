@@ -102,3 +102,35 @@ before the irreversible step.
 "no file left behind" is now a check that fires. On close, bubble up to `../arc-plan.md`: MF-1/MF-6
 **done** (enforced live); MF-3 **done** for the full criterion (design/research `source` landed);
 **s11 (synthesis + L-8b) unblocked and next**; the living-doc-drift reconcile confirmed routed to s12.
+
+
+---
+
+## Post-draw scope amendments (operator-directed) — 2026-07-29
+
+> Recorded per spec-keeping: the In/Out scope above is the slice **as originally drawn**. During
+> execution the operator directed five additions in real time, disclosed here rather than retconned into
+> the original scope. Full detail: `ledger.md` (F-11…F-15), `closing-report.md`, `cdc-verification.md`.
+
+1. **`docs/design/index.md` + templates excluded from coverage** (F-11) — infrastructure files the legacy
+   importer never ingests; required for the live gate to reach 0-uncovered.
+2. **`docs/dev/**` minted as `NodeType::Note`** (F-12) — a new general capability, 31 nodes, tagged by
+   immediate subdirectory, uncontained (the note-classification the operator flagged pre-run).
+3. **Git-derived `created`/`updated` dates** (F-13) — every creation/reconcile path now stamps real file
+   history instead of migrate-day.
+4. **`check_decomposition` counts only work-type children** (F-14) — removes a mint-scale
+   decomposition-drift false positive that would have blocked the green `check`.
+5. **`odm list` tree-nests a slice-/arc-attached `artifact`** (F-15) — display only, no store mutation.
+
+CDC assessment (see `cdc-verification.md` §2): ratified — operator-directed, disclosed, fixture-tested
+before firing. Named process cost: F-11/F-12/F-14 are strictly *capability* (the cc-prompt reserved
+capability for s09), so they bypassed the capability/live-run separation; CDC verified their live
+outcomes extra-carefully rather than inheriting the fixture attestation.
+
+### Iteration 1 (CDC finding) — 2026-07-29
+
+CDC reproduction found 4 imported ODD nodes (#22–25) with **absolute** `source.paths` (s08 Finding-1
+regressed on the un-relativized `mapping::build_node` seam, masked by the coverage matcher's tolerance).
+Iteration 1 fixed the seam, added an **unconditional `absolute-source-path` `check` rule** (enforced
+invariant), and rewrote the 4 path-string-only (`odm@2fc25f5`). Verified: 0 absolute remain. Ledger
+F-16…F-21; `cc-prompt-iteration1.md`.
