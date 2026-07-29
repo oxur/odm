@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Context as _;
 use odm_core::NodeType;
 use odm_migrate::coverage::{CoverageReport, DocClass};
-use odm_migrate::mapping::{DocGates, canonical_design_gates, canonical_research_gates};
+use odm_migrate::mapping::{
+    DocGates, backfill_source, canonical_design_gates, canonical_research_gates,
+};
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::{Store, StoreHome};
 
@@ -36,6 +38,12 @@ pub(crate) struct Options {
     /// Report the coverage/gap inventory over `legacy_path` (a docs root) and
     /// exit — read-only (arc-migration-fidelity slice01).
     pub coverage: bool,
+    /// Mint the artifact-family corpus over `legacy_path` (a docs root) and
+    /// exit (arc-migration-fidelity slice09/slice10).
+    pub artifacts: bool,
+    /// Mint the note corpus over `legacy_path` (a dev-docs root) and exit
+    /// (arc-migration-fidelity slice10).
+    pub notes: bool,
 }
 
 pub(crate) fn migrate(
@@ -53,6 +61,16 @@ pub(crate) fn migrate(
     // re-derives a node, so it short-circuits before any of that machinery.
     if options.coverage {
         return coverage(store, &legacy, out, err);
+    }
+    // Artifact/note mint-all are their own derivations — a different node
+    // family, over a different (usually broader) root than the plan-set or
+    // legacy-ODD walks below — so each short-circuits the same way `coverage`
+    // does.
+    if options.artifacts {
+        return artifacts(store, &legacy, dry_run, out, err);
+    }
+    if options.notes {
+        return notes(store, &legacy, dry_run, out, err);
     }
 
     // The re-stamp is a different operation from an import: it rewrites nodes
@@ -79,13 +97,25 @@ pub(crate) fn migrate(
     };
 
     let mode = Mode::from_dry_run(dry_run);
+
+    // The design/research counterpart to `self_host_inner`'s repair-then-import
+    // order (arc-migration-fidelity s10, gate wiring — no new detection logic,
+    // `backfill_source` is s09's): reconcile every existing sourceless
+    // design/research node against its legacy file **first**, then the
+    // ordinary create pass below picks up anything genuinely new (an
+    // as-yet-unmigrated ODD). Both steps already honor `--dry-run` identically.
+    let repair_report = backfill_source(store, &legacy, mode)
+        .with_context(|| format!("backfilling source onto {}", legacy.display()))?;
+    render_repair(&repair_report, out)?;
+
     let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &doc_gates)
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
     let status = format!(
-        "{}: {} created, {} upgraded, {} skipped, {} warning(s){}",
+        "{}: {} reconciled, {} created, {} upgraded, {} skipped, {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
+        repair_report.repaired_count(),
         report.created_count(),
         report.upgraded_count(),
         report.skipped_count(),
@@ -322,6 +352,128 @@ fn render_coverage(report: &CoverageReport, out: &mut dyn Write) -> anyhow::Resu
     for entry in &report.provenance_missing {
         writeln!(out, "- #{} {} — {}", entry.number, entry.node_type.as_str(), entry.name)?;
     }
+    Ok(())
+}
+
+/// The `migrate --artifacts` arm: mints an `artifact` node for every
+/// supporting doc under `docs_root` not already covered (arc-migration-
+/// fidelity slice09/slice10, ODD-0025 §2.6 mint-all).
+fn artifacts(
+    store: &Store,
+    docs_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mode = Mode::from_dry_run(dry_run);
+    let report = odm_migrate::artifact::mint_artifacts(store, docs_root, mode)
+        .with_context(|| format!("minting artifacts over {}", docs_root.display()))?;
+
+    render_artifacts(&report, out)?;
+    let status = format!(
+        "{}: {} artifact(s) minted{}",
+        if report.dry_run { "migrate --artifacts (dry-run)" } else { "migrate --artifacts" },
+        report.minted_count(),
+        if report.dry_run { " — nothing written" } else { "" },
+    );
+    if report.dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
+    Ok(())
+}
+
+const ARTIFACT_COLUMNS: [&str; 4] = ["ACTION", "PATH", "CONTAINED BY", "ID"];
+
+/// Renders the artifact mint-all report: one row per minted (or, dry-run,
+/// would-mint) artifact.
+fn render_artifacts(
+    report: &odm_migrate::artifact::ArtifactReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.minted.is_empty() {
+        writeln!(out, "migrate --artifacts: nothing to mint (every supporting doc is covered).")?;
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would mint" } else { "minted" };
+    let title = if report.dry_run { "ARTIFACTS (DRY RUN)" } else { "ARTIFACTS" };
+    let mut table = Themed::new(title, &ARTIFACT_COLUMNS);
+    for m in &report.minted {
+        table.row([
+            verb.to_string(),
+            m.path.display().to_string(),
+            m.contained_by.map_or_else(|| "—".to_string(), |id| id.to_string()),
+            m.id.to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.minted_count(),
+        if report.dry_run { "to mint" } else { "minted" }
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// The `migrate --notes` arm: mints a `note` node for every dev doc under
+/// `dev_root` not already covered (arc-migration-fidelity slice10, operator
+/// decision 2026-07-28).
+fn notes(
+    store: &Store,
+    dev_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let mode = Mode::from_dry_run(dry_run);
+    let report = odm_migrate::notes::mint_notes(store, dev_root, mode)
+        .with_context(|| format!("minting notes over {}", dev_root.display()))?;
+
+    render_notes(&report, out)?;
+    let status = format!(
+        "{}: {} note(s) minted{}",
+        if report.dry_run { "migrate --notes (dry-run)" } else { "migrate --notes" },
+        report.minted_count(),
+        if report.dry_run { " — nothing written" } else { "" },
+    );
+    if report.dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
+    Ok(())
+}
+
+const NOTE_COLUMNS: [&str; 4] = ["ACTION", "PATH", "TAG", "ID"];
+
+/// Renders the note mint-all report: one row per minted (or, dry-run,
+/// would-mint) note.
+fn render_notes(
+    report: &odm_migrate::notes::NoteReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.minted.is_empty() {
+        writeln!(out, "migrate --notes: nothing to mint (every dev doc is covered).")?;
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would mint" } else { "minted" };
+    let title = if report.dry_run { "NOTES (DRY RUN)" } else { "NOTES" };
+    let mut table = Themed::new(title, &NOTE_COLUMNS);
+    for m in &report.minted {
+        table.row([
+            verb.to_string(),
+            m.path.display().to_string(),
+            m.tag.clone().unwrap_or_else(|| "—".to_string()),
+            m.id.to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.minted_count(),
+        if report.dry_run { "to mint" } else { "minted" }
+    ));
+    writeln!(out, "{}", table.render())?;
     Ok(())
 }
 

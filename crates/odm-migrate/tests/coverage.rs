@@ -227,10 +227,46 @@ fn coverage_doc_coverage() {
         !entry("design/04-accepted/0099-orphan.md").covered,
         "ODD #99 has a number but no matching node"
     );
-    assert!(!entry("design/index.md").covered, "an unparsable ODD-tree file cannot match");
+    assert!(
+        entry("design/index.md").covered,
+        "an index page is excluded infrastructure, not a coverage gap (s10)"
+    );
 
     // Every entry carries a non-empty basis — never presented without one.
     assert!(dc.entries.iter().all(|e| !e.basis.is_empty()));
+}
+
+// ----- s10: infrastructure files (index/templates) are excluded, not gaps --
+
+#[test]
+fn coverage_excludes_index_and_template_files() {
+    let docs = TempDir::new().unwrap();
+    let root = docs.path();
+    write(root, "design/index.md", "# Design Index\n");
+    write(root, "design/templates/design-doc-template.md", "# Template\n");
+    write(root, "design/01-draft/0001-real.md", "---\nnumber: 1\n---\nbody\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let report = coverage::run(&store, root).expect("coverage run");
+    let dc = &report.doc_coverage;
+
+    let entry =
+        |rel: &str| dc.entries.iter().find(|e| e.path == Path::new(rel)).expect("entry present");
+    assert!(entry("design/index.md").covered, "index.md is excluded infrastructure");
+    assert!(
+        entry("design/templates/design-doc-template.md").covered,
+        "a templates/ file is excluded infrastructure"
+    );
+    assert!(
+        !entry("design/01-draft/0001-real.md").covered,
+        "a real ODD with no matching node is still a genuine gap"
+    );
+    assert!(
+        entry("design/index.md").basis.contains("excluded infrastructure"),
+        "basis: {}",
+        entry("design/index.md").basis
+    );
 }
 
 // ----- F-4: representation — arc/slice dirs vs. nodes, missing units named --

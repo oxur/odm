@@ -5,8 +5,11 @@
 
 use std::path::{Path, PathBuf};
 
+use chrono::NaiveDate;
 use clap::Parser;
 use odm_cli::Cli;
+use odm_core::frontmatter::{Document, Frontmatter};
+use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 use tempfile::TempDir;
 
@@ -81,6 +84,169 @@ fn migrate_command_reports_empty_corpus() {
     let (ok, out, _err) = run(store_dir.path(), &["migrate", empty.path().to_str().unwrap()]);
     assert!(ok);
     assert!(out.contains("no legacy documents found"), "empty-corpus message:\n{out}");
+}
+
+// ----- s10: sourceless nodes are backfilled in the same `migrate` pass ------
+
+#[test]
+fn migrate_backfills_a_sourceless_node_and_still_imports_the_rest() {
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    // A pre-source design node matching the legacy fixture's real #1
+    // (test-data/legacy/01-draft/0001-early-draft.md) -- the pre-slice03
+    // shape `backfill_source` exists to repair.
+    let today = NaiveDate::from_ymd_opt(2026, 7, 28).unwrap();
+    let fm =
+        Frontmatter::new(Id::new(), 1, NodeType::Design, "Stub #1", today, today, Origin::Planned);
+    store.persist(&Document::new(fm, "# Stub #1\n".to_string())).unwrap();
+
+    let legacy = fixtures("legacy");
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", legacy.to_str().unwrap()]);
+    assert!(ok, "migrate dispatches cleanly:\n{err}");
+    assert!(err.contains("reconciled"), "the sourceless node is reported reconciled:\n{err}");
+    assert!(err.contains("5 created"), "the other five fixture docs still import:\n{err}");
+
+    let node = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().number() == 1)
+        .expect("#1 present");
+    assert!(node.frontmatter().source().is_some(), "backfilled with source");
+    assert!(
+        node.body().contains("The first sketch"),
+        "the stub body was replaced with the real legacy content: {:?}",
+        node.body()
+    );
+}
+
+// ----- s09/s10: `migrate --artifacts` mints the supporting-doc corpus -------
+
+#[test]
+fn migrate_artifacts_mints_supporting_docs() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_set = fixtures("plan-set");
+
+    // Self-host first so containment has something to resolve against.
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", plan_set.to_str().unwrap()]);
+    assert!(ok, "self-host dispatches cleanly:\n{err}");
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", plan_set.to_str().unwrap(), "--artifacts"]);
+    assert!(ok, "migrate --artifacts dispatches cleanly:\n{err}");
+    assert!(err.contains("artifact(s) minted"), "status names what happened:\n{err}");
+    assert!(out.contains("ARTIFACTS"), "the mint table is rendered:\n{out}");
+
+    let store = Store::open(store_dir.path());
+    let minted = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.frontmatter().node_type() == odm_core::NodeType::Artifact)
+        .count();
+    assert!(minted > 0, "at least one artifact was minted");
+}
+
+#[test]
+fn migrate_artifacts_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_set = fixtures("plan-set");
+    run(store_dir.path(), &["migrate", plan_set.to_str().unwrap()]);
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", plan_set.to_str().unwrap(), "--artifacts", "--dry-run"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(out.contains("would mint"), "dry-run plans mints:\n{out}");
+    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let artifact_count = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.frontmatter().node_type() == odm_core::NodeType::Artifact)
+        .count();
+    assert_eq!(artifact_count, 0, "dry-run minted nothing");
+}
+
+// ----- s10: `migrate --notes` mints the dev-doc corpus ----------------------
+
+#[test]
+fn migrate_notes_mints_dev_docs() {
+    let store_dir = TempDir::new().unwrap();
+    let dev = TempDir::new().unwrap();
+    std::fs::write(dev.path().join("0001-early-thoughts.md"), "# Early thoughts\nbody\n").unwrap();
+    std::fs::create_dir_all(dev.path().join("research")).unwrap();
+    std::fs::write(dev.path().join("research/0001-survey.md"), "# Survey\nbody\n").unwrap();
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", dev.path().to_str().unwrap(), "--notes"]);
+    assert!(ok, "migrate --notes dispatches cleanly:\n{err}");
+    assert!(err.contains("note(s) minted"), "status names what happened:\n{err}");
+    assert!(out.contains("NOTES"), "the mint table is rendered:\n{out}");
+    assert!(out.contains("research"), "the subdirectory tag is shown:\n{out}");
+
+    let store = Store::open(store_dir.path());
+    let notes: Vec<_> = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.frontmatter().node_type() == odm_core::NodeType::Note)
+        .collect();
+    assert_eq!(notes.len(), 2, "both dev docs minted");
+    assert!(
+        notes.iter().all(|n| n.frontmatter().edges().part_of.is_none()),
+        "notes are uncontained"
+    );
+}
+
+#[test]
+fn migrate_notes_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    let dev = TempDir::new().unwrap();
+    std::fs::write(dev.path().join("0001-a.md"), "# A\nbody\n").unwrap();
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", dev.path().to_str().unwrap(), "--notes", "--dry-run"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(out.contains("would mint"), "dry-run plans mints:\n{out}");
+    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    assert!(store.load_all().unwrap().is_empty(), "dry-run minted nothing");
+}
+
+#[test]
+fn migrate_artifacts_and_notes_report_nothing_to_mint_once_covered() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_set = fixtures("plan-set");
+    run(store_dir.path(), &["migrate", plan_set.to_str().unwrap()]);
+    run(store_dir.path(), &["migrate", plan_set.to_str().unwrap(), "--artifacts"]);
+
+    let (ok, out, _err) =
+        run(store_dir.path(), &["migrate", plan_set.to_str().unwrap(), "--artifacts"]);
+    assert!(ok);
+    assert!(out.contains("nothing to mint"), "a second run reports nothing left:\n{out}");
+
+    let dev = TempDir::new().unwrap();
+    std::fs::write(dev.path().join("0001-a.md"), "# A\nbody\n").unwrap();
+    run(store_dir.path(), &["migrate", dev.path().to_str().unwrap(), "--notes"]);
+    let (ok, out, _err) =
+        run(store_dir.path(), &["migrate", dev.path().to_str().unwrap(), "--notes"]);
+    assert!(ok);
+    assert!(out.contains("nothing to mint"), "a second notes run reports nothing left:\n{out}");
+}
+
+#[test]
+fn migrate_artifacts_and_notes_conflict() {
+    assert!(
+        Cli::try_parse_from(["odm", "migrate", "x", "--artifacts", "--notes"]).is_err(),
+        "--artifacts and --notes are mutually exclusive"
+    );
+    assert!(
+        Cli::try_parse_from(["odm", "migrate", "x", "--coverage", "--artifacts"]).is_err(),
+        "--coverage and --artifacts are mutually exclusive"
+    );
 }
 
 // ----- N-2: `odm check` is green on the migrated real ODD corpus -------------

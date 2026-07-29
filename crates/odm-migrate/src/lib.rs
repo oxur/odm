@@ -55,6 +55,7 @@ pub mod coverage;
 pub mod fidelity;
 pub mod legacy;
 pub mod mapping;
+pub mod notes;
 pub mod replan;
 pub mod restamp;
 pub mod selfhost;

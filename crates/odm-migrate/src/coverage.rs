@@ -413,6 +413,13 @@ fn doc_coverage(
             let key = crate::fidelity::relativize(anchor, &absolute);
             let (covered, basis) = if index.source_paths.contains(&key) {
                 (true, "source.paths (exact match)")
+            } else if legacy::is_excluded(&doc.path) {
+                // arc-migration-fidelity s10, operator decision 2026-07-28: an
+                // infrastructure file the legacy importer already never
+                // ingests (an index page, a template) was never going to
+                // become a node — migrated or minted — so it is excluded
+                // from the coverage universe outright, not a permanent gap.
+                (true, "excluded infrastructure file (index/template) — never ingested by design")
             } else {
                 match doc.class {
                     DocClass::ProjectPlan => (
@@ -425,11 +432,13 @@ fn doc_coverage(
                     DocClass::Ledger
                     | DocClass::CcPrompt
                     | DocClass::CdcVerification
-                    | DocClass::ClosingReport => {
-                        (false, "no node class yet for supporting docs (lands in arc slice 07)")
-                    }
-                    DocClass::Dev | DocClass::Research | DocClass::Other => {
-                        (false, "no node class yet for this doc class")
+                    | DocClass::ClosingReport
+                    | DocClass::Other => (
+                        false,
+                        "artifact family (s09/s10) — not yet captured by a mint_artifacts run",
+                    ),
+                    DocClass::Dev | DocClass::Research => {
+                        (false, "note family (s10) — not yet captured by a mint_notes run")
                     }
                 }
             };

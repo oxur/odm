@@ -198,7 +198,14 @@ pub fn discover(root: &Path) -> Vec<PathBuf> {
 
 /// Whether a path is a non-document file the importer skips (index files,
 /// templates, dot-directories).
-fn is_excluded(path: &Path) -> bool {
+///
+/// `pub(crate)`: the coverage detector ([`crate::coverage`]) reuses this same
+/// exclusion (arc-migration-fidelity s10, operator decision 2026-07-28) so an
+/// infrastructure file this importer already treats as "never ingested" —
+/// e.g. `docs/design/index.md`, anything under a `templates/` directory —
+/// reads as excluded from doc-coverage too, not permanently "uncovered": it
+/// was never going to become a node, migrated or minted, so it isn't a gap.
+pub(crate) fn is_excluded(path: &Path) -> bool {
     if path.file_name().is_some_and(|n| n == "index.md") {
         return true;
     }

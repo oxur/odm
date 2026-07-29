@@ -612,6 +612,17 @@ enum Command {
         /// no node, changes no schema (arc-migration-fidelity slice01).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "dry_run"])]
         coverage: bool,
+        /// Mint an `artifact` node for every supporting doc under
+        /// `legacy_path` (a docs root) not already covered — mint-all, no
+        /// exemption (arc-migration-fidelity slice09/slice10, ODD-0025 §2.6).
+        #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage"])]
+        artifacts: bool,
+        /// Mint a `note` node for every dev doc under `legacy_path` (a
+        /// dev-docs root, e.g. the configured `dev_directory`) not already
+        /// covered — mint-all, uncontained, tagged by its immediate
+        /// subdirectory (arc-migration-fidelity slice10, operator decision).
+        #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts"])]
+        notes: bool,
     },
     /// Manage nodes: create, inspect, relate, and advance them.
     ///
@@ -783,7 +794,16 @@ pub fn dispatch(
                 }
             },
         },
-        Command::Migrate { legacy_path, plan, legacy, replan, dry_run, coverage } => {
+        Command::Migrate {
+            legacy_path,
+            plan,
+            legacy,
+            replan,
+            dry_run,
+            coverage,
+            artifacts,
+            notes,
+        } => {
             let forced = if plan {
                 Some(odm_migrate::Corpus::Plan)
             } else if legacy {
@@ -795,7 +815,7 @@ pub fn dispatch(
                 &store,
                 root,
                 &legacy_path,
-                migrate::Options { forced, replan, dry_run, coverage },
+                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes },
                 out,
                 err,
             )?;
