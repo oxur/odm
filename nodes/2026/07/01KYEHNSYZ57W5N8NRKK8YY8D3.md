@@ -2,10 +2,10 @@
 id: 01KYEHNSYZ57W5N8NRKK8YY8D3
 number: 21
 type: research
-schema: research/v1.0
+schema: research/v1.1
 name: Research — Information-Theoretic Complexity of Text (Code and Prose)
 created: 2026-07-25
-updated: 2026-07-25
+updated: 2026-07-26
 tags:
 - research
 - information-theory
@@ -15,15 +15,22 @@ tags:
 - code
 - estimation
 component: All
+author: the evidence
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/01-draft/0021-research-information-theoretic-complexity-of-text-code-and-prose.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   draft:
     reached: 2026-07-25
     evidence: asserted
     evidence_dates:
       asserted: 2026-07-25
-author: the evidence
 ---
 
 # Research — Information-Theoretic Complexity of Text (Code and Prose)

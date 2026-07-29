@@ -2,7 +2,7 @@
 id: 01KWWGS8HD7T0FXYB88KKKCC07
 number: 16
 type: research
-schema: research/v1.0
+schema: research/v1.1
 name: Research — SWE project- & epic-level PM failures and best practices
 created: 2026-06-20
 updated: 2026-06-20
@@ -14,8 +14,16 @@ tags:
 - evidence
 - pm-skill
 component: All
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/06-final/0016-research-swe-project-and-epic-pm-failures-and-practices.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   accepted:
     reached: 2026-06-20
@@ -47,7 +55,6 @@ status:
     evidence: asserted
     evidence_dates:
       asserted: 2026-06-20
-author: topological sort
 ---
 
 # Research — SWE project- & epic-level PM failures and best practices

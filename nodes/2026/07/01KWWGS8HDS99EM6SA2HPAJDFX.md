@@ -2,10 +2,10 @@
 id: 01KWWGS8HDS99EM6SA2HPAJDFX
 number: 12
 type: design
-schema: design/v1.0
+schema: design/v1.1
 name: odm — Project Definition (v-major rebuild)
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-07-26
 tags:
 - project-definition
 - scope
@@ -13,8 +13,16 @@ tags:
 - rebuild
 - odm
 component: All
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/06-final/0012-odm-project-definition-v-major-rebuild.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   accepted:
     reached: 2026-06-20
@@ -46,7 +54,6 @@ status:
     evidence: asserted
     evidence_dates:
       asserted: 2026-06-20
-author: topological sort
 ---
 
 # odm — Project Definition (v-major rebuild)

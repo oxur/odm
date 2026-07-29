@@ -2,10 +2,10 @@
 id: 01KWWGS8HD318877R5CXAFF20G
 number: 15
 type: design
-schema: design/v1.0
+schema: design/v1.1
 name: odm — Arc/Slice Breakdown (build plan)
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-26
 tags:
 - planning
 - arcs
@@ -14,15 +14,22 @@ tags:
 - sdlc
 - build-plan
 component: All
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/01-draft/0015-odm-arc-slice-breakdown.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   draft:
     reached: 2026-06-20
     evidence: asserted
     evidence_dates:
       asserted: 2026-06-20
-author: topological sort
 ---
 
 # odm — Arc/Slice Breakdown (build plan)

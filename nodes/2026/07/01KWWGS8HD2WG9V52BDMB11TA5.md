@@ -2,10 +2,10 @@
 id: 01KWWGS8HD2WG9V52BDMB11TA5
 number: 17
 type: design
-schema: design/v1.0
+schema: design/v1.1
 name: Interop — projection out, reference-and-reconcile in
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-22
 tags:
 - interop
 - federation
@@ -14,15 +14,22 @@ tags:
 - cross-team
 - evangelism
 component: All
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/01-draft/0017-interop-projection-out-reference-and-reconcile-in.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   draft:
     reached: 2026-06-20
     evidence: asserted
     evidence_dates:
       asserted: 2026-06-20
-author: topological sort
 ---
 
 # Interop — projection out, reference-and-reconcile in

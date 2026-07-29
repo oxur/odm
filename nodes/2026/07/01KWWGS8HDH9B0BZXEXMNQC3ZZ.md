@@ -2,10 +2,10 @@
 id: 01KWWGS8HDH9B0BZXEXMNQC3ZZ
 number: 18
 type: research
-schema: research/v1.0
+schema: research/v1.1
 name: Research — Forecasting under small, bursty, DAG-structured work
 created: 2026-06-24
-updated: 2026-06-24
+updated: 2026-07-25
 tags:
 - research
 - forecasting
@@ -15,15 +15,22 @@ tags:
 - evidence
 - pm-skill
 component: All
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/01-draft/0018-research-forecasting-under-small-bursty-dag-work.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   draft:
     reached: 2026-06-24
     evidence: asserted
     evidence_dates:
       asserted: 2026-06-24
-author: topological sort
 ---
 
 # Research — Forecasting under small, bursty, DAG-structured work

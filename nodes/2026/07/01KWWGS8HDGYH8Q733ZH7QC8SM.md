@@ -2,10 +2,10 @@
 id: 01KWWGS8HDGYH8Q733ZH7QC8SM
 number: 19
 type: design
-schema: design/v1.0
+schema: design/v1.1
 name: Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
 created: 2026-07-01
-updated: 2026-07-01
+updated: 2026-07-02
 tags:
 - design
 - architecture
@@ -16,8 +16,16 @@ tags:
 - freshness
 - honest-staleness
 component: odm-reconcile / odm-index
+author: topological sort
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/04-accepted/0019-incremental-drift-probes-as-rules-honest-staleness.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   accepted:
     reached: 2026-07-01
@@ -39,7 +47,6 @@ status:
     evidence: asserted
     evidence_dates:
       asserted: 2026-07-01
-author: topological sort
 ---
 
 # Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness

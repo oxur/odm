@@ -11,6 +11,15 @@
 # Where design documents live, for `odm migrate`.
 docs_directory = "./docs/design"
 
+# Doc-coverage enforcement (arc-migration-fidelity s09/s10, ODD-0025 §5).
+# `odm check` fails with an Error on any `.md` under `scan_root` with no
+# covering node's `source.paths`. Activated here, in the same commit that
+# mints the artifact/note corpus + backfills the design/research nodes
+# `scan_root` now resolves against — so `check` is green because everything
+# is covered, never because the gate was off (no red window).
+[coverage]
+scan_root = "docs"
+
 # Per-type gate-sets (ODD-0013 §5.1). odm manages its own plan as work nodes,
 # so `rollup`/`orient`/`check` need the work-node sets to render and validate
 # status; the sequences are the canonical §5.1 ones, and the importer stamps

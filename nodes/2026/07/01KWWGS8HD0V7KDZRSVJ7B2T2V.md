@@ -2,16 +2,24 @@
 id: 01KWWGS8HD0V7KDZRSVJ7B2T2V
 number: 9
 type: design
-schema: design/v1.0
+schema: design/v1.1
 name: Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8)
 created: 2025-12-27
-updated: 2025-12-27
+updated: 2026-06-19
 tags:
 - cli
 - tooling
 component: Design
+author: Duncan McGreggor & Claude
 origin: planned
 reserved: false
+source:
+  paths:
+  - docs/design/06-final/0009-oxur-design-documentation-cli-extended-features-plan-phases-6-8.md
+  class: odd
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-29
 status:
   accepted:
     reached: 2025-12-27
@@ -43,7 +51,6 @@ status:
     evidence: asserted
     evidence_dates:
       asserted: 2025-12-27
-author: Duncan McGreggor & Claude
 ---
 
 # Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8)
