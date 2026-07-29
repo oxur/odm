@@ -10,7 +10,8 @@ use anyhow::Context as _;
 use odm_core::NodeType;
 use odm_migrate::coverage::{CoverageReport, DocClass};
 use odm_migrate::mapping::{
-    DocGates, backfill_source, canonical_design_gates, canonical_research_gates,
+    CanonicalizeReport, DocGates, backfill_source, canonical_design_gates,
+    canonical_research_gates, canonicalize_source_paths,
 };
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::{Store, StoreHome};
@@ -108,16 +109,25 @@ pub(crate) fn migrate(
         .with_context(|| format!("backfilling source onto {}", legacy.display()))?;
     render_backfill(&backfill_report, out)?;
 
+    // `backfill_source`'s complement (arc-migration-fidelity s10 iteration 1):
+    // a node that already carries a `source` — however it got one — is
+    // invisible to the backfill pass above; this canonicalizes its path form
+    // in place if it isn't already repo-content-root-relative.
+    let canonicalize_report = canonicalize_source_paths(store, &legacy, mode)
+        .with_context(|| format!("canonicalizing source.paths under {}", legacy.display()))?;
+    render_canonicalize(&canonicalize_report, out)?;
+
     let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &doc_gates)
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
     let status = format!(
-        "{}: {} reconciled, {} drifted (skipped), {} created, {} upgraded, {} skipped, \
-         {} warning(s){}",
+        "{}: {} reconciled, {} drifted (skipped), {} path(s) canonicalized, {} created, \
+         {} upgraded, {} skipped, {} warning(s){}",
         if report.dry_run { "migrate (dry-run)" } else { "migrate" },
         backfill_report.repaired_count(),
         backfill_report.drifted_count(),
+        canonicalize_report.rewritten_count(),
         report.created_count(),
         report.upgraded_count(),
         report.skipped_count(),
@@ -261,6 +271,29 @@ fn render_backfill(
         report.repaired_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" },
         report.drifted_count()
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// Renders [`odm_migrate::mapping::canonicalize_source_paths`]'s pass: a
+/// reconcile row per node whose `source.paths` form was rewritten to
+/// repo-content-root-relative (arc-migration-fidelity s10 iteration 1).
+/// Silent when there is nothing to report.
+fn render_canonicalize(report: &CanonicalizeReport, out: &mut dyn Write) -> anyhow::Result<()> {
+    if report.rewritten.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would canonicalize" } else { "canonicalized" };
+    let title = if report.dry_run { "CANONICALIZE (DRY RUN)" } else { "CANONICALIZE" };
+    let mut table = Themed::new(title, &RECONCILE_COLUMNS);
+    for r in &report.rewritten {
+        table.row([verb.to_string(), r.number.to_string(), r.name.clone(), r.id.to_string()]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.rewritten_count(),
+        if report.dry_run { "to canonicalize" } else { "canonicalized" }
     ));
     writeln!(out, "{}", table.render())?;
     Ok(())

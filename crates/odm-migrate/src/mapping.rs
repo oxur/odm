@@ -452,6 +452,106 @@ pub fn backfill_source(
     Ok(BackfillReport { repaired, drifted, dry_run: mode.is_dry_run() })
 }
 
+/// The outcome of a [`canonicalize_source_paths`] run.
+#[derive(Debug, Clone)]
+pub struct CanonicalizeReport {
+    /// Nodes whose `source.paths` form was rewritten (or, under `--dry-run`,
+    /// that would be rewritten).
+    pub rewritten: Vec<Repaired>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl CanonicalizeReport {
+    /// The number of nodes rewritten (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn rewritten_count(&self) -> usize {
+        self.rewritten.len()
+    }
+}
+
+/// Canonicalizes the `source.paths` form of every `design`/`research` node in
+/// `store` that **already carries** a `source` record whose stored path is
+/// absolute — a pure identity-form correction, id/body/schema/gates/dates
+/// untouched, only the path string. Like [`crate::fidelity::relativize`]
+/// itself, this corrects an absolute stored path (the regression this
+/// function exists to fix); it does not re-anchor a path that is already
+/// relative but mis-anchored (e.g. `.worktrees/…`-prefixed) — `relativize`
+/// only ever strips an *absolute* anchor prefix, and no live node has ever
+/// exhibited that second form. `check`'s `absolute-source-path` rule still
+/// flags that shape on sight (defense in depth) even though this corrective
+/// pass does not target it.
+///
+/// This is [`backfill_source`]'s complement: that function only ever touches
+/// **sourceless** nodes (`fm.source().is_some()` short-circuits it), so a
+/// node that already has a `source` — however it got one, however malformed
+/// its path form — is invisible to it. It mirrors
+/// [`crate::selfhost::self_host`]'s F-4 transition-rewrite (arc-migration-
+/// fidelity s08), applied to the document-family node types that importer's
+/// `by_source`/`by_coordinate` matching never covers.
+///
+/// Added arc-migration-fidelity s10 iteration 1, closing the seam CDC found:
+/// [`build_node`] stored a legacy ODD's `source_path` unrelativized, so a
+/// freshly-migrated design node could carry an absolute (or `.worktrees/`-
+/// anchored) `source.paths` entry that no existing reconcile pass would ever
+/// touch. That seam is now fixed at mint time (`build_node` relativizes); this
+/// function is the one-time live corrective for nodes already minted before
+/// the fix landed.
+///
+/// # Errors
+///
+/// [`MigrateError`] if the corpus can't be loaded or a persist fails.
+pub fn canonicalize_source_paths(
+    store: &Store,
+    legacy_path: &Path,
+    mode: Mode,
+) -> Result<CanonicalizeReport, MigrateError> {
+    let legacy_path_buf = legacy_path.canonicalize().unwrap_or_else(|_| legacy_path.to_path_buf());
+    let anchor = crate::fidelity::anchor_for(&legacy_path_buf);
+
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let mut rewritten = Vec::new();
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !matches!(fm.node_type(), NodeType::Design | NodeType::Research) {
+            continue;
+        }
+        let Some(source) = fm.source() else {
+            continue; // backfill_source's territory, not this pass's
+        };
+
+        let canonical: Vec<std::path::PathBuf> = source
+            .paths
+            .iter()
+            .map(|p| std::path::PathBuf::from(crate::fidelity::relativize(&anchor, p)))
+            .collect();
+        if canonical == source.paths {
+            continue; // already canonical
+        }
+
+        let mut new_source = source.clone();
+        new_source.paths = canonical;
+        let new_fm = fm.clone().with_source(new_source);
+        let new_document = Document::new(new_fm, document.body().to_string());
+
+        rewritten.push(Repaired {
+            number: fm.number(),
+            id: fm.id(),
+            name: fm.name().to_string(),
+            node_type: fm.node_type(),
+        });
+
+        if !mode.is_dry_run() {
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    rewritten.sort_by_key(|r| r.number);
+    Ok(CanonicalizeReport { rewritten, dry_run: mode.is_dry_run() })
+}
+
 /// Records the document gates from the start of the sequence up to and including
 /// `terminal`, each at [`Evidence::Asserted`] (the honest level for a historical
 /// migration — claimed from the legacy record, not independently reproduced) on
