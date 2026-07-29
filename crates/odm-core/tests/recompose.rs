@@ -113,8 +113,11 @@ fn detect_orphan() {
     let dangling_slice = child('Y', 2, NodeType::Slice, 'Z'); // Z absent
     let project = node('P', 3, NodeType::Project); // root: not an orphan
     let note = node('N', 4, NodeType::Note); // standalone doc: not an orphan
+    // arc-migration-fidelity s09 F-8: a legitimately top-level `artifact` is
+    // not an orphan either (ODD-0025 §2.7, optional containment).
+    let artifact = node('A', 5, NodeType::Artifact);
 
-    let findings = integrity(&[lonely_slice, dangling_slice, project, note], &gates);
+    let findings = integrity(&[lonely_slice, dangling_slice, project, note, artifact], &gates);
     let orphans: BTreeSet<Id> =
         findings.iter().filter(|f| f.issue == Issue::Orphan).map(|f| f.node).collect();
 

@@ -88,8 +88,17 @@ pub struct SchemaMarker {
 }
 
 impl SchemaMarker {
-    /// The current-schema marker for `node_type` (`<type>/v1.0`) — what a fresh
+    /// The current-schema marker for `node_type` (`<type>/v1.1`) — what a fresh
     /// odm-created node of that type stamps.
+    ///
+    /// **`artifact` stamps `artifact/v1.1`, not `artifact/v1.0`** (arc-
+    /// migration-fidelity s09, flagged deviation from the cc-prompt/ODD-0020
+    /// naming): there is no per-type version table here — `SchemaVersion`
+    /// is one **global** axis every type shares, currently `v1.1`. A
+    /// brand-new type introduced today has no earlier version of its own
+    /// contract to be "v1.0 *of*"; stamping the shared current version, like
+    /// every other type does, is more honest than inventing a type-local
+    /// `v1.0` that would need its own bespoke bookkeeping to ever advance.
     #[must_use]
     pub fn current(node_type: NodeType) -> Self {
         Self { node_type, version: SchemaVersion::CURRENT }
@@ -156,6 +165,16 @@ mod tests {
             "slice/v1.1".parse::<SchemaMarker>().unwrap().version,
             SchemaVersion { major: 1, minor: 1 }
         );
+    }
+
+    #[test]
+    fn artifact_stamps_and_round_trips_the_shared_current_version() {
+        // arc-migration-fidelity s09 F-1/F-2: `artifact` shares the one global
+        // schema-version axis with every other type (`v1.1`), not a type-local
+        // `v1.0` — see `SchemaMarker::current`'s doc for the decision.
+        let m = SchemaMarker::current(NodeType::Artifact);
+        assert_eq!(m.to_string(), "artifact/v1.1");
+        assert_eq!("artifact/v1.1".parse::<SchemaMarker>().unwrap(), m);
     }
 
     #[test]

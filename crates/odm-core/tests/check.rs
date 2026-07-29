@@ -288,6 +288,10 @@ mod content {
         Frontmatter::new(id(id_s), number, NodeType::Slice, name, day(), day(), Origin::Planned)
     }
 
+    fn artifact(id_s: &str, number: u32, name: &str) -> Frontmatter {
+        Frontmatter::new(id(id_s), number, NodeType::Artifact, name, day(), day(), Origin::Planned)
+    }
+
     fn a_fact() -> DesiredFact {
         DesiredFact {
             id: "up".to_string(),
@@ -328,6 +332,22 @@ mod content {
             "supersedes on slice flagged"
         );
 
+        // `desired_facts` on an artifact (work-only field on a document-family
+        // type, arc-migration-fidelity s09 F-1) → Error, same as any other
+        // document type — `check_field_validity` is structural (`is_document()`),
+        // so `artifact` inherits this with no special-casing.
+        let bad_artifact = artifact(C, 3, "Ledger").with_desired_facts(vec![a_fact()]);
+        assert!(
+            content_validity(&[bad_artifact]).iter().any(|f| matches!(
+                &f.violation,
+                Violation::FieldNotValidForType {
+                    field: "desired_facts",
+                    node_type: NodeType::Artifact
+                }
+            )),
+            "desired_facts on artifact flagged"
+        );
+
         // A valid odd (supersedes is fine on a document) and a valid slice
         // (desired_facts/deferred are fine on work) → no field-validity findings.
         let mut good_odd = odd(A, 1, "Doc");
@@ -338,8 +358,9 @@ mod content {
                 because: "waiting".to_string(),
                 reenter_when: "up".to_string(),
             }));
+        let good_artifact = artifact(C, 3, "Ledger");
         assert!(
-            content_validity(&[good_odd, good_slice])
+            content_validity(&[good_odd, good_slice, good_artifact])
                 .iter()
                 .all(|f| !matches!(f.violation, Violation::FieldNotValidForType { .. })),
             "valid nodes produce no field-validity finding"

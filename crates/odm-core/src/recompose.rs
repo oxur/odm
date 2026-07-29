@@ -181,8 +181,10 @@ fn finding(fm: &Frontmatter, issue: Issue) -> Finding {
 }
 
 /// Orphan: a non-root work node with no resolvable parent. A `project` is the
-/// root of the work tree; document nodes (`design`/`research`/`adr`/`note`) may stand alone,
-/// so neither is ever an orphan.
+/// root of the work tree; document nodes (`design`/`research`/`adr`/`note`/
+/// `artifact`) may stand alone, so none of them is ever an orphan — ODD-0025
+/// §2.7's optional containment for the document family, arc-migration-
+/// fidelity s09 F-8 (a legitimately top-level `artifact` must not be flagged).
 fn check_orphan(fm: &Frontmatter, recomp: &Recomposition, findings: &mut Vec<Finding>) {
     let requires_parent = fm.node_type().is_work() && fm.node_type() != NodeType::Project;
     if requires_parent && recomp.parent(fm.id()).is_none() {
