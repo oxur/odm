@@ -4,11 +4,11 @@
 > **Realizes:** ODD-0025 §2.3 (synthesis, `supersedes`→`Vec`, bidirectional lineage), `uat-coverage-
 > audit.md` §L-8 (L-8b) · **Assignment:** `cc-prompt.md` · **Ledger:** `ledger.md` (F-1…F-10) ·
 > **Implemented by:** CC · **Date:** 2026-07-29
-> **Branch:** `release/1.0.x` only — one commit, `38941a8` (code F-1…F-6 **and** the L-8b doc-tree moves
-> F-7 — see Deviations for why both landed together). **No `odm` branch commit this slice** —
-> fixture/doc only, per the hard rule; the live application is s12. **Evidence class:** fixture-attested
-> (LEDGER-DISCIPLINE v2.0 §B class-(a)) throughout; there is no class-(b) row — nothing in this slice
-> touches the live store.
+> **Branch:** `release/1.0.x` only — `38941a8` (code F-1…F-6 + the L-8b bare renames), `d80cdb3` (this
+> ledger/report/bubble-up), `6664f9f` (F-7's actual content — a self-caught correction, see Deviations).
+> **No `odm` branch commit this slice** — fixture/doc only, per the hard rule; the live application is
+> s12. **Evidence class:** fixture-attested (LEDGER-DISCIPLINE v2.0 §B class-(a)) throughout; there is
+> no class-(b) row — nothing in this slice touches the live store.
 
 ## What shipped
 
@@ -88,11 +88,27 @@ all live reconcile, L-8a) is confirmed untouched (F-8).
 `38941a8`'s message describes F-1…F-6 (the synthesis capability + lineage check) but does not mention
 F-7 (the L-8b `git mv`s). Both are in the **same** commit: the L-8b renames were already staged (via
 `git mv`, which auto-stages) from an earlier step in this session, and the subsequent `git add` +
-`git commit` for the code swept them in too. The commit's actual diff is complete and correct — `git
-show --stat 38941a8` shows all three renamed ODD files alongside the code changes — only the commit
-*message's* own scope description under-states it. This session's git discipline is new-commits-only
-(never amend), so the correction is this disclosure, not a rewritten commit. No functional impact: the
-ledger and this report are the authoritative record of what shipped, and both are accurate.
+`git commit` for the code swept them in too. This session's git discipline is new-commits-only (never
+amend), so the correction is this disclosure, not a rewritten commit.
+
+### `38941a8` staged only the bare rename — F-7's actual content landed late, in `6664f9f`
+
+More serious than the message-wording issue above: `38941a8` turned out to contain only the *pure
+relocation* of the three L-8b files — `git show 38941a8:<path>` still read `state: Draft` and the
+original version number, with no Version-History entry. The content edits (the actual point of F-7) had
+been applied to the working tree correctly, but `git status`'s two-letter `RM` code — rename staged in
+the index, **plus** a further unstaged modification on top — was misread as "fully staged" from its
+one-line summary. This meant the ledger and this report, as first written, described `done`/`reproduced`
+evidence for content that did not yet exist in any commit.
+
+**Caught and fixed before reporting the slice done to the operator**: a routine post-commit `git status`
+check (part of this slice's own closing verification, not an external catch) surfaced the unstaged `M`,
+and the missing content landed in `6664f9f` — verified by `git show 6664f9f:<path>` for all three files
+now matching exactly what the ledger always described. No functional gap remains; the final state is
+correct. **Process lesson, recorded because it generalizes**: after any `git mv` that is meant to carry
+co-located content edits, check `git status`'s two-letter code specifically (not just its one-line
+rename summary) before treating the move as complete — `RM`/`AM`-shaped statuses mean "staged, but with
+more on top," not "fully staged."
 
 ### ODD-0017/0018's L-8b target state: confirmed by evidence, not literally named in the audit
 
