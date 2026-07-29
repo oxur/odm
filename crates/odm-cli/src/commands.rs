@@ -135,7 +135,8 @@ struct NodeJson {
     component: Option<String>,
     retired: Option<RetiredJson>,
     part_of: Option<String>,
-    supersedes: Option<SupersedesJson>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    supersedes: Vec<SupersedesJson>,
     /// The normalized, cross-type-comparable state (F-19) — the same token
     /// `node list` shows. `null` when the caller had no gate config to derive
     /// it from, since a guess would be worse than an absence.
@@ -234,10 +235,14 @@ impl NodeJson {
                 .retired()
                 .map(|r| RetiredJson { reason: r.reason.clone(), on: r.on.to_string() }),
             part_of: edges.part_of.map(|id| id.to_string()),
-            supersedes: edges.supersedes.as_ref().map(|s| SupersedesJson {
-                node: s.node.to_string(),
-                kind: supersede_kind_str(s.kind).to_string(),
-            }),
+            supersedes: edges
+                .supersedes
+                .iter()
+                .map(|s| SupersedesJson {
+                    node: s.node.to_string(),
+                    kind: supersede_kind_str(s.kind).to_string(),
+                })
+                .collect(),
             status: None,
             gates: Vec::new(),
             tears: edges
@@ -632,7 +637,7 @@ pub fn show(
     if let Some(parent) = edges.part_of {
         writeln!(out, "  part_of:   {parent}")?;
     }
-    if let Some(s) = &edges.supersedes {
+    for s in &edges.supersedes {
         writeln!(out, "  supersedes: {} ({})", s.node, supersede_kind_str(s.kind))?;
     }
     // Assumed dependencies, with the reason each was assumed (G-2). A tear is a
@@ -708,7 +713,11 @@ pub fn retire(
 }
 
 /// `supersede X --with Y --kind <kind>` — records that Y supersedes X. The
-/// lineage edge is stored on Y (the newer node), pointing at X.
+/// lineage edge is stored on Y (the newer node), pointing at X. `Y` may
+/// supersede more than one node (ODD-0025 §2.3, a synthesis merging many
+/// sources): a target not already recorded is appended; a target already
+/// recorded has its `kind` updated in place rather than duplicated, so the
+/// command is idempotent under repetition.
 pub fn supersede(
     store: &Store,
     old_ref: &str,
@@ -737,7 +746,11 @@ pub fn supersede(
         return Ok(());
     }
 
-    new_doc.frontmatter_mut().edges_mut().supersedes = Some(Supersedes { node: old_id, kind });
+    let supersedes = &mut new_doc.frontmatter_mut().edges_mut().supersedes;
+    match supersedes.iter_mut().find(|s| s.node == old_id) {
+        Some(existing) => existing.kind = kind,
+        None => supersedes.push(Supersedes { node: old_id, kind }),
+    }
     new_doc.frontmatter_mut().set_updated(today());
     store.persist(&new_doc)?;
     term::success(

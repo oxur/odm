@@ -116,7 +116,8 @@ fn schema_edges_block_parses_every_kind() {
         \x20 verifies: [{p}]\n\
         \x20 consumes: [{p}]\n\
         \x20 affects: [{p}]\n\
-        \x20 supersedes: {{ node: {p}, kind: obsoletes }}\n\
+        \x20 supersedes:\n\
+        \x20   - {{ node: {p}, kind: obsoletes }}\n\
         \x20 tears:\n\
         \x20   - edge: {p}\n\
         \x20     because: assumed for cycle break\n\
@@ -136,7 +137,7 @@ fn schema_edges_block_parses_every_kind() {
     assert_eq!(e.verifies, vec![id]);
     assert_eq!(e.consumes, vec![id]);
     assert_eq!(e.affects, vec![id]);
-    assert_eq!(e.supersedes, Some(Supersedes { node: id, kind: SupersedeKind::Obsoletes }));
+    assert_eq!(e.supersedes, vec![Supersedes { node: id, kind: SupersedeKind::Obsoletes }]);
     assert_eq!(
         e.tears,
         vec![TornEdge {
@@ -202,11 +203,11 @@ fn supersedes_kind_roundtrips_both_variants() {
             day(2026, 6, 20),
             Origin::Planned,
         )
-        .with_edges(Edges { supersedes: Some(Supersedes { node: id, kind }), ..Edges::default() });
+        .with_edges(Edges { supersedes: vec![Supersedes { node: id, kind }], ..Edges::default() });
         let emitted = Document::new(fm.clone(), "").emit().expect("emit");
         assert!(emitted.contains(&format!("kind: {word}")), "kind word in YAML");
         let parsed = Document::parse(&emitted).expect("reparse");
-        assert_eq!(parsed.frontmatter().edges().supersedes.as_ref().unwrap().kind, kind);
+        assert_eq!(parsed.frontmatter().edges().supersedes[0].kind, kind);
     }
 }
 
@@ -488,6 +489,8 @@ proptest! {
                 normalization: "trim+lf".to_string(),
                 migrated_by: "odm-migrate/1.0.0".to_string(),
                 migrated_on: created,
+                synthesis: None,
+                attestation: None,
             });
         }
 
@@ -512,6 +515,8 @@ fn author_version_source_round_trip() {
         normalization: "trim+lf".to_string(),
         migrated_by: "odm-migrate/1.0.0".to_string(),
         migrated_on: day(2026, 7, 27),
+        synthesis: None,
+        attestation: None,
     };
     let fm = Frontmatter::new(
         id,

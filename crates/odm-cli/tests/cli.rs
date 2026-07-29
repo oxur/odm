@@ -188,6 +188,42 @@ fn supersede_with_kind_records_edge() {
     assert!(shown.out.contains("\"supersedes\"") && shown.out.contains("obsoletes"));
 }
 
+// ----- s11 F-1: a node may supersede many; re-supersede the same target is
+// an in-place kind update, not a duplicate (idempotent under repetition) ----
+
+#[test]
+fn supersede_the_same_target_twice_updates_kind_not_duplicates() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "design", "Old"]);
+    run(dir.path(), &["node", "new", "design", "New"]);
+    run(dir.path(), &["node", "supersede", "1", "--with", "2", "--kind", "obsoletes"]);
+
+    // Re-recording the same target with a different kind updates in place.
+    let r = run(dir.path(), &["node", "supersede", "1", "--with", "2", "--kind", "updates"]);
+    assert!(r.ok);
+
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
+    let value: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    let supersedes = value["supersedes"].as_array().expect("supersedes is a list");
+    assert_eq!(supersedes.len(), 1, "no duplicate entry for the same target: {supersedes:?}");
+    assert_eq!(supersedes[0]["kind"], "updates", "kind updated in place");
+}
+
+#[test]
+fn supersede_two_different_targets_appends_both() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "design", "A"]);
+    run(dir.path(), &["node", "new", "design", "B"]);
+    run(dir.path(), &["node", "new", "design", "Synthesis"]);
+    run(dir.path(), &["node", "supersede", "1", "--with", "3", "--kind", "obsoletes"]);
+    run(dir.path(), &["node", "supersede", "2", "--with", "3", "--kind", "obsoletes"]);
+
+    let shown = run(dir.path(), &["node", "show", "3", "--json"]);
+    let value: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    let supersedes = value["supersedes"].as_array().expect("supersedes is a list");
+    assert_eq!(supersedes.len(), 2, "a many-to-one supersede: {supersedes:?}");
+}
+
 // ----- K-8: use + context ---------------------------------------------------
 
 #[test]
@@ -231,7 +267,11 @@ fn dry_run_and_yes() {
         .ok
     );
     assert!(run(dir.path(), &["node", "show", "2", "--json"]).out.contains("\"retired\": null"));
-    assert!(run(dir.path(), &["node", "show", "3", "--json"]).out.contains("\"supersedes\": null"));
+    // `supersedes` is now a list (s11, ODD-0025 §2.3 — a synthesis may
+    // supersede many sources) and follows the same skip-if-empty convention
+    // as `gates`/`tears`: absent, not a `null`, when there is nothing to show
+    // — the `--dry-run` above wrote no edge.
+    assert!(!run(dir.path(), &["node", "show", "3", "--json"]).out.contains("\"supersedes\""));
 }
 
 // ----- K-10: --json stable schema -------------------------------------------
@@ -259,7 +299,6 @@ fn json_schema_crud_is_stable() {
         "part_of",
         "reserved",
         "retired",
-        "supersedes",
         "tags",
         "type",
     ] {
@@ -273,6 +312,10 @@ fn json_schema_crud_is_stable() {
     // em-dash, which is a display glyph and would be noise to a machine.
     assert!(!keys.contains(&"status"), "no derived state without a ladder: {keys:?}");
     assert!(!keys.contains(&"gates"), "and no gates: {keys:?}");
+    // `supersedes` (s11: Option -> Vec, ODD-0025 §2.3) now follows the same
+    // skip-if-empty convention as `gates`/`tears` rather than always being
+    // present as `null` — absent here since this fresh node supersedes nothing.
+    assert!(!keys.contains(&"supersedes"), "no supersedes list on a fresh node: {keys:?}");
     assert_eq!(obj["type"], "slice");
     assert_eq!(obj["number"], 1);
     assert_eq!(obj["name"], "Schema check");
@@ -354,7 +397,7 @@ fn show_renders_all_fields_and_children() {
     seed(dir.path(), |id| {
         let edges = Edges {
             part_of: Some(parent_id),
-            supersedes: Some(Supersedes { node: other, kind: SupersedeKind::Updates }),
+            supersedes: vec![Supersedes { node: other, kind: SupersedeKind::Updates }],
             ..Edges::default()
         };
         let fm = Frontmatter::new(
@@ -472,10 +515,10 @@ fn check_dangling_part_of_is_flagged() {
 fn check_dangling_edge_is_flagged() {
     let dir = TempDir::new().unwrap();
     seed_slice(dir.path(), 1, "Node", |fm| {
-        fm.edges_mut().supersedes = Some(Supersedes {
+        fm.edges_mut().supersedes = vec![Supersedes {
             node: Id::from_str(MISSING_ID).unwrap(),
             kind: SupersedeKind::Obsoletes,
-        });
+        }];
     });
     let r = run(dir.path(), &["validate"]);
     assert_eq!(r.code, Some(1));
@@ -491,7 +534,7 @@ fn check_supersession_chain_is_flagged() {
     seed(dir.path(), |id| {
         let mut fm =
             Frontmatter::new(id, 1, NodeType::Design, "Loop", day(), day(), Origin::Planned);
-        fm.edges_mut().supersedes = Some(Supersedes { node: id, kind: SupersedeKind::Updates });
+        fm.edges_mut().supersedes = vec![Supersedes { node: id, kind: SupersedeKind::Updates }];
         Document::new(fm, "body\n")
     });
     let r = run(dir.path(), &["validate"]);

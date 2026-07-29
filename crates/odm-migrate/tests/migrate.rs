@@ -54,7 +54,7 @@ fn maps_legacy_fields_to_node() {
 
     // The supersedes edge points at #4's freshly-minted ULID (kind obsoletes).
     let four = &nodes[&4];
-    let sup = fm.edges().supersedes.as_ref().expect("#5 has a supersedes edge");
+    let sup = fm.edges().supersedes.first().expect("#5 has a supersedes edge");
     assert_eq!(sup.node, four.frontmatter().id(), "supersedes → #4's new ULID");
     assert_eq!(sup.kind, SupersedeKind::Obsoletes);
 
@@ -136,7 +136,7 @@ fn dustbin_imports_as_superseded() {
     let four = nodes[&4].frontmatter();
     let retire4 = four.retired().expect("#4 imports retired");
     assert_eq!(retire4.reason, "superseded", "retirement reason preserved");
-    assert!(four.edges().supersedes.is_none(), "the edge is on the superseding node, not #4");
+    assert!(four.edges().supersedes.is_empty(), "the edge is on the superseding node, not #4");
 
     // #6 (state Rejected, dustbin) → a retired node (reason preserved).
     let six = nodes[&6].frontmatter();
@@ -172,7 +172,7 @@ fn migrate_malformed_reports_not_panics() {
     // a silent drop of the supersession).
     let nodes = nodes_by_number(&store);
     assert!(nodes.contains_key(&21), "#21 imports despite its dangling edge");
-    assert!(nodes[&21].frontmatter().edges().supersedes.is_none(), "no dangling edge written");
+    assert!(nodes[&21].frontmatter().edges().supersedes.is_empty(), "no dangling edge written");
     assert!(
         report.warnings.iter().any(|w| w.contains("dangling")),
         "dangling supersession warned: {:?}",

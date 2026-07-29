@@ -26,7 +26,7 @@ use crate::MigrateError;
 pub const NORMALIZATION: &str = "trim+lf";
 
 /// Normalizes a body per [`NORMALIZATION`]: CRLF → LF, then trim.
-fn normalize_body(body: &str) -> String {
+pub(crate) fn normalize_body(body: &str) -> String {
     body.replace("\r\n", "\n").trim().to_string()
 }
 
@@ -90,6 +90,8 @@ pub fn build_source(
         normalization: NORMALIZATION.to_string(),
         migrated_by: migrated_by(),
         migrated_on,
+        synthesis: None,
+        attestation: None,
     }
 }
 

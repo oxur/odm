@@ -100,7 +100,7 @@ fn edges_from_record(record: &IndexRecord) -> Edges {
                     }
                     _ => CoreSupersedeKind::Obsoletes,
                 };
-                edges.supersedes = Some(Supersedes { node: edge.target, kind });
+                edges.supersedes.push(Supersedes { node: edge.target, kind });
             }
             EdgeKind::Tears => {
                 let because = match &edge.qualifier {

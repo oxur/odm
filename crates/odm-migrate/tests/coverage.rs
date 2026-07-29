@@ -404,6 +404,8 @@ fn coverage_provenance_absence() {
         normalization: "trim+lf".to_string(),
         migrated_by: "odm-migrate/1.0.0".to_string(),
         migrated_on: today,
+        synthesis: None,
+        attestation: None,
     };
 
     persist_node(&store, 200, NodeType::Slice, "No source", "# X\nbody\n", false, None);

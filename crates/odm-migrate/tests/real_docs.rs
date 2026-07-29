@@ -104,7 +104,7 @@ fn supersedes_real_shape_resolves() {
 
     let nodes: std::collections::HashMap<u32, _> =
         store.load_all().unwrap().into_iter().map(|d| (d.frontmatter().number(), d)).collect();
-    let sup = nodes[&31].frontmatter().edges().supersedes.as_ref().expect("#31 supersedes edge");
+    let sup = nodes[&31].frontmatter().edges().supersedes.first().expect("#31 supersedes edge");
     assert_eq!(sup.node, nodes[&30].frontmatter().id(), "\"ODD-0030\" → #30's ULID");
     assert_eq!(sup.kind, SupersedeKind::Obsoletes);
 
@@ -120,7 +120,11 @@ fn supersedes_real_shape_resolves() {
         real.warnings
     );
     assert!(
-        real_store.load_all().unwrap().iter().all(|d| d.frontmatter().edges().supersedes.is_none()),
+        real_store.load_all().unwrap().iter().all(|d| d
+            .frontmatter()
+            .edges()
+            .supersedes
+            .is_empty()),
         "no supersedes edges in the real corpus"
     );
     // Numbering space: the imported ODD numbers are all distinct (idempotence keys

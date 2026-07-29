@@ -61,7 +61,7 @@ fn dangling_part_of_is_flagged() {
 fn dangling_edge_is_flagged() {
     let mut fm = node(id(A), 1, "Node");
     fm.edges_mut().supersedes =
-        Some(Supersedes { node: id(MISSING), kind: SupersedeKind::Obsoletes });
+        vec![Supersedes { node: id(MISSING), kind: SupersedeKind::Obsoletes }];
     let findings = check(&[fm]);
     assert_eq!(findings.len(), 1);
     assert_eq!(
@@ -73,7 +73,7 @@ fn dangling_edge_is_flagged() {
 #[test]
 fn self_supersede_is_flagged() {
     let mut fm = node(id(A), 1, "Node");
-    fm.edges_mut().supersedes = Some(Supersedes { node: id(A), kind: SupersedeKind::Updates });
+    fm.edges_mut().supersedes = vec![Supersedes { node: id(A), kind: SupersedeKind::Updates }];
     let findings = check(&[fm]);
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].violation, Violation::SelfSupersede);
@@ -83,9 +83,9 @@ fn self_supersede_is_flagged() {
 fn supersession_cycle_is_flagged_once() {
     // A supersedes B, B supersedes A — a 2-cycle.
     let mut a = node(id(A), 1, "A");
-    a.edges_mut().supersedes = Some(Supersedes { node: id(B), kind: SupersedeKind::Obsoletes });
+    a.edges_mut().supersedes = vec![Supersedes { node: id(B), kind: SupersedeKind::Obsoletes }];
     let mut b = node(id(B), 2, "B");
-    b.edges_mut().supersedes = Some(Supersedes { node: id(A), kind: SupersedeKind::Obsoletes });
+    b.edges_mut().supersedes = vec![Supersedes { node: id(A), kind: SupersedeKind::Obsoletes }];
 
     let cycles: Vec<_> = check(&[a, b])
         .into_iter()
@@ -98,13 +98,115 @@ fn supersession_cycle_is_flagged_once() {
     }
 }
 
+// ----- s11 F-1/F-2: `supersedes` is a list; multi-target lineage integrity --
+
+const D: &str = "01ARZ3NDEKTSV4RRFFQ69G5FD0";
+
+#[test]
+fn a_node_may_supersede_multiple_targets_cleanly() {
+    // A synthesis (ODD-0025 §2.3): one node supersedes two sources, both
+    // present, no cycle — green.
+    let mut synth = node(id(A), 1, "Synthesis");
+    synth.edges_mut().supersedes = vec![
+        Supersedes { node: id(B), kind: SupersedeKind::Obsoletes },
+        Supersedes { node: id(C), kind: SupersedeKind::Obsoletes },
+    ];
+    let b = node(id(B), 2, "Source B");
+    let c = node(id(C), 3, "Source C");
+    assert!(check(&[synth, b, c]).is_empty(), "a clean many-to-one supersede is not flagged");
+}
+
+#[test]
+fn a_multi_target_supersede_flags_only_the_missing_target() {
+    // A supersedes both B (present) and MISSING (absent) — exactly one
+    // dangling-edge finding, not two, and B's presence doesn't mask it.
+    let mut synth = node(id(A), 1, "Synthesis");
+    synth.edges_mut().supersedes = vec![
+        Supersedes { node: id(B), kind: SupersedeKind::Obsoletes },
+        Supersedes { node: id(MISSING), kind: SupersedeKind::Obsoletes },
+    ];
+    let b = node(id(B), 2, "Source B");
+    let findings = check(&[synth, b]);
+    let dangling: Vec<_> =
+        findings.iter().filter(|f| matches!(f.violation, Violation::DanglingEdge { .. })).collect();
+    assert_eq!(dangling.len(), 1, "only the missing target is flagged: {findings:?}");
+    assert_eq!(
+        dangling[0].violation,
+        Violation::DanglingEdge { edge: "supersedes", target: id(MISSING) }
+    );
+}
+
+#[test]
+fn self_supersede_among_multiple_targets_is_flagged_and_others_still_checked() {
+    // A supersedes itself AND B (valid) — the self-supersede is flagged, and
+    // the valid B edge does not suppress it (nor does the self-edge suppress
+    // B being recognized as fine).
+    let mut a = node(id(A), 1, "A");
+    a.edges_mut().supersedes = vec![
+        Supersedes { node: id(A), kind: SupersedeKind::Updates },
+        Supersedes { node: id(B), kind: SupersedeKind::Updates },
+    ];
+    let b = node(id(B), 2, "B");
+    let findings = check(&[a, b]);
+    assert!(
+        findings.iter().any(|f| f.violation == Violation::SelfSupersede),
+        "self-supersede flagged even alongside a valid target: {findings:?}"
+    );
+    assert!(
+        findings.iter().all(|f| !matches!(f.violation, Violation::DanglingEdge { .. })),
+        "the valid B target is not flagged: {findings:?}"
+    );
+}
+
+#[test]
+fn a_branching_cycle_through_multiple_targets_is_flagged_once() {
+    // A supersedes {B, C}; C supersedes A — a cycle through one of A's two
+    // targets, not the other. Reported exactly once.
+    let mut a = node(id(A), 1, "A");
+    a.edges_mut().supersedes = vec![
+        Supersedes { node: id(B), kind: SupersedeKind::Obsoletes },
+        Supersedes { node: id(C), kind: SupersedeKind::Obsoletes },
+    ];
+    let b = node(id(B), 2, "B"); // terminates cleanly — not part of the cycle
+    let mut c = node(id(C), 3, "C");
+    c.edges_mut().supersedes = vec![Supersedes { node: id(A), kind: SupersedeKind::Obsoletes }];
+
+    let cycles: Vec<_> = check(&[a, b, c])
+        .into_iter()
+        .filter(|f| matches!(f.violation, Violation::SupersessionCycle { .. }))
+        .collect();
+    assert_eq!(cycles.len(), 1, "the A-C cycle is reported exactly once: {cycles:?}");
+    if let Violation::SupersessionCycle { cycle } = &cycles[0].violation {
+        assert_eq!(cycle.len(), 2, "the cycle is A<->C, not B: {cycle:?}");
+        assert!(cycle.contains(&id(A)) && cycle.contains(&id(C)));
+        assert!(!cycle.contains(&id(B)));
+    }
+}
+
+#[test]
+fn a_node_superseding_three_targets_with_no_cycle_is_clean() {
+    // A wider fan-out than a 2-cycle test can accidentally validate: A
+    // supersedes B, C, D — a star, not a chain — and none of them supersede
+    // anything. No false-positive cycle from the branching structure itself.
+    let mut a = node(id(A), 1, "A");
+    a.edges_mut().supersedes = vec![
+        Supersedes { node: id(B), kind: SupersedeKind::Obsoletes },
+        Supersedes { node: id(C), kind: SupersedeKind::Obsoletes },
+        Supersedes { node: id(D), kind: SupersedeKind::Obsoletes },
+    ];
+    let b = node(id(B), 2, "B");
+    let c = node(id(C), 3, "C");
+    let d = node(id(D), 4, "D");
+    assert!(check(&[a, b, c, d]).is_empty(), "a clean 3-way fan-out is not flagged");
+}
+
 #[test]
 fn terminating_supersession_chain_is_clean() {
     // A -> B -> C, terminating. No cycle, all refs resolve.
     let mut a = node(id(A), 1, "A");
-    a.edges_mut().supersedes = Some(Supersedes { node: id(B), kind: SupersedeKind::Updates });
+    a.edges_mut().supersedes = vec![Supersedes { node: id(B), kind: SupersedeKind::Updates }];
     let mut b = node(id(B), 2, "B");
-    b.edges_mut().supersedes = Some(Supersedes { node: id(C), kind: SupersedeKind::Updates });
+    b.edges_mut().supersedes = vec![Supersedes { node: id(C), kind: SupersedeKind::Updates }];
     let c = node(id(C), 3, "C");
     assert!(check(&[a, b, c]).is_empty());
 }
@@ -323,7 +425,7 @@ mod content {
         // `supersedes` on a slice (document-only field on a work node) → Error.
         let mut bad_slice = slice(B, 2, "Work");
         bad_slice.edges_mut().supersedes =
-            Some(CoreSupersedes { node: id(C), kind: SupersedeKind::Obsoletes });
+            vec![CoreSupersedes { node: id(C), kind: SupersedeKind::Obsoletes }];
         assert!(
             content_validity(&[bad_slice]).iter().any(|f| matches!(
                 &f.violation,
@@ -352,7 +454,7 @@ mod content {
         // (desired_facts/deferred are fine on work) → no field-validity findings.
         let mut good_odd = odd(A, 1, "Doc");
         good_odd.edges_mut().supersedes =
-            Some(CoreSupersedes { node: id(B), kind: SupersedeKind::Obsoletes });
+            vec![CoreSupersedes { node: id(B), kind: SupersedeKind::Obsoletes }];
         let good_slice =
             slice(B, 2, "Work").with_desired_facts(vec![a_fact()]).with_deferred(Some(Deferral {
                 because: "waiting".to_string(),
@@ -382,6 +484,8 @@ mod content {
             normalization: "trim+lf".to_string(),
             migrated_by: "odm-migrate/1.0.0".to_string(),
             migrated_on: day(),
+            synthesis: None,
+            attestation: None,
         };
 
         // Valid: author/version/source on a document node → no finding.
@@ -481,6 +585,8 @@ mod content {
             normalization: "trim+lf".to_string(),
             migrated_by: "odm-migrate/1.0.0".to_string(),
             migrated_on: day(),
+            synthesis: None,
+            attestation: None,
         });
         let findings = content_validity(&[bad]);
         assert!(
@@ -505,6 +611,8 @@ mod content {
             normalization: "trim+lf".to_string(),
             migrated_by: "odm-migrate/1.0.0".to_string(),
             migrated_on: day(),
+            synthesis: None,
+            attestation: None,
         });
         let findings = content_validity(&[bad]);
         assert!(
@@ -525,6 +633,8 @@ mod content {
             normalization: "trim+lf".to_string(),
             migrated_by: "odm-migrate/1.0.0".to_string(),
             migrated_on: day(),
+            synthesis: None,
+            attestation: None,
         });
         assert!(
             content_validity(&[good])

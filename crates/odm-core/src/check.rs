@@ -223,7 +223,7 @@ fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
     }
     if ty.is_work() {
         // Document-only fields are not valid on a work node.
-        if fm.edges().supersedes.is_some() {
+        if !fm.edges().supersedes.is_empty() {
             findings.push(finding(
                 fm,
                 Violation::FieldNotValidForType { field: "supersedes", node_type: ty },
@@ -345,7 +345,7 @@ fn check_link_integrity(fm: &Frontmatter, ids: &BTreeSet<Id>, findings: &mut Vec
     for &target in &edges.affects {
         dangling(fm, ids, "affects", target, findings);
     }
-    if let Some(s) = &edges.supersedes {
+    for s in &edges.supersedes {
         dangling(fm, ids, "supersedes", s.node, findings);
     }
     for target in edges.tears.iter().map(|t| dependency_target(&t.edge)) {
@@ -374,49 +374,65 @@ fn dependency_target(dep: &crate::frontmatter::Dependency) -> Id {
     }
 }
 
-/// Supersession-chain integrity: no self-supersede, no cycles.
+/// Supersession-lineage integrity (ODD-0025 §2.3, s11 F-2): no self-supersede,
+/// no cycles. A node may now supersede **many** targets (a synthesis), so the
+/// relation is a general directed graph, not a single-successor chain — cycle
+/// detection walks it with an explicit-stack DFS (not recursion, since the
+/// relation depth is bounded only by corpus size, not by any model invariant).
 fn check_supersession(ordered: &[&Frontmatter], findings: &mut Vec<Finding>) {
-    // Map each node to the node it supersedes (its single lineage successor).
-    let mut succ: BTreeMap<Id, Id> = BTreeMap::new();
+    // Map each node to every node it supersedes.
+    let mut succ: BTreeMap<Id, Vec<Id>> = BTreeMap::new();
     for fm in ordered {
-        if let Some(s) = &fm.edges().supersedes {
+        for s in &fm.edges().supersedes {
             if s.node == fm.id() {
                 findings.push(finding(fm, Violation::SelfSupersede));
             } else {
-                succ.insert(fm.id(), s.node);
+                succ.entry(fm.id()).or_default().push(s.node);
             }
         }
     }
 
-    // Detect cycles in the supersedes relation. Walk from each node; if we
-    // return to a node already on the current path, that path segment is a
-    // cycle. Report each distinct cycle once (keyed by its smallest id).
     let by_id: BTreeMap<Id, &Frontmatter> = ordered.iter().map(|fm| (fm.id(), *fm)).collect();
     let mut reported: BTreeSet<Id> = BTreeSet::new();
+    // Nodes whose whole subtree has already been fully explored (from any
+    // start) — never re-walked, so the overall cost stays linear in edges.
+    let mut finished: BTreeSet<Id> = BTreeSet::new();
 
     for &start in succ.keys() {
-        let mut path: Vec<Id> = Vec::new();
-        let mut seen: BTreeSet<Id> = BTreeSet::new();
-        let mut cur = start;
-        loop {
-            if seen.contains(&cur) {
-                // Found a cycle: the segment of `path` from `cur` onward.
-                let at = path.iter().position(|&id| id == cur).unwrap_or(0);
-                let cycle: Vec<Id> = path[at..].to_vec();
-                let key = cycle.iter().copied().min().unwrap_or(cur);
-                if reported.insert(key) {
-                    // Attribute the finding to the smallest-id node in the cycle.
-                    if let Some(fm) = by_id.get(&key) {
-                        findings.push(finding(fm, Violation::SupersessionCycle { cycle }));
+        if finished.contains(&start) {
+            continue;
+        }
+        // Each stack frame is (node, index of the next child to visit).
+        // `on_path` is the current DFS path — a child already on it is a
+        // back-edge, i.e. a cycle.
+        let mut stack: Vec<(Id, usize)> = vec![(start, 0)];
+        let mut on_path: Vec<Id> = vec![start];
+        let mut on_path_set: BTreeSet<Id> = BTreeSet::from([start]);
+
+        while let Some(&mut (node, ref mut next_child)) = stack.last_mut() {
+            let children = succ.get(&node).map_or(&[][..], Vec::as_slice);
+            if let Some(&child) = children.get(*next_child) {
+                *next_child += 1;
+                if on_path_set.contains(&child) {
+                    let at = on_path.iter().position(|&id| id == child).unwrap_or(0);
+                    let cycle: Vec<Id> = on_path[at..].to_vec();
+                    let key = cycle.iter().copied().min().unwrap_or(child);
+                    if reported.insert(key) {
+                        // Attribute the finding to the smallest-id node in the cycle.
+                        if let Some(fm) = by_id.get(&key) {
+                            findings.push(finding(fm, Violation::SupersessionCycle { cycle }));
+                        }
                     }
+                } else if !finished.contains(&child) {
+                    stack.push((child, 0));
+                    on_path.push(child);
+                    on_path_set.insert(child);
                 }
-                break;
-            }
-            seen.insert(cur);
-            path.push(cur);
-            match succ.get(&cur) {
-                Some(&next) => cur = next,
-                None => break, // chain terminates — good
+            } else {
+                stack.pop();
+                on_path.pop();
+                on_path_set.remove(&node);
+                finished.insert(node);
             }
         }
     }

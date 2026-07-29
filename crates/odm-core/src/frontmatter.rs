@@ -642,6 +642,20 @@ pub struct Source {
     pub migrated_by: String,
     /// The date the migration ran.
     pub migrated_on: NaiveDate,
+    /// The synthesis regime, if this node's content was **synthesized** —
+    /// many sources merged into one (ODD-0025 §2.3) — rather than migrated
+    /// 1:1: `"concatenation"`, `"editorial-merge"`, or `"other"`. `None` for
+    /// an ordinary migrated node. Carried as a plain string for the same
+    /// cross-crate reason as `class` (the enum lives in `odm-migrate`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synthesis: Option<String>,
+    /// The recorded attestation for an `editorial-merge` synthesis (ODD-0025
+    /// §2.3): not hash-checkable, so verified by supersede lineage *plus*
+    /// this explicit, human-authored statement instead — never a silent
+    /// pass. `None` for a `concatenation` synthesis (hash-gated) or an
+    /// ordinary migrated node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<String>,
 }
 
 /// A node's retirement marker (set by `odm retire`).
@@ -682,9 +696,11 @@ pub struct Edges {
     /// Nodes whose docs this node affects (stale-doc-vs-decision check).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub affects: Vec<Id>,
-    /// Supersession lineage, if this node supersedes another.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub supersedes: Option<Supersedes>,
+    /// Supersession lineage — the nodes this node supersedes (ODD-0025 §2.3: a
+    /// synthesis may supersede many sources, so this is a list, not a single
+    /// edge). The reverse (`superseded_by`) stays derived, never stored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supersedes: Vec<Supersedes>,
     /// Dependency edges deliberately assumed/broken to cut a cycle, each with
     /// its required rationale (ODD-0013 §4.3).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -702,7 +718,7 @@ impl Edges {
             && self.verifies.is_empty()
             && self.consumes.is_empty()
             && self.affects.is_empty()
-            && self.supersedes.is_none()
+            && self.supersedes.is_empty()
             && self.tears.is_empty()
     }
 }

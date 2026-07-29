@@ -63,7 +63,7 @@ fn ordering_dag_membership() {
         blocked_by: vec![id('B')],
         verifies: vec![id('V')],
         affects: vec![id('F')],
-        supersedes: Some(Supersedes { node: id('S'), kind: SupersedeKind::Updates }),
+        supersedes: vec![Supersedes { node: id('S'), kind: SupersedeKind::Updates }],
         tears: vec![TornEdge { edge: Dependency::Bare(id('T')), because: "assumed".to_string() }],
     };
     // Provide all referenced nodes so edges are real.

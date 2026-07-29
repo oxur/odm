@@ -57,6 +57,8 @@ fn seed_design_node(root: &Path, name: &str, source_path: &str) {
             normalization: "trim+lf".to_string(),
             migrated_by: "test".to_string(),
             migrated_on: today,
+            synthesis: None,
+            attestation: None,
         });
     let document = Document::new(fm, "# Doc\n\nBody.\n".to_string());
     Store::open(root).persist(&document).expect("seed persist");

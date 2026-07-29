@@ -247,7 +247,7 @@ fn map_edges(edges: &Edges) -> Vec<EdgeRef> {
     for &target in &edges.affects {
         out.push(EdgeRef { target, kind: EdgeKind::Affects, qualifier: None });
     }
-    if let Some(supersedes) = &edges.supersedes {
+    for supersedes in &edges.supersedes {
         let kind = match supersedes.kind {
             CoreSupersedeKind::Obsoletes => SupersedeKind::Obsoletes,
             CoreSupersedeKind::Updates => SupersedeKind::Updates,

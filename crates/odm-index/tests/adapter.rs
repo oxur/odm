@@ -108,7 +108,7 @@ fn index_graph_adapter_equals_frontmatter_graph() {
         day(),
         Origin::Planned,
     );
-    xf.edges_mut().supersedes = Some(Supersedes { node: early, kind: CoreSupersedeKind::Updates });
+    xf.edges_mut().supersedes = vec![Supersedes { node: early, kind: CoreSupersedeKind::Updates }];
     real.push(xf);
 
     real.push(Frontmatter::new(

@@ -82,6 +82,8 @@ fn persist_source_bearing_node(
         normalization: "trim+lf".to_string(),
         migrated_by: "odm-migrate/test".to_string(),
         migrated_on: created,
+        synthesis: None,
+        attestation: None,
     });
     let document = Document::new(fm, format!("# {name}\n"));
     store.persist(&document).unwrap();

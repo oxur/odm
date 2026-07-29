@@ -114,7 +114,7 @@ impl NodeGraph {
             for target in &edges.affects {
                 graph.add_edge(&from, EdgeKind::Affects, target);
             }
-            if let Some(s) = &edges.supersedes {
+            for s in &edges.supersedes {
                 graph.add_edge(&from, EdgeKind::Supersedes, &s.node);
             }
             for torn in &edges.tears {

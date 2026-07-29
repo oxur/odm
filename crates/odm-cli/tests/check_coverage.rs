@@ -82,6 +82,8 @@ fn seed_covering_node(root: &Path, relative_to_scan_root: &str) {
         normalization: "trim+lf".to_string(),
         migrated_by: "test".to_string(),
         migrated_on: today,
+        synthesis: None,
+        attestation: None,
     });
     let document = Document::new(fm, "# Covering node\n".to_string());
     Store::open(root).persist(&document).expect("seed persist");

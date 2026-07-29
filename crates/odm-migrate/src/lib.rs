@@ -59,6 +59,7 @@ pub mod notes;
 pub mod replan;
 pub mod restamp;
 pub mod selfhost;
+pub mod synthesis;
 
 pub use selfhost::SelfHostReport;
 
@@ -588,7 +589,7 @@ fn attach_supersedes(
 ) -> odm_core::frontmatter::Frontmatter {
     if let Some(node) = target {
         let mut edges: Edges = fm.edges().clone();
-        edges.supersedes = Some(Supersedes { node, kind: SupersedeKind::Obsoletes });
+        edges.supersedes = vec![Supersedes { node, kind: SupersedeKind::Obsoletes }];
         fm = fm.with_edges(edges);
     }
     fm

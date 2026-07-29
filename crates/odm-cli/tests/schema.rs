@@ -109,10 +109,10 @@ fn check_green_when_fields_valid_for_type() {
         .with_schema(SchemaMarker::current(NodeType::Design));
     let mut newer = Frontmatter::new(b, 2, NodeType::Design, "Newer", day, day, Origin::Planned)
         .with_schema(SchemaMarker::current(NodeType::Design));
-    newer.edges_mut().supersedes = Some(odm_core::frontmatter::Supersedes {
+    newer.edges_mut().supersedes = vec![odm_core::frontmatter::Supersedes {
         node: a,
         kind: odm_core::frontmatter::SupersedeKind::Obsoletes,
-    });
+    }];
     store.persist(&Document::new(odd, "body\n")).unwrap();
     store.persist(&Document::new(newer, "body\n")).unwrap();
 

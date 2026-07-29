@@ -163,7 +163,7 @@ fn cold_build_edge_mapping_all_kinds() {
         verifies: vec![verified],
         consumes: vec![consumed],
         affects: vec![affected],
-        supersedes: Some(Supersedes { node: old, kind: SupersedeKind::Obsoletes }),
+        supersedes: vec![Supersedes { node: old, kind: SupersedeKind::Obsoletes }],
         tears: vec![TornEdge {
             edge: Dependency::Bare(torn),
             because: "assumed ready".to_string(),
@@ -209,7 +209,7 @@ fn cold_build_edge_mapping_supersede_updates_and_qualified_tear() {
     let old = Id::new();
     let torn = Id::new();
     let edges = Edges {
-        supersedes: Some(Supersedes { node: old, kind: SupersedeKind::Updates }),
+        supersedes: vec![Supersedes { node: old, kind: SupersedeKind::Updates }],
         tears: vec![TornEdge {
             edge: Dependency::Qualified { node: torn, satisfied_at: "built".to_string() },
             because: "qualified tear".to_string(),

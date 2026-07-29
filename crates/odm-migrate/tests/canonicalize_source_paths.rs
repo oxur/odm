@@ -44,6 +44,8 @@ fn persist_sourced(store: &Store, number: u32, source_path: &str) -> Id {
         normalization: "trim+lf".to_string(),
         migrated_by: "odm-migrate/test".to_string(),
         migrated_on: day(),
+        synthesis: None,
+        attestation: None,
     });
     let document = Document::new(fm, "# Doc\n\nBody.\n".to_string());
     store.persist(&document).expect("persist");
