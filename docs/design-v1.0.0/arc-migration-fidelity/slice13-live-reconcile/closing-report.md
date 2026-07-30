@@ -137,8 +137,16 @@ always correct under the intended model, only the validator's rule was wrong. `c
 committed `26bea1d` store now shows exactly the 14 errors the original evidence claimed. **This is
 recorded as a real gap in CC's own verification discipline, not smoothed over**: the "F-6/F-7
 verified on the committed store" claim in this report's Verification table was, at close time,
-false by one finding — see `ledger.md`'s "Post-close correction" section for the full account,
-including a related, still-open `[no-vision]` warning regression the same investigation surfaced.
+false by one finding — see `ledger.md`'s "Post-close correction" section for the full account.
+
+**A related `[no-vision]` regression, same investigation, also resolved same day.** `#1000` and
+`#1001` both triggered it: `apply_project_vision`'s body never carried the literal `# Vision`
+heading `check`'s L-3b rule and `orient`'s excerpt require (fixed via a shared
+`synthesis::vision_body()` helper; the live `#1000` refreshed in place, `odm@e1e94bf`); and L-3b
+itself iterated every `NodeType::Project` node — safe before the vision mint (there was only ever
+one), broken once it created a second, `#1001`, whose verbatim 1:1 body can never carry an
+injected heading (fixed by exempting a superseded project node, `release/1.0.x@e4508e2`). `check`
+on the committed store now shows 8 warnings (was 10), 14 errors (unchanged).
 
 ## Bubble-up to `../arc-plan.md` (LEDGER-DISCIPLINE v2.0 §A / PM Part IV)
 

@@ -160,12 +160,14 @@ the validator's rule was wrong (`release/1.0.x@83acedb`). `check` on the committ
 exactly 14 errors — the pre-existing `uncovered-doc` gap the original evidence claimed, confirmed for
 real this time.
 
-**A related, still-open finding surfaced by the same investigation, not yet resolved:** `#1000` and
-`#1001` both now trigger a `[no-vision]` warning (no `# Vision` heading in the body) — `#1000`'s body
-had one before this slice; `replan::vision_from_plan`'s Definition-of-done extraction doesn't preserve
-it. A warning, not an error; doesn't change `check`'s exit code; left for a follow-up decision (fix the
-extraction, or the predicate). Full account: `slice13-live-reconcile/ledger.md`'s "Post-close correction"
-section.
+**A related finding, same investigation, resolved same day:** `#1000` and `#1001` both triggered a
+`[no-vision]` warning. Two causes: `apply_project_vision`'s body never carried the literal
+`# Vision` heading L-3b/`orient` require (fixed via a shared `synthesis::vision_body()` helper; the
+live `#1000` refreshed in place, `odm@e1e94bf`); and L-3b itself checked every `NodeType::Project`
+node — safe before the vision mint, broken once it created a second (`#1001`, whose verbatim 1:1
+body can never carry an injected heading) — fixed by exempting a superseded project node
+(`release/1.0.x@e4508e2`). `check` on the committed store: 14 errors (unchanged), 8 warnings (was
+10). Full account: `slice13-live-reconcile/ledger.md`'s "Post-close correction" section.
 
 **Named here because this is exactly the kind of thing LEDGER-DISCIPLINE's closure-discipline exists to
 catch and not bury**: CC's own "done, verified" claim for F-6/F-7 was false by one finding at the moment

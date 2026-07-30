@@ -57,13 +57,19 @@ store data changed — `release/1.0.x@83acedb` is a validator fix only. Re-ran `
 already-committed `26bea1d` store: exactly **14** errors remain, matching the count the closing
 evidence *should* have shown — the pre-existing `uncovered-doc` gap disclosed at F-7, nothing else.
 
-**Also found in the same pass, not yet resolved:** `#1000` and `#1001` both now trigger a
-`[no-vision]` warning ("the project states no vision — no `# Vision` section in its body").
-Before this slice, `#1000`'s body literally opened with a `# Vision` heading; `replan::vision_from_plan`
-(which builds the re-cast body) extracts the Definition-of-done section verbatim but does not wrap
-it in that heading, so the check that used to pass now doesn't. A warning, not an error — doesn't
-change `check`'s exit code — but a real, disclosed-here regression, left open pending a decision on
-whether to fix `vision_from_plan`'s extraction or the `has_vision` predicate.
+**Also found in the same pass, resolved same day:** `#1000` and `#1001` both triggered a
+`[no-vision]` warning ("the project states no vision — no `# Vision` section in its body"). Two
+causes, two fixes (`release/1.0.x@e4508e2`): (1) `apply_project_vision`'s body never carried the
+literal `# Vision` heading the old `restamp`/`with_vision` path always produced — fixed via a new
+`synthesis::vision_body()` helper, shared with `replan::VISION_HEADING`; `vision()`'s idempotent
+branch now re-derives and compares rather than blindly no-op-ing, so an already-minted synthesis
+gets its body refreshed in place (fired live: `odm@e1e94bf`, 2 lines added, id/edges/attestation
+untouched). (2) `check`'s L-3b rule iterated *every* `NodeType::Project` node — safe before the
+vision mint, since there was only ever one; broke once the mint created a second (`#1001`, the
+faithful 1:1 record, whose body must stay verbatim per ODD-0025 §2.1 and can never carry an
+injected heading) — fixed by exempting any project node another node's `supersedes` points at.
+Both were warnings, not errors; `check`'s exit code was never affected. `check` on the committed
+store now shows 8 warnings (was 10), 14 errors (unchanged, the disclosed F-7 gap).
 
 ## Closure
 
