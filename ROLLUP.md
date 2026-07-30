@@ -1,78 +1,693 @@
-<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. fingerprint=aeb13776c6efb5ebfe117dccd94645b39c52795ce6acbfd30824e3a459096f3b -->
+<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. fingerprint=44088f8c24fbd9147cc8a4d25addf76a9ffb68c5680846d54e1fd9bc49623de7 -->
 
 # Rollup
 
 ## Way-finding tree
 
-- odd #9 Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #11 Research: A markdown/git-native, dependency-ordered planning system — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #10 Oxur Design Documentation CLI - Phases 9-10 Build Plan — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #17 Interop — projection out, reference-and-reconcile in — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
-- odd #15 odm — Arc/Slice Breakdown (build plan) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
-- odd #16 Research — SWE project- & epic-level PM failures and best practices — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
-- odd #18 Research — Forecasting under small, bursty, DAG-structured work — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
-- odd #2 Oxur Design Documentation CLI - Build Plan — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #14 Research — odm-index: incremental indexing & caching (no DB, no FTS) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #13 odm — Architecture & Design (v-major rebuild) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
-- odd #12 odm — Project Definition (v-major rebuild) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
-- odd #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0 — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
-- project #1000 odm v1.0.0 — Project Plan (arc roadmap) — planned=asserted, in-progress=asserted, complete=–, verified=–
-  - arc #1400 Arc 04 — Index & cache (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
-    - slice #1407 Slice 07 (Arc 04) — Early-cutoff invalidation (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1401 Slice 01 (Arc 04) — Index record + snapshot persistence (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1405 Slice 05 (Arc 04) — Index→graph adapter + wire graph readers & composed views (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1406 Slice 06 (Arc 04) — Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient` (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1408 Slice 08 (Arc 04) — Benchmark harness (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1403 Slice 03 (Arc 04) — Warm-path change detection (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1402 Slice 02 (Arc 04) — Cold-path build (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1404 Slice 04 (Arc 04) — Enrich record + wire consumers (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-  - arc #1100 Arc 01 — Substrate & node CRUD (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
-    - slice #1102 Slice 02 — Stable identity core (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1103 Slice 03 (Arc 01) — Frontmatter schema + round-trip (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1106 Slice 06 (Arc 01) — `check` v1 + link-integrity (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1105 Slice 05 (Arc 01) — Node CRUD commands (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1101 Slice 01 — Workspace scaffolding (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1104 Slice 04 (Arc 01) — Store layer (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-  - arc #1600 Arc 06 — Migrate, self-host & PM-skill (plan-of-record) — planned=asserted, in-progress=asserted, complete=–, verified=–
-    - slice #1604 Slice 04 (Arc 06): self-host cutover — planned=asserted, built=asserted, tested=asserted
-    - slice #1603 Slice 03 (Arc 06): schema versioning (ODD-0020) — planned=asserted, built=asserted, tested=asserted
-    - slice #1602 Slice 02 (Arc 06): migrate odm's own docs — planned=asserted, built=asserted, tested=asserted
-    - slice #1601 Slice 01 (Arc 06): `migrate` importer core — planned=asserted, built=asserted, tested=asserted
-  - arc #1500 Arc 05 — Reconciliation (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
-    - slice #1505 Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5) — planned=asserted, built=asserted, tested=asserted
-    - slice #1502 Slice 02 (Arc 05): `file` probe + probe-runner — planned=asserted, built=asserted, tested=asserted
-    - slice #1506 Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1) — planned=asserted, built=asserted, tested=asserted
-    - slice #1507 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot — planned=asserted, built=asserted, tested=asserted
-    - slice #1503 Slice 03 (Arc 05): `odm reconcile` (on demand) — planned=asserted, built=asserted, tested=asserted
-    - slice #1501 Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe — planned=asserted, built=asserted, tested=asserted
-    - slice #1508 Slice 08 (Arc 05): freshness on every command + honest staleness (the arc capstone) — planned=asserted, built=asserted, tested=asserted
-    - slice #1504 Slice 04 (Arc 05): drift in `rollup` / `orient` — planned=asserted, built=asserted, tested=asserted
-  - arc #1300 Arc 03 — Rollup & orient (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
-    - slice #1301 Slice 01 (Arc 03) — Arc 02 cleanup (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1302 Slice 02 (Arc 03) — Rollup generation (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1304 Slice 04 (Arc 03) — `--json` + polish (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1303 Slice 03 (Arc 03) — orient / brief + bare-`odm` (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-  - arc #1200 Arc 02 — Graph, gates & derived order (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
-    - slice #1202 Slice 02 (Arc 02) — Cycle detection + tears (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1203 Slice 03 (Arc 02) — Gates, status & evidence recording (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1201 Slice 01 (Arc 02) — Graph construction + reverse edges (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1207 Slice 07 (Arc 02) — CLI graph-mutators (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1206 Slice 06 (Arc 02) — `check` v2 (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1251 Slice 05.1 (Arc 02) — Evidence-transition dates (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1205 Slice 05 (Arc 02) — Decomposition/recomposition integrity (plan-of-record) — planned=asserted, built=asserted, tested=asserted
-    - slice #1204 Slice 04 (Arc 02) — Derived order & satisfaction (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+- design #9 Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- research #11 Research: A markdown/git-native, dependency-ordered planning system — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- design #10 Oxur Design Documentation CLI - Phases 9-10 Build Plan — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- design #17 Interop — projection out, reference-and-reconcile in — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
+- design #15 odm — Arc/Slice Breakdown (build plan) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
+- research #16 Research — SWE project- & epic-level PM failures and best practices — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- design #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- research #18 Research — Forecasting under small, bursty, DAG-structured work — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
+- design #2 Oxur Design Documentation CLI - Build Plan — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- research #14 Research — odm-index: incremental indexing & caching (no DB, no FTS) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- design #13 odm — Architecture & Design (v-major rebuild) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
+- design #12 odm — Project Definition (v-major rebuild) — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=asserted, final=asserted
+- design #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0 — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- project #1000 Vision — planned=–, in-progress=–, complete=–, verified=–
+  - arc #1400 Index & cache — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #1407 Early-cutoff invalidation — planned=asserted, built=asserted, tested=asserted
+      - artifact #598300300 CC Prompt — Slice 07 (Arc 04): Early-cutoff invalidation
+      - artifact #532474400 CDC Verification — Arc 04 / Slice 07: Early-cutoff invalidation
+      - artifact #517113600 Closing report — Arc 04 / Slice 07: Early-cutoff invalidation
+      - artifact #572625500 Slice 07 (Arc 04): Early-cutoff invalidation
+    - slice #1401 Index record + snapshot persistence — planned=asserted, built=asserted, tested=asserted
+      - artifact #586243300 CC Prompt — Slice 01 (Arc 04): Index record + snapshot persistence
+      - artifact #504020200 CDC Verification — Arc 04 / Slice 01: Index record + snapshot persistence
+      - artifact #547921000 Closing report — Arc 04 / Slice 01: Index record + snapshot persistence
+      - artifact #516456900 Slice 01 (Arc 04): Index record + snapshot persistence
+    - slice #1405 Index→graph adapter + wire graph readers & composed views — planned=asserted, built=asserted, tested=asserted
+      - artifact #533952100 CC Prompt — Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+      - artifact #512151400 CDC Verification — Arc 04 / Slice 05 (partial): index→graph adapter + derived-order readers
+      - artifact #526452200 Closing report — Arc 04 / Slice 05: Index→graph adapter + graph readers (partial)
+      - artifact #503794500 Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+    - slice #1406 Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient` — planned=asserted, built=asserted, tested=asserted
+      - artifact #598502000 CC Prompt — Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+      - artifact #583526100 CDC Verification — Arc 04 / Slice 06: enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+      - artifact #543707700 Closing report — Arc 04 / Slice 06: Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+      - artifact #579909000 Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+    - slice #1408 Benchmark harness — planned=asserted, built=asserted, tested=asserted
+      - artifact #596210700 Arc 04 benchmark results (slice08)
+      - artifact #536136600 CC Prompt — Slice 08 (Arc 04): Benchmark harness
+      - artifact #555938700 CDC Verification — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+      - artifact #597978700 Closing report — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+      - artifact #528123200 Slice 08 (Arc 04): Benchmark harness
+    - slice #1403 Warm-path change detection — planned=asserted, built=asserted, tested=asserted
+      - artifact #549115500 CC Prompt — Slice 03 (Arc 04): Warm-path change detection
+      - artifact #547846400 CDC Verification — Arc 04 / Slice 03: Warm-path change detection
+      - artifact #538536800 Closing report — Arc 04 / Slice 03: Warm-path change detection
+      - artifact #577599100 Slice 03 (Arc 04): Warm-path change detection
+    - slice #1402 Cold-path build — planned=asserted, built=asserted, tested=asserted
+      - artifact #511960800 CC Prompt — Slice 02 (Arc 04): Cold-path build
+      - artifact #542740900 CDC Verification — Arc 04 / Slice 02: Cold-path build
+      - artifact #513858500 Closing report — Arc 04 / Slice 02: Cold-path build
+      - artifact #594323000 Slice 02 (Arc 04): Cold-path build
+    - slice #1404 Enrich record + wire consumers — planned=asserted, built=asserted, tested=asserted
+      - artifact #553974400 CC Prompt — Slice 04 (Arc 04): Enrich record + wire consumers
+      - artifact #559308100 CDC Verification — Arc 04 / Slice 04 (seam a): Enrich record + wire `list`
+      - artifact #511548900 Closing report — Arc 04 / Slice 04: Enrich record + wire consumers (seam a)
+      - artifact #543186200 Slice 04 (Arc 04): Enrich record + wire consumers
+    - artifact #590348000 Arc 04 — Index & cache — closing report
+  - arc #1100 Substrate & node CRUD — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #1102 Stable identity core — planned=asserted, built=asserted, tested=asserted
+      - artifact #579810800 CC Prompt — Slice 02: Stable identity core
+      - artifact #592866900 CDC Verification — Slice 02: Stable identity core
+      - artifact #512005300 Closing Report — Slice 02: Stable identity core
+      - artifact #561518600 Slice 02: Stable identity core
+    - slice #1103 Frontmatter schema + round-trip — planned=asserted, built=asserted, tested=asserted
+      - artifact #538872900 CC Prompt — Slice 03 (Arc 01): Frontmatter schema + round-trip
+      - artifact #597581000 CDC Verification — Slice 03: Frontmatter schema + round-trip
+      - artifact #534432200 Closing Report — Slice 03 (Arc 01): Frontmatter schema + round-trip
+      - artifact #514643300 Slice 03 (Arc 01): Frontmatter schema + round-trip
+    - slice #1106 `check` v1 + link-integrity — planned=asserted, built=asserted, tested=asserted
+      - artifact #514901800 CC Prompt — Slice 06 (Arc 01): `check` v1 + link-integrity
+      - artifact #584664700 CDC Verification — Slice 06: `check` v1 + link-integrity
+      - artifact #547285500 Closing Report — Slice 06 (Arc 01): `check` v1 + link-integrity
+      - artifact #550874000 Slice 06 (Arc 01): `check` v1 + link-integrity
+    - slice #1105 Node CRUD commands — planned=asserted, built=asserted, tested=asserted
+      - artifact #595967600 CC Prompt — Slice 05 (Arc 01): Node CRUD commands
+      - artifact #562220500 CDC Verification — Slice 05: Node CRUD commands
+      - artifact #512187700 Closing Report — Slice 05 (Arc 01): Node CRUD commands
+      - artifact #502667400 Slice 05 (Arc 01): Node CRUD commands
+    - slice #1101 Workspace scaffolding — planned=asserted, built=asserted, tested=asserted
+      - artifact #511982700 CC Prompt — Slice 01: Workspace scaffolding
+      - artifact #540281600 CDC Verification — Slice 01: Workspace scaffolding
+      - artifact #566952800 Closing Report — Slice 01: Workspace scaffolding
+      - artifact #511307900 Slice 01: Workspace scaffolding
+    - slice #1104 Store layer — planned=asserted, built=asserted, tested=asserted
+      - artifact #568798700 CC Prompt — Slice 04 (Arc 01): Store layer
+      - artifact #528764800 CDC Verification — Slice 04: Store layer
+      - artifact #552908000 Closing Report — Slice 04 (Arc 01): Store layer
+      - artifact #563336700 Slice 04 (Arc 01): Store layer
+  - arc #1600 Migrate, self-host & PM-skill — planned=asserted, in-progress=asserted, complete=–, verified=–
+    - slice #1604 self-host cutover — planned=asserted, built=asserted, tested=asserted
+      - artifact #559283700 CC Prompt — Slice 04 (Arc 06): self-host cutover
+      - artifact #548109400 CDC Verification — Slice 04 (Arc 06): self-host cutover
+      - artifact #592599000 Closing report — Slice 04 (Arc 06): self-host cutover
+      - artifact #552678100 Slice 04 (Arc 06): self-host cutover
+    - slice #1603 schema versioning (ODD-0020) — planned=asserted, built=asserted, tested=asserted
+      - artifact #564792800 CC Prompt — Slice 03 (Arc 06): schema versioning (ODD-0020)
+      - artifact #534715300 CDC Verification — Slice 03 (Arc 06): schema versioning (ODD-0020)
+      - artifact #586594500 Closing report — Slice 03 (Arc 06): schema versioning (ODD-0020)
+      - artifact #581644600 Slice 03 (Arc 06): schema versioning (ODD-0020)
+    - slice #1602 migrate odm's own docs — planned=asserted, built=asserted, tested=asserted
+      - artifact #580834100 CC Prompt — Slice 02 (Arc 06): migrate odm's own docs
+      - artifact #526639000 CDC Verification — Arc 06 / Slice 02: migrate odm's own docs
+      - artifact #559999000 Closing report — Slice 02 (Arc 06): migrate odm's own docs
+      - artifact #540430100 Slice 02 (Arc 06): migrate odm's own docs
+    - slice #1601 `migrate` importer core — planned=asserted, built=asserted, tested=asserted
+      - artifact #551849000 CC Prompt — Slice 01 (Arc 06): `migrate` importer core
+      - artifact #568786300 CDC Verification — Arc 06 / Slice 01: `migrate` importer core
+      - artifact #510459900 Closing report — Slice 01 (Arc 06): `migrate` importer core
+      - artifact #526086800 Slice 01 (Arc 06): `migrate` importer core
+    - slice #1605 Slice 05 (Arc 06): UAT — CLI feedback — planned=–, built=–, tested=–
+    - artifact #558198700 MOVED — see the UAT / CLI-hardening arc
+  - arc #1500 Reconciliation — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #1505 `affects` edge + stale-doc-vs-decision check (C5) — planned=asserted, built=asserted, tested=asserted
+      - artifact #587269400 CC Prompt — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+      - artifact #542834700 CDC Verification — Arc 05 / Slice 05: `affects` edge + stale-doc-vs-decision check (C5)
+      - artifact #504170700 Closing report — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+      - artifact #520766400 Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+    - slice #1502 `file` probe + probe-runner — planned=asserted, built=asserted, tested=asserted
+      - artifact #568325600 CC Prompt — Slice 02 (Arc 05): `file` probe + probe-runner
+      - artifact #568225700 CDC Verification — Arc 05 / Slice 02: `file` probe + probe-runner
+      - artifact #519484100 Closing report — Slice 02 (Arc 05): `file` probe + probe-runner
+      - artifact #570534200 Slice 02 (Arc 05): `file` probe + probe-runner
+    - slice #1506 deferred surfacing + re-entry predicate (Q-A3-1) — planned=asserted, built=asserted, tested=asserted
+      - artifact #553075800 CC Prompt — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+      - artifact #591745100 CDC Verification — Arc 05 / Slice 06: deferred surfacing + re-entry predicate (Q-A3-1)
+      - artifact #579967500 Closing report — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+      - artifact #596665600 Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+    - slice #1507 incremental drift — probes-as-rules + the `.odm/` drift snapshot — planned=asserted, built=asserted, tested=asserted
+      - artifact #557558400 CC Prompt — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+      - artifact #556645700 CDC Verification — Arc 05 / Slice 07: incremental drift — probes-as-rules + the `.odm/` drift snapshot
+      - artifact #536534500 Closing report — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+      - artifact #572248600 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+    - slice #1503 `odm reconcile` (on demand) — planned=asserted, built=asserted, tested=asserted
+      - artifact #551612300 CC Prompt — Slice 03 (Arc 05): `odm reconcile` (on demand)
+      - artifact #509959200 CDC Verification — Arc 05 / Slice 03: `odm reconcile` (on demand)
+      - artifact #523257600 Closing report — Slice 03 (Arc 05): `odm reconcile` (on demand)
+      - artifact #507313500 Slice 03 (Arc 05): `odm reconcile` (on demand)
+    - slice #1501 `desired_facts` schema + `Probe` trait + shell probe — planned=asserted, built=asserted, tested=asserted
+      - artifact #588223200 CC Prompt — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+      - artifact #503208100 CDC Verification — Arc 05 / Slice 01: `desired_facts` schema + `Probe` trait + shell probe
+      - artifact #550261700 Closing report — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+      - artifact #598822200 Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+    - slice #1508 freshness on every command + honest staleness (the arc capstone) — planned=asserted, built=asserted, tested=asserted
+      - artifact #580487800 CC Prompt — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+      - artifact #513704300 CDC Verification — Arc 05 / Slice 08: freshness on every command + honest staleness
+      - artifact #527293100 Closing report — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+      - artifact #534994400 Slice 08 (Arc 05): freshness on every command + honest staleness
+    - slice #1504 drift in `rollup` / `orient` — planned=asserted, built=asserted, tested=asserted
+      - artifact #544302200 CC Prompt — Slice 04 (Arc 05): drift in `rollup` / `orient`
+      - artifact #582446700 CDC Verification — Arc 05 / Slice 04: drift in `rollup` / `orient`
+      - artifact #597833900 Closing report — Slice 04 (Arc 05): drift in `rollup` / `orient`
+      - artifact #557733600 Slice 04 (Arc 05): drift in `rollup` / `orient`
+    - artifact #564300500 Arc 05 — Reconciliation — closing report
+  - arc #1300 Rollup & orient — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #1301 Arc 02 cleanup — planned=asserted, built=asserted, tested=asserted
+      - artifact #565777300 CC Prompt — Slice 01 (Arc 03): Arc 02 cleanup
+      - artifact #513156600 CDC Verification — Arc 03 / Slice 01: Arc 02 cleanup
+      - artifact #556238200 Closing Report — Slice 01 (Arc 03): Arc 02 cleanup
+      - artifact #576782900 Slice 01 (Arc 03): Arc 02 cleanup
+    - slice #1302 Rollup generation — planned=asserted, built=asserted, tested=asserted
+      - artifact #590543000 CC Prompt — Slice 02 (Arc 03): Rollup generation
+      - artifact #555260300 CDC Verification — Arc 03 / Slice 02: Rollup generation
+      - artifact #590202700 Closing report — Arc 03 / Slice 02: Rollup generation
+      - artifact #592609600 Slice 02 (Arc 03): Rollup generation
+    - slice #1304 `--json` + polish — planned=asserted, built=asserted, tested=asserted
+      - artifact #565867300 CC Prompt — Slice 04 (Arc 03): `--json` + polish
+      - artifact #582735400 CDC Verification — Arc 03 / Slice 04: `--json` + polish
+      - artifact #587250600 Closing report — Arc 03 / Slice 04: `--json` + polish
+      - artifact #595146500 Slice 04 (Arc 03): `--json` + polish
+    - slice #1303 orient / brief + bare-`odm` — planned=asserted, built=asserted, tested=asserted
+      - artifact #564916400 CC Prompt — Slice 03 (Arc 03): orient / brief + bare-`odm`
+      - artifact #571534100 CDC Verification — Arc 03 / Slice 03: orient / brief + bare-`odm`
+      - artifact #560464500 Closing report — Arc 03 / Slice 03: orient / brief + bare-`odm`
+      - artifact #502265800 Slice 03 (Arc 03): orient / brief + bare-`odm`
+    - artifact #533654700 Arc 03 — Close: recomposition / silent-drop check
+  - arc #1200 Graph, gates & derived order — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #1202 Cycle detection + tears — planned=asserted, built=asserted, tested=asserted
+      - artifact #549164900 CC Prompt — Slice 02 (Arc 02): Cycle detection + tears
+      - artifact #523319400 CDC Verification — Arc 02 / Slice 02: Cycle detection + tears
+      - artifact #564308200 Closing Report — Slice 02 (Arc 02): Cycle detection + tears
+      - artifact #532159300 Slice 02 (Arc 02): Cycle detection + tears
+    - slice #1203 Gates, status & evidence recording — planned=asserted, built=asserted, tested=asserted
+      - artifact #524075200 CC Prompt — Slice 03 (Arc 02): Gates, status & evidence recording
+      - artifact #514996100 CDC Verification — Arc 02 / Slice 03: Gates, status & evidence
+      - artifact #523262500 Closing Report — Slice 03 (Arc 02): Gates, status & evidence recording
+      - artifact #599635800 Slice 03 (Arc 02): Gates, status & evidence recording
+    - slice #1201 Graph construction + reverse edges — planned=asserted, built=asserted, tested=asserted
+      - artifact #584217500 CC Prompt — Slice 01 (Arc 02): Graph construction + reverse edges
+      - artifact #581475600 CDC Verification — Arc 02 / Slice 01: Graph construction + reverse edges
+      - artifact #576458800 Closing Report — Slice 01 (Arc 02): Graph construction + reverse edges
+      - artifact #576917100 Slice 01 (Arc 02): Graph construction + reverse edges
+    - slice #1207 CLI graph-mutators — planned=asserted, built=asserted, tested=asserted
+      - artifact #513590000 CC Prompt — Slice 07 (Arc 02): CLI graph-mutators
+      - artifact #539586900 CDC Verification — Arc 02 / Slice 07: CLI graph-mutators
+      - artifact #521323700 Closing Report — Slice 07 (Arc 02): CLI graph-mutators
+      - artifact #590561800 Slice 07 (Arc 02): CLI graph-mutators
+    - slice #1206 `check` v2 — planned=asserted, built=asserted, tested=asserted
+      - artifact #566759700 CC Prompt — Slice 06 (Arc 02): `check` v2
+      - artifact #537627000 CDC Verification — Arc 02 / Slice 06: `check` v2
+      - artifact #579742200 Closing Report — Slice 06 (Arc 02): `check` v2
+      - artifact #564779700 Slice 06 (Arc 02): `check` v2
+    - slice #1251 Evidence-transition dates — planned=asserted, built=asserted, tested=asserted
+      - artifact #560746700 CC Prompt — Slice 05.1 (Arc 02): Evidence-transition dates
+      - artifact #578511200 CDC Verification — Arc 02 / Slice 05.1: Evidence-transition dates
+      - artifact #513960000 Closing Report — Slice 05.1 (Arc 02): Evidence-transition dates
+      - artifact #500633500 Slice 05.1 (Arc 02): Evidence-transition dates
+    - slice #1205 Decomposition/recomposition integrity — planned=asserted, built=asserted, tested=asserted
+      - artifact #598792000 CC Prompt — Slice 05 (Arc 02): Decomposition/recomposition integrity
+      - artifact #563319300 CDC Verification — Arc 02 / Slice 05: Decomposition/recomposition integrity
+      - artifact #550625700 Closing Report — Slice 05 (Arc 02): Decomposition/recomposition integrity
+      - artifact #590890200 Slice 05 (Arc 02): Decomposition/recomposition integrity
+    - slice #1204 Derived order & satisfaction — planned=asserted, built=asserted, tested=asserted
+      - artifact #575850300 CC Prompt — Slice 04 (Arc 02): Derived order & satisfaction
+      - artifact #500359600 CDC Verification — Arc 02 / Slice 04: Derived order & satisfaction
+      - artifact #589605200 Closing Report — Slice 04 (Arc 02): Derived order & satisfaction
+      - artifact #547690700 Slice 04 (Arc 02): Derived order & satisfaction
+  - arc #10842600 Arc — LLM command surface (plan-of-record) — planned=asserted, in-progress=asserted, complete=–, verified=–
+    - artifact #566639300 odm Command Inventory — three-tier surface (ODD-0023)
+  - arc #1700 Arc 07 — Two-clock telemetry (plan-of-record) — planned=asserted, in-progress=asserted, complete=–, verified=–
+  - arc #7773600 Arc — Store Home & `init` (plan-of-record) — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - slice #7773603 Slice 03 — `init` attach + ff-sync (slice-doc / plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #541726800 cc-prompt — arc-store-home slice 03: `init` attach + ff-sync
+      - artifact #521125300 Slice 03 (arc-store-home) — CDC verification
+      - artifact #585914900 Slice 03 closing report — `init` attach + ff-sync
+      - artifact #596623400 Slice 03 — `init` attach + ff-sync (ledger)
+    - slice #7773602 Slice 02 — `git`-worktree plumbing + `odm store init` bootstrap (slice-doc / plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #563405800 cc-prompt — slice 02 **amendment**: fix the modern-git `--orphan` argv (SH-2 blocker)
+      - artifact #566291600 cc-prompt — arc-store-home slice 02: `git`-worktree plumbing + `odm store init` bootstrap
+      - artifact #527674100 Slice 02 (arc-store-home) — CDC verification
+      - artifact #526262100 Slice 02 closing report — `git`-worktree plumbing + `odm store init` bootstrap
+      - artifact #598730600 Slice 02 — `git`-worktree plumbing + `odm store init` bootstrap (ledger)
+    - slice #7773604 Slice 04 — `odm store rename` (slice-doc / plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #560947500 cc-prompt — arc-store-home slice 04: `odm store rename`
+      - artifact #541425600 Slice 04 (arc-store-home) — CDC verification + arc-close endorsement
+      - artifact #549626400 Slice 04 closing report — `odm store rename`
+      - artifact #521488700 Slice 04 — `odm store rename` (ledger)
+    - slice #7773601 Slice 01 — Store resolution + two-config split (slice-doc / plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #572258000 cc-prompt — arc-store-home slice 01: Store resolution + two-config split
+      - artifact #501198900 Slice 01 (arc-store-home) — CDC verification
+      - artifact #544836500 Slice 01 closing report — Store resolution + two-config split
+      - artifact #547570600 Slice 01 — Store resolution + two-config split (ledger)
+    - artifact #595198000 CDC session handoff — arc-store-home reopening (2026-07-27)
+    - artifact #530854900 Amendment to ODD-0022 — worktree-general store discovery & project scoping
+    - artifact #531812600 Arc closing report — Store Home & `init` (`arc-store-home`)
+  - arc #61823100 Arc — Release Hardening: CLI, types, naming & output (UAT-driven) — plan-of-record — planned=asserted, in-progress=asserted, complete=asserted, verified=asserted
+    - artifact #589685100 C-1 — CDC verification (chunk close)
+    - artifact #568128400 Amendment stub — ODD-0013 (Architecture & Design) for RH C-2
+    - artifact #520951000 Amendment stub — ODD-0020 (per-type schema markers) for RH C-2
+    - artifact #569547400 C-2 — CDC verification (chunk close)
+    - artifact #590537700 C-3 — CDC verification (chunk close)
+    - artifact #569646700 Amendment stub — ODD-0013 §2.1 for RH C-7 (names embed no metadata)
+    - artifact #541429900 ADR — Re-extract `oxur-table` as a standalone crate
+    - artifact #555750000 C-1 closing report — Adopt Oxur themed output in odm (via `oxur-term`)
+    - artifact #567337700 C-2 closing report — Type taxonomy (`odd`→`design` + `research`)
+    - artifact #590538600 C-3 closing report — `odm list` overhaul
+    - artifact #546599100 RH C-4 (command surface + ODD-0023 reorg) — CDC verification
+    - artifact #569527100 C-4 closing report — command-surface cleanup + the ODD-0023 reorg
+    - artifact #554131200 RH C-5 (cutover) — CDC verification + arc-store-home close endorsement
+    - artifact #521410400 C-5 closing report — the dogfood cutover + derivation overhaul
+    - artifact #577589300 RH C-6 (`validate` hardening) — CDC verification
+    - artifact #522391700 C-6 closing report — `validate` hardening (G-2 + G-3 + L-3b)
+    - artifact #525816300 RH C-8 (normalized status) — CDC verification
+    - artifact #512761900 C-8 closing report — normalized status for `odm node list`
+    - artifact #583747000 cc-prompt — RH C-1: Adopt Oxur table styling in odm (via `oxur-table`)
+    - artifact #559711800 cc-prompt — RH C-1: Adopt Oxur themed output in odm (via `oxur-term`)
+    - artifact #589469100 cc-prompt — RH C-2: Type taxonomy (`odd`→`design` + `research`)
+    - artifact #539487900 cc-prompt — RH C-3: `odm list` overhaul
+    - artifact #519035200 cc-prompt — RH C-4: command-surface cleanup + the ODD-0023 reorg (one pass)
+    - artifact #598807000 cc-prompt — RH C-5 (cutover): the dogfood relocation + derivation overhaul
+    - artifact #545027800 cc-prompt — RH C-5 (expanded): self-host → migrate + node-derivation overhaul
+    - artifact #559430600 cc-prompt — RH C-6: `validate` / `check` hardening (G-2 + G-3 + L-3b)
+    - artifact #559100900 cc-prompt — RH C-7: Name normalization at the source (names embed no metadata)
+    - artifact #523673100 cc-prompt — RH C-8: Normalized status for `odm node list` (display-only)
+    - artifact #513839300 cc-prompt — Release Hardening: arc close (RH-6 / RH-7 compose + closing-report + bubble-up)
+    - artifact #525903300 Arc closing report — Release Hardening (`arc-release-hardening`)
+    - artifact #502696800 Release Hardening — CDC arc-gate verification (close)
+    - artifact #520063000 UAT feedback coverage audit — F / L / G rows
+    - artifact #509948700 UAT punch list — batch 1 (first-pass, NON-AUTHORITATIVE)
+    - artifact #502623100 UAT — pass 2: LLM acceptance (batch 2 of this arc)
+    - artifact #598524100 Workflow-gap coverage review — does odm's plan cover what the workflow broke?
+  - arc #58837400 Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record — planned=asserted, in-progress=asserted, complete=–, verified=–
+    - slice #58837405 Slice 05 (Migration Fidelity) — Source-based identity (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #588058400 CC Prompt — Slice 05 (Migration Fidelity): Source-based identity
+      - artifact #548682500 Slice 05 closing report — Source-based identity
+      - artifact #507489400 Slice 05 (Migration Fidelity): Source-based identity
+    - slice #58837402 Slice 02 (Migration Fidelity) — The fidelity model (ODD-0025) (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #509109900 CC Prompt — Slice 02 (Migration Fidelity): The fidelity model — STAND DOWN (superseded)
+      - artifact #581012000 Slice 02 verification — The fidelity model (ODD-0025)
+      - artifact #502361600 Slice 02 closing report — The fidelity model (ODD-0025)
+      - artifact #582916700 Slice 02 (Migration Fidelity): The fidelity model (ODD-0025)
+    - slice #58837406 Slice 06 (Migration Fidelity) — Live-run capability (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #522630800 CC Prompt — Slice 06 (Migration Fidelity): Live-run capability
+      - artifact #516403700 Slice 06 CDC verification — Live-run capability
+      - artifact #589833300 Slice 06 closing report — Live-run capability
+      - artifact #568189800 Slice 06 (Migration Fidelity): Live-run capability
+    - slice #58837401 Slice 01 (Migration Fidelity) — Coverage discovery (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #598795500 CC Prompt — Slice 01 (Migration Fidelity): Coverage discovery
+      - artifact #564259200 Slice 01 CDC verification — Coverage discovery
+      - artifact #594194400 Slice 01 closing report — Coverage discovery
+      - artifact #505931500 Coverage report
+      - artifact #587304700 Slice 01 (Migration Fidelity): Coverage discovery
+    - slice #58837403 Slice 03 (Migration Fidelity) — Fidelity core (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #511202200 CC Prompt — Slice 03 (Migration Fidelity): Fidelity core
+      - artifact #527529100 Slice 03 CDC verification — Fidelity core
+      - artifact #511981900 Slice 03 closing report — Fidelity core
+      - artifact #514836800 Slice 03 (Migration Fidelity): Fidelity core
+    - slice #58837404 Slice 04 (Migration Fidelity) — Scope + repair capability (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #518499400 CC Prompt — Slice 04 (Migration Fidelity): Scope + repair capability
+      - artifact #561375900 Slice 04 closing report — Scope + repair capability
+      - artifact #582879600 Slice 04 (Migration Fidelity): Scope + repair capability
+    - slice #58837407 Slice 07 (Migration Fidelity) — Live repair run (plan-of-record) — planned=–, built=–, tested=–
+      - artifact #514030400 CC Prompt — Slice 07 (Migration Fidelity): Live repair run
+      - artifact #599760900 Slice 07 CDC verification — Live repair run
+      - artifact #554081700 Slice 07 closing report — Live repair run
+      - artifact #542371800 Slice 07 (Migration Fidelity): Live repair run
+    - slice #58837408 Slice 08 (Migration Fidelity) — Source-path portability (plan-of-record) — planned=–, built=–, tested=–
+      - artifact #562472000 CC Prompt — Slice 08 (Migration Fidelity): Source-path portability
+      - artifact #521789700 Slice 08 (Migration Fidelity) — CDC verification: Source-path portability
+      - artifact #519016100 Slice 08 closing report — Source-path portability
+      - artifact #520413400 Slice 08 (Migration Fidelity): Source-path portability
+    - slice #58837409 Slice 09 (Migration Fidelity) — Coverage enforcement *capability* (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #538557100 CC Prompt — Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+      - artifact #569115200 Slice 09 (Migration Fidelity) — CDC verification: Coverage enforcement *capability*
+      - artifact #569949600 Slice 09 closing report — Coverage enforcement *capability*
+      - artifact #561511100 Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+    - slice #58837410 Slice 10 (Migration Fidelity) — Coverage live run (plan-of-record) — planned=–, built=–, tested=–
+      - artifact #562390100 CC Prompt — Slice 10 (Migration Fidelity): Coverage live run
+      - artifact #509907700 Slice 10 (Migration Fidelity): Coverage live run
+    - artifact #536513400 odm migration / provenance / synthesis — design decisions & open forks
+    - slice #58837411 Slice 11 (Migration Fidelity) — Synthesis capability + L-8b reconciliation (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+    - slice #58837412 Slice 12 (Migration Fidelity) — Reconcile capability (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+    - slice #58837413 Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record) — planned=–, built=–, tested=–
+  - arc #1800 Arc 08 — Forecasting (plan-of-record) — planned=asserted, in-progress=asserted, complete=–, verified=–
+- research #21 Research — Information-Theoretic Complexity of Text (Code and Prose) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
+- artifact #543468700 CDC Session Bootstrap — pick up where we left off
+- artifact #561911000 Command-surface UAT checklist — the dual sign-off worksheet
+- artifact #519434700 Doc ↔ node reconciliation audit — odm self-host corpus (2026-07-27)
+- design #22 The odm store home — a dedicated orphan branch in a git worktree — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- design #23 Command-surface reorg — `node` / `store` groups + top-level workflow verbs — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- design #25 Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- design #24 ID scheme — retain ULID identity; register-style handle rejected — draft=asserted, under-review=asserted, revised=asserted, accepted=asserted, active=–, final=–
+- note #779974200 Phase 1: Foundation Enhancements - Detailed Implementation Guide
+- note #726625700 Phase 2: Core Command Implementation - Detailed Implementation Guide
+- note #701292400 Phase 3: Index Synchronization - Detailed Implementation Guide
+- note #798832900 Phase 4: Document Addition Workflow - Detailed Implementation Guide
+- note #798582500 Phase 5: Testing & Polish - Detailed Implementation Guide
+- note #722188000 Phase 6: State Management & Source of Truth - Detailed Implementation Guide
+- note #795947500 Phase 7: Advanced Document Onboarding - Detailed Implementation Guide
+- note #774757900 Phase 8: Debug Tools & Search - Detailed Implementation Guide
+- note #702583900 Phase 9 Implementation: Document Lifecycle Management
+- note #746109300 Phase 10 Implementation: Tool Introspection & Discovery
+- note #768636900 Phase 11 Implementation: Rename Command & Alphabetical Help
+- note #741036500 Dead Code Analysis: oxur-ast Statement Builder
+- note #712091600 Index Sync Issues Found During Testing
+- note #713059300 Claude Code Instructions: Fix Table Padding Issue
+- note #723179000 Fix for config.rs - Force Column Widths with Width::increase()
+- note #770536000 Prompt for Future Claude: Tabled Theme Cleanup and Generalization
+- note #704487900 Implementation Plan: Clean Up and Generalize Tabled Theme System
+- note #721888200 Implementation Plan: Refactor `oxd show` Command with Themed Table Output
+- note #713687000 Implementation Guide: Add Component, Tags, and Version Fields to Design Doc Metadata
+- note #729528100 Implementation Plan: Add Component, Tags, and Version Metadata Fields
+- note #746356900 Implementation Plan: Add `oxd info tags` and `oxd info components` Commands
+- note #734399800 oxur-cli Common Utilities Consolidation Plan
+- note #773306100 Implementation Plan: Confyg Integration for oxur-odm
+- note #784935300 Implementation Plan: `odm add --dev` Feature
+- note #796216000 odm — New Session Bootstrap: build the planning / doc-management system
+- note #727942200 Measuring Software Code and Code-Change Complexity: A Literature Review
+- note #730075300 Measuring the Conceptual/Semantic Complexity of Written Prose: A Literature Survey
+- note #716343800 Code & Text Complexity Tooling Survey — July 2026
+- note #724289200 odm — telemetry & forecasting (post-arc6 thread)
+- note #798306500 odm as a PM tool — arc-6 baseline analysis
+- note #772202000 PM Post-Mortem — project-x: what went wrong, what to do instead
+- project #1001 odm v1.0.0 — Project Plan (arc roadmap) — planned=–, in-progress=–, complete=–, verified=–
 
 ## Ready
 
-- odd #17 Interop — projection out, reference-and-reconcile in
-- odd #15 odm — Arc/Slice Breakdown (build plan)
-- odd #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
-- odd #18 Research — Forecasting under small, bursty, DAG-structured work
-- odd #13 odm — Architecture & Design (v-major rebuild)
-- odd #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
-- project #1000 odm v1.0.0 — Project Plan (arc roadmap)
-- arc #1600 Arc 06 — Migrate, self-host & PM-skill (plan-of-record)
+- design #17 Interop — projection out, reference-and-reconcile in
+- design #15 odm — Arc/Slice Breakdown (build plan)
+- design #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
+- research #18 Research — Forecasting under small, bursty, DAG-structured work
+- design #13 odm — Architecture & Design (v-major rebuild)
+- design #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
+- project #1000 Vision
+- arc #1600 Migrate, self-host & PM-skill
+- slice #1605 Slice 05 (Arc 06): UAT — CLI feedback
+- research #21 Research — Information-Theoretic Complexity of Text (Code and Prose)
+- arc #10842600 Arc — LLM command surface (plan-of-record)
+- arc #1700 Arc 07 — Two-clock telemetry (plan-of-record)
+- arc #58837400 Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record
+- arc #1800 Arc 08 — Forecasting (plan-of-record)
+- slice #58837407 Slice 07 (Migration Fidelity) — Live repair run (plan-of-record)
+- slice #58837408 Slice 08 (Migration Fidelity) — Source-path portability (plan-of-record)
+- slice #58837410 Slice 10 (Migration Fidelity) — Coverage live run (plan-of-record)
+- artifact #543468700 CDC Session Bootstrap — pick up where we left off
+- artifact #566639300 odm Command Inventory — three-tier surface (ODD-0023)
+- artifact #536513400 odm migration / provenance / synthesis — design decisions & open forks
+- artifact #598795500 CC Prompt — Slice 01 (Migration Fidelity): Coverage discovery
+- artifact #564259200 Slice 01 CDC verification — Coverage discovery
+- artifact #594194400 Slice 01 closing report — Coverage discovery
+- artifact #505931500 Coverage report
+- artifact #587304700 Slice 01 (Migration Fidelity): Coverage discovery
+- artifact #509109900 CC Prompt — Slice 02 (Migration Fidelity): The fidelity model — STAND DOWN (superseded)
+- artifact #581012000 Slice 02 verification — The fidelity model (ODD-0025)
+- artifact #502361600 Slice 02 closing report — The fidelity model (ODD-0025)
+- artifact #582916700 Slice 02 (Migration Fidelity): The fidelity model (ODD-0025)
+- artifact #511202200 CC Prompt — Slice 03 (Migration Fidelity): Fidelity core
+- artifact #527529100 Slice 03 CDC verification — Fidelity core
+- artifact #511981900 Slice 03 closing report — Fidelity core
+- artifact #514836800 Slice 03 (Migration Fidelity): Fidelity core
+- artifact #518499400 CC Prompt — Slice 04 (Migration Fidelity): Scope + repair capability
+- artifact #561375900 Slice 04 closing report — Scope + repair capability
+- artifact #582879600 Slice 04 (Migration Fidelity): Scope + repair capability
+- artifact #588058400 CC Prompt — Slice 05 (Migration Fidelity): Source-based identity
+- artifact #548682500 Slice 05 closing report — Source-based identity
+- artifact #507489400 Slice 05 (Migration Fidelity): Source-based identity
+- artifact #522630800 CC Prompt — Slice 06 (Migration Fidelity): Live-run capability
+- artifact #516403700 Slice 06 CDC verification — Live-run capability
+- artifact #589833300 Slice 06 closing report — Live-run capability
+- artifact #568189800 Slice 06 (Migration Fidelity): Live-run capability
+- artifact #514030400 CC Prompt — Slice 07 (Migration Fidelity): Live repair run
+- artifact #599760900 Slice 07 CDC verification — Live repair run
+- artifact #554081700 Slice 07 closing report — Live repair run
+- artifact #542371800 Slice 07 (Migration Fidelity): Live repair run
+- artifact #562472000 CC Prompt — Slice 08 (Migration Fidelity): Source-path portability
+- artifact #521789700 Slice 08 (Migration Fidelity) — CDC verification: Source-path portability
+- artifact #519016100 Slice 08 closing report — Source-path portability
+- artifact #520413400 Slice 08 (Migration Fidelity): Source-path portability
+- artifact #538557100 CC Prompt — Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+- artifact #569115200 Slice 09 (Migration Fidelity) — CDC verification: Coverage enforcement *capability*
+- artifact #569949600 Slice 09 closing report — Coverage enforcement *capability*
+- artifact #561511100 Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+- artifact #562390100 CC Prompt — Slice 10 (Migration Fidelity): Coverage live run
+- artifact #509907700 Slice 10 (Migration Fidelity): Coverage live run
+- artifact #589685100 C-1 — CDC verification (chunk close)
+- artifact #568128400 Amendment stub — ODD-0013 (Architecture & Design) for RH C-2
+- artifact #520951000 Amendment stub — ODD-0020 (per-type schema markers) for RH C-2
+- artifact #569547400 C-2 — CDC verification (chunk close)
+- artifact #590537700 C-3 — CDC verification (chunk close)
+- artifact #569646700 Amendment stub — ODD-0013 §2.1 for RH C-7 (names embed no metadata)
+- artifact #541429900 ADR — Re-extract `oxur-table` as a standalone crate
+- artifact #555750000 C-1 closing report — Adopt Oxur themed output in odm (via `oxur-term`)
+- artifact #567337700 C-2 closing report — Type taxonomy (`odd`→`design` + `research`)
+- artifact #590538600 C-3 closing report — `odm list` overhaul
+- artifact #546599100 RH C-4 (command surface + ODD-0023 reorg) — CDC verification
+- artifact #569527100 C-4 closing report — command-surface cleanup + the ODD-0023 reorg
+- artifact #554131200 RH C-5 (cutover) — CDC verification + arc-store-home close endorsement
+- artifact #521410400 C-5 closing report — the dogfood cutover + derivation overhaul
+- artifact #577589300 RH C-6 (`validate` hardening) — CDC verification
+- artifact #522391700 C-6 closing report — `validate` hardening (G-2 + G-3 + L-3b)
+- artifact #525816300 RH C-8 (normalized status) — CDC verification
+- artifact #512761900 C-8 closing report — normalized status for `odm node list`
+- artifact #583747000 cc-prompt — RH C-1: Adopt Oxur table styling in odm (via `oxur-table`)
+- artifact #559711800 cc-prompt — RH C-1: Adopt Oxur themed output in odm (via `oxur-term`)
+- artifact #589469100 cc-prompt — RH C-2: Type taxonomy (`odd`→`design` + `research`)
+- artifact #539487900 cc-prompt — RH C-3: `odm list` overhaul
+- artifact #519035200 cc-prompt — RH C-4: command-surface cleanup + the ODD-0023 reorg (one pass)
+- artifact #598807000 cc-prompt — RH C-5 (cutover): the dogfood relocation + derivation overhaul
+- artifact #545027800 cc-prompt — RH C-5 (expanded): self-host → migrate + node-derivation overhaul
+- artifact #559430600 cc-prompt — RH C-6: `validate` / `check` hardening (G-2 + G-3 + L-3b)
+- artifact #559100900 cc-prompt — RH C-7: Name normalization at the source (names embed no metadata)
+- artifact #523673100 cc-prompt — RH C-8: Normalized status for `odm node list` (display-only)
+- artifact #513839300 cc-prompt — Release Hardening: arc close (RH-6 / RH-7 compose + closing-report + bubble-up)
+- artifact #525903300 Arc closing report — Release Hardening (`arc-release-hardening`)
+- artifact #502696800 Release Hardening — CDC arc-gate verification (close)
+- artifact #520063000 UAT feedback coverage audit — F / L / G rows
+- artifact #509948700 UAT punch list — batch 1 (first-pass, NON-AUTHORITATIVE)
+- artifact #502623100 UAT — pass 2: LLM acceptance (batch 2 of this arc)
+- artifact #598524100 Workflow-gap coverage review — does odm's plan cover what the workflow broke?
+- artifact #595198000 CDC session handoff — arc-store-home reopening (2026-07-27)
+- artifact #530854900 Amendment to ODD-0022 — worktree-general store discovery & project scoping
+- artifact #531812600 Arc closing report — Store Home & `init` (`arc-store-home`)
+- artifact #572258000 cc-prompt — arc-store-home slice 01: Store resolution + two-config split
+- artifact #501198900 Slice 01 (arc-store-home) — CDC verification
+- artifact #544836500 Slice 01 closing report — Store resolution + two-config split
+- artifact #547570600 Slice 01 — Store resolution + two-config split (ledger)
+- artifact #563405800 cc-prompt — slice 02 **amendment**: fix the modern-git `--orphan` argv (SH-2 blocker)
+- artifact #566291600 cc-prompt — arc-store-home slice 02: `git`-worktree plumbing + `odm store init` bootstrap
+- artifact #527674100 Slice 02 (arc-store-home) — CDC verification
+- artifact #526262100 Slice 02 closing report — `git`-worktree plumbing + `odm store init` bootstrap
+- artifact #598730600 Slice 02 — `git`-worktree plumbing + `odm store init` bootstrap (ledger)
+- artifact #541726800 cc-prompt — arc-store-home slice 03: `init` attach + ff-sync
+- artifact #521125300 Slice 03 (arc-store-home) — CDC verification
+- artifact #585914900 Slice 03 closing report — `init` attach + ff-sync
+- artifact #596623400 Slice 03 — `init` attach + ff-sync (ledger)
+- artifact #560947500 cc-prompt — arc-store-home slice 04: `odm store rename`
+- artifact #541425600 Slice 04 (arc-store-home) — CDC verification + arc-close endorsement
+- artifact #549626400 Slice 04 closing report — `odm store rename`
+- artifact #521488700 Slice 04 — `odm store rename` (ledger)
+- artifact #511982700 CC Prompt — Slice 01: Workspace scaffolding
+- artifact #540281600 CDC Verification — Slice 01: Workspace scaffolding
+- artifact #566952800 Closing Report — Slice 01: Workspace scaffolding
+- artifact #511307900 Slice 01: Workspace scaffolding
+- artifact #579810800 CC Prompt — Slice 02: Stable identity core
+- artifact #592866900 CDC Verification — Slice 02: Stable identity core
+- artifact #512005300 Closing Report — Slice 02: Stable identity core
+- artifact #561518600 Slice 02: Stable identity core
+- artifact #538872900 CC Prompt — Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #597581000 CDC Verification — Slice 03: Frontmatter schema + round-trip
+- artifact #534432200 Closing Report — Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #514643300 Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #568798700 CC Prompt — Slice 04 (Arc 01): Store layer
+- artifact #528764800 CDC Verification — Slice 04: Store layer
+- artifact #552908000 Closing Report — Slice 04 (Arc 01): Store layer
+- artifact #563336700 Slice 04 (Arc 01): Store layer
+- artifact #595967600 CC Prompt — Slice 05 (Arc 01): Node CRUD commands
+- artifact #562220500 CDC Verification — Slice 05: Node CRUD commands
+- artifact #512187700 Closing Report — Slice 05 (Arc 01): Node CRUD commands
+- artifact #502667400 Slice 05 (Arc 01): Node CRUD commands
+- artifact #514901800 CC Prompt — Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #584664700 CDC Verification — Slice 06: `check` v1 + link-integrity
+- artifact #547285500 Closing Report — Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #550874000 Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #584217500 CC Prompt — Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #581475600 CDC Verification — Arc 02 / Slice 01: Graph construction + reverse edges
+- artifact #576458800 Closing Report — Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #576917100 Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #549164900 CC Prompt — Slice 02 (Arc 02): Cycle detection + tears
+- artifact #523319400 CDC Verification — Arc 02 / Slice 02: Cycle detection + tears
+- artifact #564308200 Closing Report — Slice 02 (Arc 02): Cycle detection + tears
+- artifact #532159300 Slice 02 (Arc 02): Cycle detection + tears
+- artifact #524075200 CC Prompt — Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #514996100 CDC Verification — Arc 02 / Slice 03: Gates, status & evidence
+- artifact #523262500 Closing Report — Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #599635800 Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #575850300 CC Prompt — Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #500359600 CDC Verification — Arc 02 / Slice 04: Derived order & satisfaction
+- artifact #589605200 Closing Report — Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #547690700 Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #598792000 CC Prompt — Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #563319300 CDC Verification — Arc 02 / Slice 05: Decomposition/recomposition integrity
+- artifact #550625700 Closing Report — Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #590890200 Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #560746700 CC Prompt — Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #578511200 CDC Verification — Arc 02 / Slice 05.1: Evidence-transition dates
+- artifact #513960000 Closing Report — Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #500633500 Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #566759700 CC Prompt — Slice 06 (Arc 02): `check` v2
+- artifact #537627000 CDC Verification — Arc 02 / Slice 06: `check` v2
+- artifact #579742200 Closing Report — Slice 06 (Arc 02): `check` v2
+- artifact #564779700 Slice 06 (Arc 02): `check` v2
+- artifact #513590000 CC Prompt — Slice 07 (Arc 02): CLI graph-mutators
+- artifact #539586900 CDC Verification — Arc 02 / Slice 07: CLI graph-mutators
+- artifact #521323700 Closing Report — Slice 07 (Arc 02): CLI graph-mutators
+- artifact #590561800 Slice 07 (Arc 02): CLI graph-mutators
+- artifact #533654700 Arc 03 — Close: recomposition / silent-drop check
+- artifact #565777300 CC Prompt — Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #513156600 CDC Verification — Arc 03 / Slice 01: Arc 02 cleanup
+- artifact #556238200 Closing Report — Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #576782900 Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #590543000 CC Prompt — Slice 02 (Arc 03): Rollup generation
+- artifact #555260300 CDC Verification — Arc 03 / Slice 02: Rollup generation
+- artifact #590202700 Closing report — Arc 03 / Slice 02: Rollup generation
+- artifact #592609600 Slice 02 (Arc 03): Rollup generation
+- artifact #564916400 CC Prompt — Slice 03 (Arc 03): orient / brief + bare-`odm`
+- artifact #571534100 CDC Verification — Arc 03 / Slice 03: orient / brief + bare-`odm`
+- artifact #560464500 Closing report — Arc 03 / Slice 03: orient / brief + bare-`odm`
+- artifact #502265800 Slice 03 (Arc 03): orient / brief + bare-`odm`
+- artifact #565867300 CC Prompt — Slice 04 (Arc 03): `--json` + polish
+- artifact #582735400 CDC Verification — Arc 03 / Slice 04: `--json` + polish
+- artifact #587250600 Closing report — Arc 03 / Slice 04: `--json` + polish
+- artifact #595146500 Slice 04 (Arc 03): `--json` + polish
+- artifact #590348000 Arc 04 — Index & cache — closing report
+- artifact #586243300 CC Prompt — Slice 01 (Arc 04): Index record + snapshot persistence
+- artifact #504020200 CDC Verification — Arc 04 / Slice 01: Index record + snapshot persistence
+- artifact #547921000 Closing report — Arc 04 / Slice 01: Index record + snapshot persistence
+- artifact #516456900 Slice 01 (Arc 04): Index record + snapshot persistence
+- artifact #511960800 CC Prompt — Slice 02 (Arc 04): Cold-path build
+- artifact #542740900 CDC Verification — Arc 04 / Slice 02: Cold-path build
+- artifact #513858500 Closing report — Arc 04 / Slice 02: Cold-path build
+- artifact #594323000 Slice 02 (Arc 04): Cold-path build
+- artifact #549115500 CC Prompt — Slice 03 (Arc 04): Warm-path change detection
+- artifact #547846400 CDC Verification — Arc 04 / Slice 03: Warm-path change detection
+- artifact #538536800 Closing report — Arc 04 / Slice 03: Warm-path change detection
+- artifact #577599100 Slice 03 (Arc 04): Warm-path change detection
+- artifact #553974400 CC Prompt — Slice 04 (Arc 04): Enrich record + wire consumers
+- artifact #559308100 CDC Verification — Arc 04 / Slice 04 (seam a): Enrich record + wire `list`
+- artifact #511548900 Closing report — Arc 04 / Slice 04: Enrich record + wire consumers (seam a)
+- artifact #543186200 Slice 04 (Arc 04): Enrich record + wire consumers
+- artifact #533952100 CC Prompt — Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+- artifact #512151400 CDC Verification — Arc 04 / Slice 05 (partial): index→graph adapter + derived-order readers
+- artifact #526452200 Closing report — Arc 04 / Slice 05: Index→graph adapter + graph readers (partial)
+- artifact #503794500 Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+- artifact #598502000 CC Prompt — Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #583526100 CDC Verification — Arc 04 / Slice 06: enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #543707700 Closing report — Arc 04 / Slice 06: Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #579909000 Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #598300300 CC Prompt — Slice 07 (Arc 04): Early-cutoff invalidation
+- artifact #532474400 CDC Verification — Arc 04 / Slice 07: Early-cutoff invalidation
+- artifact #517113600 Closing report — Arc 04 / Slice 07: Early-cutoff invalidation
+- artifact #572625500 Slice 07 (Arc 04): Early-cutoff invalidation
+- artifact #596210700 Arc 04 benchmark results (slice08)
+- artifact #536136600 CC Prompt — Slice 08 (Arc 04): Benchmark harness
+- artifact #555938700 CDC Verification — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+- artifact #597978700 Closing report — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+- artifact #528123200 Slice 08 (Arc 04): Benchmark harness
+- artifact #564300500 Arc 05 — Reconciliation — closing report
+- artifact #588223200 CC Prompt — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #503208100 CDC Verification — Arc 05 / Slice 01: `desired_facts` schema + `Probe` trait + shell probe
+- artifact #550261700 Closing report — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #598822200 Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #568325600 CC Prompt — Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #568225700 CDC Verification — Arc 05 / Slice 02: `file` probe + probe-runner
+- artifact #519484100 Closing report — Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #570534200 Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #551612300 CC Prompt — Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #509959200 CDC Verification — Arc 05 / Slice 03: `odm reconcile` (on demand)
+- artifact #523257600 Closing report — Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #507313500 Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #544302200 CC Prompt — Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #582446700 CDC Verification — Arc 05 / Slice 04: drift in `rollup` / `orient`
+- artifact #597833900 Closing report — Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #557733600 Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #587269400 CC Prompt — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #542834700 CDC Verification — Arc 05 / Slice 05: `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #504170700 Closing report — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #520766400 Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #553075800 CC Prompt — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #591745100 CDC Verification — Arc 05 / Slice 06: deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #579967500 Closing report — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #596665600 Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #557558400 CC Prompt — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #556645700 CDC Verification — Arc 05 / Slice 07: incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #536534500 Closing report — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #572248600 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #580487800 CC Prompt — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+- artifact #513704300 CDC Verification — Arc 05 / Slice 08: freshness on every command + honest staleness
+- artifact #527293100 Closing report — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+- artifact #534994400 Slice 08 (Arc 05): freshness on every command + honest staleness
+- artifact #551849000 CC Prompt — Slice 01 (Arc 06): `migrate` importer core
+- artifact #568786300 CDC Verification — Arc 06 / Slice 01: `migrate` importer core
+- artifact #510459900 Closing report — Slice 01 (Arc 06): `migrate` importer core
+- artifact #526086800 Slice 01 (Arc 06): `migrate` importer core
+- artifact #580834100 CC Prompt — Slice 02 (Arc 06): migrate odm's own docs
+- artifact #526639000 CDC Verification — Arc 06 / Slice 02: migrate odm's own docs
+- artifact #559999000 Closing report — Slice 02 (Arc 06): migrate odm's own docs
+- artifact #540430100 Slice 02 (Arc 06): migrate odm's own docs
+- artifact #564792800 CC Prompt — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #534715300 CDC Verification — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #586594500 Closing report — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #581644600 Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #559283700 CC Prompt — Slice 04 (Arc 06): self-host cutover
+- artifact #548109400 CDC Verification — Slice 04 (Arc 06): self-host cutover
+- artifact #592599000 Closing report — Slice 04 (Arc 06): self-host cutover
+- artifact #552678100 Slice 04 (Arc 06): self-host cutover
+- artifact #558198700 MOVED — see the UAT / CLI-hardening arc
+- artifact #561911000 Command-surface UAT checklist — the dual sign-off worksheet
+- artifact #519434700 Doc ↔ node reconciliation audit — odm self-host corpus (2026-07-27)
+- design #22 The odm store home — a dedicated orphan branch in a git worktree
+- design #23 Command-surface reorg — `node` / `store` groups + top-level workflow verbs
+- design #25 Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity
+- design #24 ID scheme — retain ULID identity; register-style handle rejected
+- note #779974200 Phase 1: Foundation Enhancements - Detailed Implementation Guide
+- note #726625700 Phase 2: Core Command Implementation - Detailed Implementation Guide
+- note #701292400 Phase 3: Index Synchronization - Detailed Implementation Guide
+- note #798832900 Phase 4: Document Addition Workflow - Detailed Implementation Guide
+- note #798582500 Phase 5: Testing & Polish - Detailed Implementation Guide
+- note #722188000 Phase 6: State Management & Source of Truth - Detailed Implementation Guide
+- note #795947500 Phase 7: Advanced Document Onboarding - Detailed Implementation Guide
+- note #774757900 Phase 8: Debug Tools & Search - Detailed Implementation Guide
+- note #702583900 Phase 9 Implementation: Document Lifecycle Management
+- note #746109300 Phase 10 Implementation: Tool Introspection & Discovery
+- note #768636900 Phase 11 Implementation: Rename Command & Alphabetical Help
+- note #741036500 Dead Code Analysis: oxur-ast Statement Builder
+- note #712091600 Index Sync Issues Found During Testing
+- note #713059300 Claude Code Instructions: Fix Table Padding Issue
+- note #723179000 Fix for config.rs - Force Column Widths with Width::increase()
+- note #770536000 Prompt for Future Claude: Tabled Theme Cleanup and Generalization
+- note #704487900 Implementation Plan: Clean Up and Generalize Tabled Theme System
+- note #721888200 Implementation Plan: Refactor `oxd show` Command with Themed Table Output
+- note #713687000 Implementation Guide: Add Component, Tags, and Version Fields to Design Doc Metadata
+- note #729528100 Implementation Plan: Add Component, Tags, and Version Metadata Fields
+- note #746356900 Implementation Plan: Add `oxd info tags` and `oxd info components` Commands
+- note #734399800 oxur-cli Common Utilities Consolidation Plan
+- note #773306100 Implementation Plan: Confyg Integration for oxur-odm
+- note #784935300 Implementation Plan: `odm add --dev` Feature
+- note #796216000 odm — New Session Bootstrap: build the planning / doc-management system
+- note #727942200 Measuring Software Code and Code-Change Complexity: A Literature Review
+- note #730075300 Measuring the Conceptual/Semantic Complexity of Written Prose: A Literature Survey
+- note #716343800 Code & Text Complexity Tooling Survey — July 2026
+- note #724289200 odm — telemetry & forecasting (post-arc6 thread)
+- note #798306500 odm as a PM tool — arc-6 baseline analysis
+- note #772202000 PM Post-Mortem — project-x: what went wrong, what to do instead
+- slice #58837413 Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record)
+- project #1001 odm v1.0.0 — Project Plan (arc roadmap)
 
 ## Blocked
 
@@ -86,64 +701,379 @@ _(none)_
 
 ### Planned
 
-- odd #2 Oxur Design Documentation CLI - Build Plan
-- odd #9 Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8)
-- odd #10 Oxur Design Documentation CLI - Phases 9-10 Build Plan
-- odd #11 Research: A markdown/git-native, dependency-ordered planning system
-- odd #12 odm — Project Definition (v-major rebuild)
-- odd #13 odm — Architecture & Design (v-major rebuild)
-- odd #14 Research — odm-index: incremental indexing & caching (no DB, no FTS)
-- odd #15 odm — Arc/Slice Breakdown (build plan)
-- odd #16 Research — SWE project- & epic-level PM failures and best practices
-- odd #17 Interop — projection out, reference-and-reconcile in
-- odd #18 Research — Forecasting under small, bursty, DAG-structured work
-- odd #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
-- odd #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
-- project #1000 odm v1.0.0 — Project Plan (arc roadmap)
-- arc #1100 Arc 01 — Substrate & node CRUD (plan-of-record)
-- slice #1101 Slice 01 — Workspace scaffolding (plan-of-record)
-- slice #1102 Slice 02 — Stable identity core (plan-of-record)
-- slice #1103 Slice 03 (Arc 01) — Frontmatter schema + round-trip (plan-of-record)
-- slice #1104 Slice 04 (Arc 01) — Store layer (plan-of-record)
-- slice #1105 Slice 05 (Arc 01) — Node CRUD commands (plan-of-record)
-- slice #1106 Slice 06 (Arc 01) — `check` v1 + link-integrity (plan-of-record)
-- arc #1200 Arc 02 — Graph, gates & derived order (plan-of-record)
-- slice #1201 Slice 01 (Arc 02) — Graph construction + reverse edges (plan-of-record)
-- slice #1202 Slice 02 (Arc 02) — Cycle detection + tears (plan-of-record)
-- slice #1203 Slice 03 (Arc 02) — Gates, status & evidence recording (plan-of-record)
-- slice #1204 Slice 04 (Arc 02) — Derived order & satisfaction (plan-of-record)
-- slice #1205 Slice 05 (Arc 02) — Decomposition/recomposition integrity (plan-of-record)
-- slice #1206 Slice 06 (Arc 02) — `check` v2 (plan-of-record)
-- slice #1207 Slice 07 (Arc 02) — CLI graph-mutators (plan-of-record)
-- slice #1251 Slice 05.1 (Arc 02) — Evidence-transition dates (plan-of-record)
-- arc #1300 Arc 03 — Rollup & orient (plan-of-record)
-- slice #1301 Slice 01 (Arc 03) — Arc 02 cleanup (plan-of-record)
-- slice #1302 Slice 02 (Arc 03) — Rollup generation (plan-of-record)
-- slice #1303 Slice 03 (Arc 03) — orient / brief + bare-`odm` (plan-of-record)
-- slice #1304 Slice 04 (Arc 03) — `--json` + polish (plan-of-record)
-- arc #1400 Arc 04 — Index & cache (plan-of-record)
-- slice #1401 Slice 01 (Arc 04) — Index record + snapshot persistence (plan-of-record)
-- slice #1402 Slice 02 (Arc 04) — Cold-path build (plan-of-record)
-- slice #1403 Slice 03 (Arc 04) — Warm-path change detection (plan-of-record)
-- slice #1404 Slice 04 (Arc 04) — Enrich record + wire consumers (plan-of-record)
-- slice #1405 Slice 05 (Arc 04) — Index→graph adapter + wire graph readers & composed views (plan-of-record)
-- slice #1406 Slice 06 (Arc 04) — Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient` (plan-of-record)
-- slice #1407 Slice 07 (Arc 04) — Early-cutoff invalidation (plan-of-record)
-- slice #1408 Slice 08 (Arc 04) — Benchmark harness (plan-of-record)
-- arc #1500 Arc 05 — Reconciliation (plan-of-record)
-- slice #1501 Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
-- slice #1502 Slice 02 (Arc 05): `file` probe + probe-runner
-- slice #1503 Slice 03 (Arc 05): `odm reconcile` (on demand)
-- slice #1504 Slice 04 (Arc 05): drift in `rollup` / `orient`
-- slice #1505 Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
-- slice #1506 Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
-- slice #1507 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
-- slice #1508 Slice 08 (Arc 05): freshness on every command + honest staleness (the arc capstone)
-- arc #1600 Arc 06 — Migrate, self-host & PM-skill (plan-of-record)
-- slice #1601 Slice 01 (Arc 06): `migrate` importer core
-- slice #1602 Slice 02 (Arc 06): migrate odm's own docs
-- slice #1603 Slice 03 (Arc 06): schema versioning (ODD-0020)
-- slice #1604 Slice 04 (Arc 06): self-host cutover
+- design #2 Oxur Design Documentation CLI - Build Plan
+- design #9 Oxur Design Documentation CLI - Extended Features Plan (Phases 6-8)
+- design #10 Oxur Design Documentation CLI - Phases 9-10 Build Plan
+- research #11 Research: A markdown/git-native, dependency-ordered planning system
+- design #12 odm — Project Definition (v-major rebuild)
+- design #13 odm — Architecture & Design (v-major rebuild)
+- research #14 Research — odm-index: incremental indexing & caching (no DB, no FTS)
+- design #15 odm — Arc/Slice Breakdown (build plan)
+- research #16 Research — SWE project- & epic-level PM failures and best practices
+- design #17 Interop — projection out, reference-and-reconcile in
+- research #18 Research — Forecasting under small, bursty, DAG-structured work
+- design #19 Incremental drift — probes as input-tracked rules over the stat-cache, with honest staleness
+- design #20 Versioned file-metadata schemas — per-type schema markers, v0.1 → v1.0
+- research #21 Research — Information-Theoretic Complexity of Text (Code and Prose)
+- design #22 The odm store home — a dedicated orphan branch in a git worktree
+- design #23 Command-surface reorg — `node` / `store` groups + top-level workflow verbs
+- design #24 ID scheme — retain ULID identity; register-style handle rejected
+- design #25 Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity
+- project #1000 Vision
+- project #1001 odm v1.0.0 — Project Plan (arc roadmap)
+- arc #1100 Substrate & node CRUD
+- slice #1101 Workspace scaffolding
+- slice #1102 Stable identity core
+- slice #1103 Frontmatter schema + round-trip
+- slice #1104 Store layer
+- slice #1105 Node CRUD commands
+- slice #1106 `check` v1 + link-integrity
+- arc #1200 Graph, gates & derived order
+- slice #1201 Graph construction + reverse edges
+- slice #1202 Cycle detection + tears
+- slice #1203 Gates, status & evidence recording
+- slice #1204 Derived order & satisfaction
+- slice #1205 Decomposition/recomposition integrity
+- slice #1206 `check` v2
+- slice #1207 CLI graph-mutators
+- slice #1251 Evidence-transition dates
+- arc #1300 Rollup & orient
+- slice #1301 Arc 02 cleanup
+- slice #1302 Rollup generation
+- slice #1303 orient / brief + bare-`odm`
+- slice #1304 `--json` + polish
+- arc #1400 Index & cache
+- slice #1401 Index record + snapshot persistence
+- slice #1402 Cold-path build
+- slice #1403 Warm-path change detection
+- slice #1404 Enrich record + wire consumers
+- slice #1405 Index→graph adapter + wire graph readers & composed views
+- slice #1406 Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- slice #1407 Early-cutoff invalidation
+- slice #1408 Benchmark harness
+- arc #1500 Reconciliation
+- slice #1501 `desired_facts` schema + `Probe` trait + shell probe
+- slice #1502 `file` probe + probe-runner
+- slice #1503 `odm reconcile` (on demand)
+- slice #1504 drift in `rollup` / `orient`
+- slice #1505 `affects` edge + stale-doc-vs-decision check (C5)
+- slice #1506 deferred surfacing + re-entry predicate (Q-A3-1)
+- slice #1507 incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- slice #1508 freshness on every command + honest staleness (the arc capstone)
+- arc #1600 Migrate, self-host & PM-skill
+- slice #1601 `migrate` importer core
+- slice #1602 migrate odm's own docs
+- slice #1603 schema versioning (ODD-0020)
+- slice #1604 self-host cutover
+- slice #1605 Slice 05 (Arc 06): UAT — CLI feedback
+- arc #1700 Arc 07 — Two-clock telemetry (plan-of-record)
+- arc #1800 Arc 08 — Forecasting (plan-of-record)
+- arc #7773600 Arc — Store Home & `init` (plan-of-record)
+- slice #7773601 Slice 01 — Store resolution + two-config split (slice-doc / plan-of-record)
+- slice #7773602 Slice 02 — `git`-worktree plumbing + `odm store init` bootstrap (slice-doc / plan-of-record)
+- slice #7773603 Slice 03 — `init` attach + ff-sync (slice-doc / plan-of-record)
+- slice #7773604 Slice 04 — `odm store rename` (slice-doc / plan-of-record)
+- arc #10842600 Arc — LLM command surface (plan-of-record)
+- arc #58837400 Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record
+- slice #58837401 Slice 01 (Migration Fidelity) — Coverage discovery (plan-of-record)
+- slice #58837402 Slice 02 (Migration Fidelity) — The fidelity model (ODD-0025) (plan-of-record)
+- slice #58837403 Slice 03 (Migration Fidelity) — Fidelity core (plan-of-record)
+- slice #58837404 Slice 04 (Migration Fidelity) — Scope + repair capability (plan-of-record)
+- slice #58837405 Slice 05 (Migration Fidelity) — Source-based identity (plan-of-record)
+- slice #58837406 Slice 06 (Migration Fidelity) — Live-run capability (plan-of-record)
+- slice #58837407 Slice 07 (Migration Fidelity) — Live repair run (plan-of-record)
+- slice #58837408 Slice 08 (Migration Fidelity) — Source-path portability (plan-of-record)
+- slice #58837409 Slice 09 (Migration Fidelity) — Coverage enforcement *capability* (plan-of-record)
+- slice #58837410 Slice 10 (Migration Fidelity) — Coverage live run (plan-of-record)
+- slice #58837411 Slice 11 (Migration Fidelity) — Synthesis capability + L-8b reconciliation (plan-of-record)
+- slice #58837412 Slice 12 (Migration Fidelity) — Reconcile capability (plan-of-record)
+- slice #58837413 Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record)
+- arc #61823100 Arc — Release Hardening: CLI, types, naming & output (UAT-driven) — plan-of-record
+- artifact #500359600 CDC Verification — Arc 02 / Slice 04: Derived order & satisfaction
+- artifact #500633500 Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #501198900 Slice 01 (arc-store-home) — CDC verification
+- artifact #502265800 Slice 03 (Arc 03): orient / brief + bare-`odm`
+- artifact #502361600 Slice 02 closing report — The fidelity model (ODD-0025)
+- artifact #502623100 UAT — pass 2: LLM acceptance (batch 2 of this arc)
+- artifact #502667400 Slice 05 (Arc 01): Node CRUD commands
+- artifact #502696800 Release Hardening — CDC arc-gate verification (close)
+- artifact #503208100 CDC Verification — Arc 05 / Slice 01: `desired_facts` schema + `Probe` trait + shell probe
+- artifact #503794500 Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+- artifact #504020200 CDC Verification — Arc 04 / Slice 01: Index record + snapshot persistence
+- artifact #504170700 Closing report — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #505931500 Coverage report
+- artifact #507313500 Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #507489400 Slice 05 (Migration Fidelity): Source-based identity
+- artifact #509109900 CC Prompt — Slice 02 (Migration Fidelity): The fidelity model — STAND DOWN (superseded)
+- artifact #509907700 Slice 10 (Migration Fidelity): Coverage live run
+- artifact #509948700 UAT punch list — batch 1 (first-pass, NON-AUTHORITATIVE)
+- artifact #509959200 CDC Verification — Arc 05 / Slice 03: `odm reconcile` (on demand)
+- artifact #510459900 Closing report — Slice 01 (Arc 06): `migrate` importer core
+- artifact #511202200 CC Prompt — Slice 03 (Migration Fidelity): Fidelity core
+- artifact #511307900 Slice 01: Workspace scaffolding
+- artifact #511548900 Closing report — Arc 04 / Slice 04: Enrich record + wire consumers (seam a)
+- artifact #511960800 CC Prompt — Slice 02 (Arc 04): Cold-path build
+- artifact #511981900 Slice 03 closing report — Fidelity core
+- artifact #511982700 CC Prompt — Slice 01: Workspace scaffolding
+- artifact #512005300 Closing Report — Slice 02: Stable identity core
+- artifact #512151400 CDC Verification — Arc 04 / Slice 05 (partial): index→graph adapter + derived-order readers
+- artifact #512187700 Closing Report — Slice 05 (Arc 01): Node CRUD commands
+- artifact #512761900 C-8 closing report — normalized status for `odm node list`
+- artifact #513156600 CDC Verification — Arc 03 / Slice 01: Arc 02 cleanup
+- artifact #513590000 CC Prompt — Slice 07 (Arc 02): CLI graph-mutators
+- artifact #513704300 CDC Verification — Arc 05 / Slice 08: freshness on every command + honest staleness
+- artifact #513839300 cc-prompt — Release Hardening: arc close (RH-6 / RH-7 compose + closing-report + bubble-up)
+- artifact #513858500 Closing report — Arc 04 / Slice 02: Cold-path build
+- artifact #513960000 Closing Report — Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #514030400 CC Prompt — Slice 07 (Migration Fidelity): Live repair run
+- artifact #514643300 Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #514836800 Slice 03 (Migration Fidelity): Fidelity core
+- artifact #514901800 CC Prompt — Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #514996100 CDC Verification — Arc 02 / Slice 03: Gates, status & evidence
+- artifact #516403700 Slice 06 CDC verification — Live-run capability
+- artifact #516456900 Slice 01 (Arc 04): Index record + snapshot persistence
+- artifact #517113600 Closing report — Arc 04 / Slice 07: Early-cutoff invalidation
+- artifact #518499400 CC Prompt — Slice 04 (Migration Fidelity): Scope + repair capability
+- artifact #519016100 Slice 08 closing report — Source-path portability
+- artifact #519035200 cc-prompt — RH C-4: command-surface cleanup + the ODD-0023 reorg (one pass)
+- artifact #519434700 Doc ↔ node reconciliation audit — odm self-host corpus (2026-07-27)
+- artifact #519484100 Closing report — Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #520063000 UAT feedback coverage audit — F / L / G rows
+- artifact #520413400 Slice 08 (Migration Fidelity): Source-path portability
+- artifact #520766400 Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #520951000 Amendment stub — ODD-0020 (per-type schema markers) for RH C-2
+- artifact #521125300 Slice 03 (arc-store-home) — CDC verification
+- artifact #521323700 Closing Report — Slice 07 (Arc 02): CLI graph-mutators
+- artifact #521410400 C-5 closing report — the dogfood cutover + derivation overhaul
+- artifact #521488700 Slice 04 — `odm store rename` (ledger)
+- artifact #521789700 Slice 08 (Migration Fidelity) — CDC verification: Source-path portability
+- artifact #522391700 C-6 closing report — `validate` hardening (G-2 + G-3 + L-3b)
+- artifact #522630800 CC Prompt — Slice 06 (Migration Fidelity): Live-run capability
+- artifact #523257600 Closing report — Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #523262500 Closing Report — Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #523319400 CDC Verification — Arc 02 / Slice 02: Cycle detection + tears
+- artifact #523673100 cc-prompt — RH C-8: Normalized status for `odm node list` (display-only)
+- artifact #524075200 CC Prompt — Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #525816300 RH C-8 (normalized status) — CDC verification
+- artifact #525903300 Arc closing report — Release Hardening (`arc-release-hardening`)
+- artifact #526086800 Slice 01 (Arc 06): `migrate` importer core
+- artifact #526262100 Slice 02 closing report — `git`-worktree plumbing + `odm store init` bootstrap
+- artifact #526452200 Closing report — Arc 04 / Slice 05: Index→graph adapter + graph readers (partial)
+- artifact #526639000 CDC Verification — Arc 06 / Slice 02: migrate odm's own docs
+- artifact #527293100 Closing report — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+- artifact #527529100 Slice 03 CDC verification — Fidelity core
+- artifact #527674100 Slice 02 (arc-store-home) — CDC verification
+- artifact #528123200 Slice 08 (Arc 04): Benchmark harness
+- artifact #528764800 CDC Verification — Slice 04: Store layer
+- artifact #530854900 Amendment to ODD-0022 — worktree-general store discovery & project scoping
+- artifact #531812600 Arc closing report — Store Home & `init` (`arc-store-home`)
+- artifact #532159300 Slice 02 (Arc 02): Cycle detection + tears
+- artifact #532474400 CDC Verification — Arc 04 / Slice 07: Early-cutoff invalidation
+- artifact #533654700 Arc 03 — Close: recomposition / silent-drop check
+- artifact #533952100 CC Prompt — Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
+- artifact #534432200 Closing Report — Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #534715300 CDC Verification — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #534994400 Slice 08 (Arc 05): freshness on every command + honest staleness
+- artifact #536136600 CC Prompt — Slice 08 (Arc 04): Benchmark harness
+- artifact #536513400 odm migration / provenance / synthesis — design decisions & open forks
+- artifact #536534500 Closing report — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #537627000 CDC Verification — Arc 02 / Slice 06: `check` v2
+- artifact #538536800 Closing report — Arc 04 / Slice 03: Warm-path change detection
+- artifact #538557100 CC Prompt — Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+- artifact #538872900 CC Prompt — Slice 03 (Arc 01): Frontmatter schema + round-trip
+- artifact #539487900 cc-prompt — RH C-3: `odm list` overhaul
+- artifact #539586900 CDC Verification — Arc 02 / Slice 07: CLI graph-mutators
+- artifact #540281600 CDC Verification — Slice 01: Workspace scaffolding
+- artifact #540430100 Slice 02 (Arc 06): migrate odm's own docs
+- artifact #541425600 Slice 04 (arc-store-home) — CDC verification + arc-close endorsement
+- artifact #541429900 ADR — Re-extract `oxur-table` as a standalone crate
+- artifact #541726800 cc-prompt — arc-store-home slice 03: `init` attach + ff-sync
+- artifact #542371800 Slice 07 (Migration Fidelity): Live repair run
+- artifact #542740900 CDC Verification — Arc 04 / Slice 02: Cold-path build
+- artifact #542834700 CDC Verification — Arc 05 / Slice 05: `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #543186200 Slice 04 (Arc 04): Enrich record + wire consumers
+- artifact #543468700 CDC Session Bootstrap — pick up where we left off
+- artifact #543707700 Closing report — Arc 04 / Slice 06: Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #544302200 CC Prompt — Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #544836500 Slice 01 closing report — Store resolution + two-config split
+- artifact #545027800 cc-prompt — RH C-5 (expanded): self-host → migrate + node-derivation overhaul
+- artifact #546599100 RH C-4 (command surface + ODD-0023 reorg) — CDC verification
+- artifact #547285500 Closing Report — Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #547570600 Slice 01 — Store resolution + two-config split (ledger)
+- artifact #547690700 Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #547846400 CDC Verification — Arc 04 / Slice 03: Warm-path change detection
+- artifact #547921000 Closing report — Arc 04 / Slice 01: Index record + snapshot persistence
+- artifact #548109400 CDC Verification — Slice 04 (Arc 06): self-host cutover
+- artifact #548682500 Slice 05 closing report — Source-based identity
+- artifact #549115500 CC Prompt — Slice 03 (Arc 04): Warm-path change detection
+- artifact #549164900 CC Prompt — Slice 02 (Arc 02): Cycle detection + tears
+- artifact #549626400 Slice 04 closing report — `odm store rename`
+- artifact #550261700 Closing report — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #550625700 Closing Report — Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #550874000 Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #551612300 CC Prompt — Slice 03 (Arc 05): `odm reconcile` (on demand)
+- artifact #551849000 CC Prompt — Slice 01 (Arc 06): `migrate` importer core
+- artifact #552678100 Slice 04 (Arc 06): self-host cutover
+- artifact #552908000 Closing Report — Slice 04 (Arc 01): Store layer
+- artifact #553075800 CC Prompt — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #553974400 CC Prompt — Slice 04 (Arc 04): Enrich record + wire consumers
+- artifact #554081700 Slice 07 closing report — Live repair run
+- artifact #554131200 RH C-5 (cutover) — CDC verification + arc-store-home close endorsement
+- artifact #555260300 CDC Verification — Arc 03 / Slice 02: Rollup generation
+- artifact #555750000 C-1 closing report — Adopt Oxur themed output in odm (via `oxur-term`)
+- artifact #555938700 CDC Verification — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+- artifact #556238200 Closing Report — Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #556645700 CDC Verification — Arc 05 / Slice 07: incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #557558400 CC Prompt — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #557733600 Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #558198700 MOVED — see the UAT / CLI-hardening arc
+- artifact #559100900 cc-prompt — RH C-7: Name normalization at the source (names embed no metadata)
+- artifact #559283700 CC Prompt — Slice 04 (Arc 06): self-host cutover
+- artifact #559308100 CDC Verification — Arc 04 / Slice 04 (seam a): Enrich record + wire `list`
+- artifact #559430600 cc-prompt — RH C-6: `validate` / `check` hardening (G-2 + G-3 + L-3b)
+- artifact #559711800 cc-prompt — RH C-1: Adopt Oxur themed output in odm (via `oxur-term`)
+- artifact #559999000 Closing report — Slice 02 (Arc 06): migrate odm's own docs
+- artifact #560464500 Closing report — Arc 03 / Slice 03: orient / brief + bare-`odm`
+- artifact #560746700 CC Prompt — Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #560947500 cc-prompt — arc-store-home slice 04: `odm store rename`
+- artifact #561375900 Slice 04 closing report — Scope + repair capability
+- artifact #561511100 Slice 09 (Migration Fidelity): Coverage enforcement *capability*
+- artifact #561518600 Slice 02: Stable identity core
+- artifact #561911000 Command-surface UAT checklist — the dual sign-off worksheet
+- artifact #562220500 CDC Verification — Slice 05: Node CRUD commands
+- artifact #562390100 CC Prompt — Slice 10 (Migration Fidelity): Coverage live run
+- artifact #562472000 CC Prompt — Slice 08 (Migration Fidelity): Source-path portability
+- artifact #563319300 CDC Verification — Arc 02 / Slice 05: Decomposition/recomposition integrity
+- artifact #563336700 Slice 04 (Arc 01): Store layer
+- artifact #563405800 cc-prompt — slice 02 **amendment**: fix the modern-git `--orphan` argv (SH-2 blocker)
+- artifact #564259200 Slice 01 CDC verification — Coverage discovery
+- artifact #564300500 Arc 05 — Reconciliation — closing report
+- artifact #564308200 Closing Report — Slice 02 (Arc 02): Cycle detection + tears
+- artifact #564779700 Slice 06 (Arc 02): `check` v2
+- artifact #564792800 CC Prompt — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #564916400 CC Prompt — Slice 03 (Arc 03): orient / brief + bare-`odm`
+- artifact #565777300 CC Prompt — Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #565867300 CC Prompt — Slice 04 (Arc 03): `--json` + polish
+- artifact #566291600 cc-prompt — arc-store-home slice 02: `git`-worktree plumbing + `odm store init` bootstrap
+- artifact #566639300 odm Command Inventory — three-tier surface (ODD-0023)
+- artifact #566759700 CC Prompt — Slice 06 (Arc 02): `check` v2
+- artifact #566952800 Closing Report — Slice 01: Workspace scaffolding
+- artifact #567337700 C-2 closing report — Type taxonomy (`odd`→`design` + `research`)
+- artifact #568128400 Amendment stub — ODD-0013 (Architecture & Design) for RH C-2
+- artifact #568189800 Slice 06 (Migration Fidelity): Live-run capability
+- artifact #568225700 CDC Verification — Arc 05 / Slice 02: `file` probe + probe-runner
+- artifact #568325600 CC Prompt — Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #568786300 CDC Verification — Arc 06 / Slice 01: `migrate` importer core
+- artifact #568798700 CC Prompt — Slice 04 (Arc 01): Store layer
+- artifact #569115200 Slice 09 (Migration Fidelity) — CDC verification: Coverage enforcement *capability*
+- artifact #569527100 C-4 closing report — command-surface cleanup + the ODD-0023 reorg
+- artifact #569547400 C-2 — CDC verification (chunk close)
+- artifact #569646700 Amendment stub — ODD-0013 §2.1 for RH C-7 (names embed no metadata)
+- artifact #569949600 Slice 09 closing report — Coverage enforcement *capability*
+- artifact #570534200 Slice 02 (Arc 05): `file` probe + probe-runner
+- artifact #571534100 CDC Verification — Arc 03 / Slice 03: orient / brief + bare-`odm`
+- artifact #572248600 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
+- artifact #572258000 cc-prompt — arc-store-home slice 01: Store resolution + two-config split
+- artifact #572625500 Slice 07 (Arc 04): Early-cutoff invalidation
+- artifact #575850300 CC Prompt — Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #576458800 Closing Report — Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #576782900 Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #576917100 Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #577589300 RH C-6 (`validate` hardening) — CDC verification
+- artifact #577599100 Slice 03 (Arc 04): Warm-path change detection
+- artifact #578511200 CDC Verification — Arc 02 / Slice 05.1: Evidence-transition dates
+- artifact #579742200 Closing Report — Slice 06 (Arc 02): `check` v2
+- artifact #579810800 CC Prompt — Slice 02: Stable identity core
+- artifact #579909000 Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #579967500 Closing report — Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #580487800 CC Prompt — Slice 08 (Arc 05): freshness on every command + honest staleness (arc capstone)
+- artifact #580834100 CC Prompt — Slice 02 (Arc 06): migrate odm's own docs
+- artifact #581012000 Slice 02 verification — The fidelity model (ODD-0025)
+- artifact #581475600 CDC Verification — Arc 02 / Slice 01: Graph construction + reverse edges
+- artifact #581644600 Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #582446700 CDC Verification — Arc 05 / Slice 04: drift in `rollup` / `orient`
+- artifact #582735400 CDC Verification — Arc 03 / Slice 04: `--json` + polish
+- artifact #582879600 Slice 04 (Migration Fidelity): Scope + repair capability
+- artifact #582916700 Slice 02 (Migration Fidelity): The fidelity model (ODD-0025)
+- artifact #583526100 CDC Verification — Arc 04 / Slice 06: enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #583747000 cc-prompt — RH C-1: Adopt Oxur table styling in odm (via `oxur-table`)
+- artifact #584217500 CC Prompt — Slice 01 (Arc 02): Graph construction + reverse edges
+- artifact #584664700 CDC Verification — Slice 06: `check` v1 + link-integrity
+- artifact #585914900 Slice 03 closing report — `init` attach + ff-sync
+- artifact #586243300 CC Prompt — Slice 01 (Arc 04): Index record + snapshot persistence
+- artifact #586594500 Closing report — Slice 03 (Arc 06): schema versioning (ODD-0020)
+- artifact #587250600 Closing report — Arc 03 / Slice 04: `--json` + polish
+- artifact #587269400 CC Prompt — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #587304700 Slice 01 (Migration Fidelity): Coverage discovery
+- artifact #588058400 CC Prompt — Slice 05 (Migration Fidelity): Source-based identity
+- artifact #588223200 CC Prompt — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #589469100 cc-prompt — RH C-2: Type taxonomy (`odd`→`design` + `research`)
+- artifact #589605200 Closing Report — Slice 04 (Arc 02): Derived order & satisfaction
+- artifact #589685100 C-1 — CDC verification (chunk close)
+- artifact #589833300 Slice 06 closing report — Live-run capability
+- artifact #590202700 Closing report — Arc 03 / Slice 02: Rollup generation
+- artifact #590348000 Arc 04 — Index & cache — closing report
+- artifact #590537700 C-3 — CDC verification (chunk close)
+- artifact #590538600 C-3 closing report — `odm list` overhaul
+- artifact #590543000 CC Prompt — Slice 02 (Arc 03): Rollup generation
+- artifact #590561800 Slice 07 (Arc 02): CLI graph-mutators
+- artifact #590890200 Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #591745100 CDC Verification — Arc 05 / Slice 06: deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #592599000 Closing report — Slice 04 (Arc 06): self-host cutover
+- artifact #592609600 Slice 02 (Arc 03): Rollup generation
+- artifact #592866900 CDC Verification — Slice 02: Stable identity core
+- artifact #594194400 Slice 01 closing report — Coverage discovery
+- artifact #594323000 Slice 02 (Arc 04): Cold-path build
+- artifact #595146500 Slice 04 (Arc 03): `--json` + polish
+- artifact #595198000 CDC session handoff — arc-store-home reopening (2026-07-27)
+- artifact #595967600 CC Prompt — Slice 05 (Arc 01): Node CRUD commands
+- artifact #596210700 Arc 04 benchmark results (slice08)
+- artifact #596623400 Slice 03 — `init` attach + ff-sync (ledger)
+- artifact #596665600 Slice 06 (Arc 05): deferred surfacing + re-entry predicate (Q-A3-1)
+- artifact #597581000 CDC Verification — Slice 03: Frontmatter schema + round-trip
+- artifact #597833900 Closing report — Slice 04 (Arc 05): drift in `rollup` / `orient`
+- artifact #597978700 Closing report — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
+- artifact #598300300 CC Prompt — Slice 07 (Arc 04): Early-cutoff invalidation
+- artifact #598502000 CC Prompt — Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
+- artifact #598524100 Workflow-gap coverage review — does odm's plan cover what the workflow broke?
+- artifact #598730600 Slice 02 — `git`-worktree plumbing + `odm store init` bootstrap (ledger)
+- artifact #598792000 CC Prompt — Slice 05 (Arc 02): Decomposition/recomposition integrity
+- artifact #598795500 CC Prompt — Slice 01 (Migration Fidelity): Coverage discovery
+- artifact #598807000 cc-prompt — RH C-5 (cutover): the dogfood relocation + derivation overhaul
+- artifact #598822200 Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
+- artifact #599635800 Slice 03 (Arc 02): Gates, status & evidence recording
+- artifact #599760900 Slice 07 CDC verification — Live repair run
+- note #701292400 Phase 3: Index Synchronization - Detailed Implementation Guide
+- note #702583900 Phase 9 Implementation: Document Lifecycle Management
+- note #704487900 Implementation Plan: Clean Up and Generalize Tabled Theme System
+- note #712091600 Index Sync Issues Found During Testing
+- note #713059300 Claude Code Instructions: Fix Table Padding Issue
+- note #713687000 Implementation Guide: Add Component, Tags, and Version Fields to Design Doc Metadata
+- note #716343800 Code & Text Complexity Tooling Survey — July 2026
+- note #721888200 Implementation Plan: Refactor `oxd show` Command with Themed Table Output
+- note #722188000 Phase 6: State Management & Source of Truth - Detailed Implementation Guide
+- note #723179000 Fix for config.rs - Force Column Widths with Width::increase()
+- note #724289200 odm — telemetry & forecasting (post-arc6 thread)
+- note #726625700 Phase 2: Core Command Implementation - Detailed Implementation Guide
+- note #727942200 Measuring Software Code and Code-Change Complexity: A Literature Review
+- note #729528100 Implementation Plan: Add Component, Tags, and Version Metadata Fields
+- note #730075300 Measuring the Conceptual/Semantic Complexity of Written Prose: A Literature Survey
+- note #734399800 oxur-cli Common Utilities Consolidation Plan
+- note #741036500 Dead Code Analysis: oxur-ast Statement Builder
+- note #746109300 Phase 10 Implementation: Tool Introspection & Discovery
+- note #746356900 Implementation Plan: Add `oxd info tags` and `oxd info components` Commands
+- note #768636900 Phase 11 Implementation: Rename Command & Alphabetical Help
+- note #770536000 Prompt for Future Claude: Tabled Theme Cleanup and Generalization
+- note #772202000 PM Post-Mortem — project-x: what went wrong, what to do instead
+- note #773306100 Implementation Plan: Confyg Integration for oxur-odm
+- note #774757900 Phase 8: Debug Tools & Search - Detailed Implementation Guide
+- note #779974200 Phase 1: Foundation Enhancements - Detailed Implementation Guide
+- note #784935300 Implementation Plan: `odm add --dev` Feature
+- note #795947500 Phase 7: Advanced Document Onboarding - Detailed Implementation Guide
+- note #796216000 odm — New Session Bootstrap: build the planning / doc-management system
+- note #798306500 odm as a PM tool — arc-6 baseline analysis
+- note #798582500 Phase 5: Testing & Polish - Detailed Implementation Guide
+- note #798832900 Phase 4: Document Addition Workflow - Detailed Implementation Guide
 
 ### Discovered
 
