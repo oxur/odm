@@ -388,6 +388,61 @@ fn migrate_vision_is_idempotent() {
     assert_eq!(plan_1to1_count, 1, "the second run did not mint a duplicate 1:1 node");
 }
 
+#[test]
+fn migrate_vision_errors_when_no_project_node_exists() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+
+    let cli =
+        Cli::try_parse_from(["odm", "migrate", plan_root.path().to_str().unwrap(), "--vision"])
+            .unwrap();
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let result = odm_cli::dispatch(cli, store_dir.path(), &mut out, &mut err);
+    let message =
+        result.expect_err("no project node exists yet — --vision must refuse").to_string();
+    assert!(message.contains("no project node found"), "names the real problem:\n{message}");
+}
+
+#[test]
+fn migrate_vision_preserves_the_projects_tags_and_component() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+
+    let store = Store::open(store_dir.path());
+    let project = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Project)
+        .expect("self-host minted the project");
+    let tagged_fm = project
+        .frontmatter()
+        .clone()
+        .with_tags(vec!["v1.0.0".to_string()])
+        .with_component("odm".to_string());
+    store.persist(&Document::new(tagged_fm, project.body().to_string())).unwrap();
+
+    let (ok, _out, err) =
+        run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+    assert!(ok, "migrate --vision dispatches cleanly:\n{err}");
+
+    let all = store.load_all().unwrap();
+    let plan_1to1 = all
+        .iter()
+        .find(|d| d.frontmatter().number() == 1001)
+        .expect("the 1:1 project-plan node was minted");
+    assert_eq!(plan_1to1.frontmatter().tags(), ["v1.0.0"], "tags carried onto the 1:1 node");
+    assert_eq!(
+        plan_1to1.frontmatter().component(),
+        Some("odm"),
+        "component carried onto the 1:1 node"
+    );
+}
+
 // ----- N-2: `odm check` is green on the migrated real ODD corpus -------------
 
 #[test]
