@@ -200,10 +200,15 @@ pub fn content_validity(nodes: &[Frontmatter]) -> Vec<Finding> {
     findings
 }
 
-/// Per-type field-validity (ODD-0020 §2). The type-specific fields fall into two
-/// buckets: **work-only** (`desired_facts`, `deferred` — probeable/parked work)
-/// and **document-only** (`supersedes`, `affects` — document lineage/governance).
-/// A field from the wrong bucket for the node's type is a contract violation.
+/// Per-type field-validity (ODD-0020 §2, carve-out per v1.4). The type-specific
+/// fields fall into two buckets: **work-only** (`desired_facts`, `deferred` —
+/// probeable/parked work) and **document-only** (`supersedes`, `affects` —
+/// document lineage/governance). A field from the wrong bucket for the node's
+/// type is a contract violation — **except** a work node carrying
+/// `source.synthesis` (arc-migration-fidelity s13, ODD-0025 §2.3's project-
+/// vision re-cast): structurally a document-lineage record wearing a work
+/// node's type, so `supersedes`/`affects` are valid on it precisely because
+/// it *is* a synthesis, not despite its `node_type`.
 fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
     let ty = fm.node_type();
     if ty.is_document() {
@@ -222,14 +227,17 @@ fn check_field_validity(fm: &Frontmatter, findings: &mut Vec<Finding>) {
         }
     }
     if ty.is_work() {
-        // Document-only fields are not valid on a work node.
-        if !fm.edges().supersedes.is_empty() {
+        // Document-only fields are not valid on a work node — unless that
+        // work node has been re-cast as a synthesis, in which case the
+        // lineage edges are exactly what it's supposed to carry.
+        let is_synthesis = fm.source().is_some_and(|s| s.synthesis.is_some());
+        if !is_synthesis && !fm.edges().supersedes.is_empty() {
             findings.push(finding(
                 fm,
                 Violation::FieldNotValidForType { field: "supersedes", node_type: ty },
             ));
         }
-        if !fm.edges().affects.is_empty() {
+        if !is_synthesis && !fm.edges().affects.is_empty() {
             findings.push(finding(
                 fm,
                 Violation::FieldNotValidForType { field: "affects", node_type: ty },

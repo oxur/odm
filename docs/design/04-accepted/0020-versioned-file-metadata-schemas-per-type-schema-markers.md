@@ -64,6 +64,12 @@ initially, so the two can version independently later.)
   `supersedes` for docs, `affects` for decisions) are validated **per type** — a
   wrong-type field is a `check` finding ("`desired_facts` is not valid on a `design`"). Split
   into separate structs only if the divergence grows to warrant it.
+  (v1.4, arc-migration-fidelity s13: a work node carrying `source.synthesis`
+  — the project-vision re-cast, ODD-0025 §2.3 — is exempted from the
+  work/document `supersedes`/`affects` split: it is structurally a
+  document-lineage record wearing a work node's `node_type`, so those edges
+  are exactly what it's supposed to carry, keyed on `source.synthesis` being
+  present, not on the node's type.)
 - **`saga` gets no schema yet** — PROJECT-MANAGEMENT names it as a slot with "no operational
   weight"; add `saga/v1.0` if/when saga becomes a real node type.
 
@@ -185,6 +191,30 @@ workspace-wide and was deliberately left for slice04, which executes it above.
   for additive fields) this ODD generalizes into an explicit version marker.
 
 ## Version History
+
+### v1.4 — 2026-07-30 — Synthesis carve-out for the work/document field split (arc-migration-fidelity slice13)
+
+**A latent conflict between two Accepted decisions, discovered by firing the project-vision
+re-cast live for the first time.** ODD-0025 §2.3 states a project node can be re-cast as an
+editorial-merge synthesis superseding a faithful 1:1 node — which requires `edges.supersedes`
+for the lineage `check` guarantees bidirectionally. §2's per-type field-validity split (above)
+states `supersedes`/`affects` are document-only, invalid on a work node — and `project` is a
+work type. Nothing before arc-migration-fidelity s13 exercised both decisions on the same node
+at once: s11's synthesis fixtures proved the mechanism generically (never against
+`NodeType::Project` through `check`); s13 fired `apply_project_vision` against the live
+`.worktrees/odm` project node for the first time and `odm check` correctly flagged the
+contradiction (`wrong-type-field`, `supersedes` on `#1000`).
+
+**Resolved in favor of the vision re-cast being valid, narrowly carved out.** `check_field_validity`
+(`crates/odm-core/src/check.rs`) now skips the work-node `supersedes`/`affects` checks when the
+node carries `source.synthesis` — a work node re-cast as a synthesis is structurally a
+document-lineage record wearing a work node's `node_type`; the carve-out is keyed on
+`source.synthesis` being present, not on `node_type == Project`, so any future work-type
+synthesis gets the same treatment without a further amendment. A work node's `supersedes`
+without a synthesis source still flags, unchanged. Verified: `check_permits_supersedes_on_a_work_node_re_cast_as_a_synthesis`
+(`crates/odm-core/tests/check.rs`) proves both directions; the live `#1000` node's
+`wrong-type-field` finding cleared after the fix, confirmed by direct `odm check` re-run against
+the unchanged, already-committed store (no data change needed — only the validator was wrong).
 
 ### v1.3 — 2026-07-28 — Schema-minor bump executed (arc-migration-fidelity slice04)
 

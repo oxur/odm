@@ -470,6 +470,62 @@ mod content {
     }
 
     #[test]
+    fn check_permits_supersedes_on_a_work_node_re_cast_as_a_synthesis() {
+        // arc-migration-fidelity s13 / ODD-0020 v1.4: a work node carrying
+        // `source.synthesis` (the project-vision re-cast, ODD-0025 §2.3) is
+        // structurally a document-lineage record wearing a work node's type
+        // — `supersedes` is exactly what it's supposed to carry, not a
+        // violation of the work/document dichotomy.
+        use odm_core::frontmatter::Source;
+
+        let project = Frontmatter::new(
+            id(A),
+            1000,
+            NodeType::Project,
+            "Vision",
+            day(),
+            day(),
+            Origin::Planned,
+        );
+        let mut synthesis_project = project.with_source(Source {
+            paths: vec!["docs/project-plan.md".into()],
+            class: "vision".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/1.0.0".to_string(),
+            migrated_on: day(),
+            synthesis: Some("editorial-merge".to_string()),
+            attestation: Some("distills the plan verbatim".to_string()),
+        });
+        synthesis_project.edges_mut().supersedes =
+            vec![CoreSupersedes { node: id(B), kind: SupersedeKind::Updates }];
+
+        assert!(
+            content_validity(&[synthesis_project.clone()])
+                .iter()
+                .all(|f| !matches!(f.violation, Violation::FieldNotValidForType { .. })),
+            "a work node with source.synthesis carries supersedes without a field-validity finding"
+        );
+
+        // The same edge on the same node type, minus the synthesis marker,
+        // still flags — the carve-out is keyed on `source.synthesis`, not on
+        // `NodeType::Project` generally.
+        let mut plain_project = synthesis_project;
+        let mut plain_source = plain_project.source().unwrap().clone();
+        plain_source.synthesis = None;
+        plain_project = plain_project.with_source(plain_source);
+        assert!(
+            content_validity(&[plain_project]).iter().any(|f| matches!(
+                &f.violation,
+                Violation::FieldNotValidForType {
+                    field: "supersedes",
+                    node_type: NodeType::Project
+                }
+            )),
+            "without source.synthesis, supersedes on a project still flags"
+        );
+    }
+
+    #[test]
     fn author_version_source_validity_by_type() {
         // ODD-0025 §2.2: "every migrated node carries a `source` sub-map" (no
         // type restriction — a self-hosted arc/slice is a migrated node too),
