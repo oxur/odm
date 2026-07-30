@@ -6,13 +6,15 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context as _;
-use odm_core::NodeType;
+use anyhow::{Context as _, bail};
+use odm_core::frontmatter::{Document, Frontmatter};
+use odm_core::{Id, NodeType, Origin};
 use odm_migrate::coverage::{CoverageReport, DocClass};
 use odm_migrate::mapping::{
     CanonicalizeReport, DocGates, ReconcileSourceReport, backfill_source, canonical_design_gates,
     canonical_research_gates, canonicalize_source_paths, reconcile_source,
 };
+use odm_migrate::synthesis::{Attestation, apply_project_vision};
 use odm_migrate::{Created, MigrationReport, Mode, SelfHostReport};
 use odm_store::{Store, StoreHome};
 
@@ -45,6 +47,9 @@ pub(crate) struct Options {
     /// Mint the note corpus over `legacy_path` (a dev-docs root) and exit
     /// (arc-migration-fidelity slice10).
     pub notes: bool,
+    /// Re-cast the project node as the vision synthesis and exit
+    /// (arc-migration-fidelity slice12/slice13).
+    pub vision: bool,
 }
 
 pub(crate) fn migrate(
@@ -72,6 +77,9 @@ pub(crate) fn migrate(
     }
     if options.notes {
         return notes(store, &legacy, dry_run, out, err);
+    }
+    if options.vision {
+        return vision(store, &legacy, dry_run, out, err);
     }
 
     // The re-stamp is a different operation from an import: it rewrites nodes
@@ -203,15 +211,27 @@ fn self_host_inner(
 
     let repair_report = odm_migrate::selfhost::repair(store, &plan_root, mode)
         .with_context(|| format!("reconciling the plan set at {}", plan_root.display()))?;
+    // `repair`'s complement (arc-migration-fidelity s12): a work node that
+    // already carries a `source` — however faithful it was at import time —
+    // is invisible to `repair` (which only ever touches sourceless nodes).
+    // This re-snapshots it if its source has since moved or its body has
+    // drifted (ODD-0025 §2.9's living-plan-node policy — no special
+    // exclusion for a still-changing source).
+    let reconcile_report =
+        odm_migrate::selfhost::reconcile(store, &plan_root, mode).with_context(|| {
+            format!("reconciling drifted plan-set sources at {}", plan_root.display())
+        })?;
     let report = odm_migrate::selfhost::self_host(store, &plan_root, mode)
         .with_context(|| format!("self-hosting the plan set at {}", plan_root.display()))?;
 
     render_repair(&repair_report, out)?;
+    render_reconcile(&reconcile_report, out)?;
     render_self_host(&report, out)?;
     let status = format!(
-        "{}: {} reconciled, {} created, {} skipped{}",
+        "{}: {} reconciled, {} source-reconciled, {} created, {} skipped{}",
         if report.dry_run { "self-host (dry-run)" } else { "self-host" },
         repair_report.repaired_count(),
+        reconcile_report.reconciled_count(),
         report.created_count(),
         report.skipped_count(),
         if report.dry_run { " — nothing written" } else { "" },
@@ -307,6 +327,44 @@ fn render_backfill(
 /// nothing to report.
 fn render_reconcile_source(
     report: &ReconcileSourceReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.reconciled.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would reconcile" } else { "reconciled" };
+    let title = if report.dry_run { "SOURCE RECONCILE (DRY RUN)" } else { "SOURCE RECONCILE" };
+    let mut table = Themed::new(title, &RECONCILE_COLUMNS);
+    for r in &report.reconciled {
+        let note = match (r.path_moved, r.body_drifted) {
+            (true, true) => "moved+drifted",
+            (true, false) => "moved",
+            (false, true) => "drifted",
+            (false, false) => "unchanged", // unreachable in practice (F-6's no-op skips it)
+        };
+        table.row([
+            format!("{verb} ({note})"),
+            r.number.to_string(),
+            r.name.clone(),
+            r.id.to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.reconciled_count(),
+        if report.dry_run { "to reconcile" } else { "reconciled" },
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// Renders [`odm_migrate::selfhost::reconcile`]'s pass over already-sourced
+/// `arc`/`slice` nodes (arc-migration-fidelity s12 F-1/F-2): a row per node
+/// whose plan-set source was re-discovered by `(type, number)` (moved), body
+/// was re-snapshotted (drifted), or both. Silent when there is nothing to
+/// report.
+fn render_reconcile(
+    report: &odm_migrate::selfhost::ReconcileReport,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     if report.reconciled.is_empty() {
@@ -608,6 +666,120 @@ fn render_notes(
         if report.dry_run { "to mint" } else { "minted" }
     ));
     writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+/// The reserved `number` the 1:1 `project-plan` clone [`vision`] mints —
+/// distinct from every `arc`/`slice`/`artifact`/`note` number band this
+/// crate assigns (`arc_number`'s lowest is `PROJECT_NUMBER + 100 = 1100`;
+/// `artifact`/`note` start at 500,000,000/700,000,000) and confirmed free on
+/// the live corpus before use. There is only ever one such node, so a fixed
+/// constant — not a hash-derived band — is the simplest correct choice.
+const VISION_PLAN_NUMBER: u32 = 1001;
+
+/// The `migrate --vision` arm (arc-migration-fidelity s12/s13, MF-7's live
+/// half): re-casts the project node as an **editorial-merge synthesis**
+/// superseding a freshly-established **1:1 `project-plan` node**, via
+/// [`apply_project_vision`].
+///
+/// The existing project node — `self_host`'s own 1:1 mint — is **cloned**
+/// into a new node (fresh id, reserved number [`VISION_PLAN_NUMBER`]) that
+/// becomes the permanent, immutable 1:1 record; the *original* project
+/// node's own identity (id **and** number) is then re-cast in place as the
+/// synthesis, so `orient`'s project lookup and every existing reference to
+/// it keeps resolving to "the project," now vision-bearing. Idempotent: a
+/// project node that already carries `source.synthesis` is left alone.
+///
+/// # Errors
+///
+/// Returns an error if no project node exists yet (run the plan-set import
+/// first), if `plan_root`'s `project-plan.md` has no vision section, or on a
+/// store I/O failure.
+fn vision(
+    store: &Store,
+    plan_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let corpus = store.load_all().context("loading the corpus for the vision re-cast")?;
+    let Some(project) = corpus.iter().find(|d| d.frontmatter().node_type() == NodeType::Project)
+    else {
+        bail!("no project node found — run `odm migrate {} --plan` first", plan_root.display());
+    };
+    let fm = project.frontmatter();
+
+    if fm.source().is_some_and(|s| s.synthesis.is_some()) {
+        term::info(err, "migrate --vision: the project is already a synthesis — nothing to do")?;
+        return Ok(());
+    }
+    let Some(source) = fm.source().cloned() else {
+        bail!("project node #{} has no `source` yet — run `odm migrate --plan` first", fm.number());
+    };
+
+    let plan_id = Id::new();
+    let mut plan_fm = Frontmatter::new(
+        plan_id,
+        VISION_PLAN_NUMBER,
+        NodeType::Project,
+        fm.name().to_string(),
+        fm.created(),
+        fm.updated(),
+        Origin::Planned,
+    );
+    plan_fm.stamp_schema();
+    if !fm.tags().is_empty() {
+        plan_fm = plan_fm.with_tags(fm.tags().to_vec());
+    }
+    if let Some(component) = fm.component() {
+        plan_fm = plan_fm.with_component(component);
+    }
+    let plan_source_path = source.paths[0].clone();
+    plan_fm = plan_fm.with_source(source);
+    let plan_document = Document::new(plan_fm, project.body().to_string());
+
+    let today = chrono::Utc::now().date_naive();
+    let attestation = Attestation {
+        by: "odm-migrate".to_string(),
+        statement: "distills project-plan.md's Definition-of-done section verbatim".to_string(),
+        on: today,
+    };
+    let (vision_fm, vision_body) = apply_project_vision(
+        plan_id,
+        plan_source_path,
+        project.body(),
+        plan_root,
+        fm.id(),
+        fm.number(),
+        fm.created(),
+        today,
+        attestation,
+    )
+    .with_context(|| format!("building the vision synthesis from {}", plan_root.display()))?;
+    let vision_document = Document::new(vision_fm, vision_body);
+
+    if !dry_run {
+        store.persist(&plan_document).context("persisting the 1:1 project-plan node")?;
+        store.persist(&vision_document).context("persisting the vision synthesis")?;
+    }
+
+    let verb = if dry_run { "would mint" } else { "minted" };
+    writeln!(
+        out,
+        "migrate --vision: {verb} #{VISION_PLAN_NUMBER} (1:1 project-plan) and re-cast #{} as the \
+         vision synthesis superseding it.",
+        fm.number()
+    )?;
+    let status = format!(
+        "migrate --vision{}: 1:1 node minted, project re-cast{}",
+        if dry_run { " (dry-run)" } else { "" },
+        if dry_run { " — nothing written" } else { "" },
+    );
+    if dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
     Ok(())
 }
 

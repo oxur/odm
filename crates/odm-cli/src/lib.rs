@@ -625,6 +625,13 @@ enum Command {
         /// subdirectory (arc-migration-fidelity slice10, operator decision).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts"])]
         notes: bool,
+        /// Re-cast the project node as an editorial-merge synthesis
+        /// superseding a newly-established 1:1 `project-plan` node
+        /// (arc-migration-fidelity slice12/slice13, ODD-0025 §2.3). A
+        /// one-time mint: idempotent no-op if the project is already a
+        /// synthesis.
+        #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"])]
+        vision: bool,
     },
     /// Manage nodes: create, inspect, relate, and advance them.
     ///
@@ -805,6 +812,7 @@ pub fn dispatch(
             coverage,
             artifacts,
             notes,
+            vision,
         } => {
             let forced = if plan {
                 Some(odm_migrate::Corpus::Plan)
@@ -817,7 +825,7 @@ pub fn dispatch(
                 &store,
                 root,
                 &legacy_path,
-                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes },
+                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes, vision },
                 out,
                 err,
             )?;

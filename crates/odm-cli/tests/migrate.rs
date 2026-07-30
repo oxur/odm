@@ -120,6 +120,44 @@ fn migrate_backfills_a_sourceless_node_and_still_imports_the_rest() {
     );
 }
 
+// ----- s13: plain `migrate` on a plan set also reconciles a drifted node ----
+
+#[test]
+fn migrate_reconciles_a_drifted_already_sourced_arc_node() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    std::fs::write(plan_root.path().join(".git"), "gitdir: fake\n").unwrap();
+    std::fs::write(plan_root.path().join("project-plan.md"), "# Test Project\n").unwrap();
+    let arc_dir = plan_root.path().join("arc01-alpha");
+    std::fs::create_dir_all(&arc_dir).unwrap();
+    std::fs::write(arc_dir.join("arc-plan.md"), "# Arc 01 — Alpha\n\nOriginal.\n").unwrap();
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    assert!(ok, "self-host dispatches cleanly:\n{err}");
+
+    // The arc-plan.md keeps evolving, as a real, actively-worked arc's does.
+    std::fs::write(arc_dir.join("arc-plan.md"), "# Arc 01 — Alpha\n\nAmended, live content.\n")
+        .unwrap();
+
+    let (ok, out, err) = run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    assert!(ok, "second migrate dispatches cleanly:\n{err}");
+    assert!(err.contains("source-reconciled"), "status names the reconcile pass:\n{err}");
+    assert!(out.contains("SOURCE RECONCILE"), "the reconcile table is rendered:\n{out}");
+
+    let store = Store::open(store_dir.path());
+    let arc = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Arc)
+        .expect("arc node present");
+    assert!(
+        arc.body().contains("Amended, live content"),
+        "the arc node's body was re-snapshotted: {}",
+        arc.body()
+    );
+}
+
 // ----- s09/s10: `migrate --artifacts` mints the supporting-doc corpus -------
 
 #[test]
@@ -247,6 +285,107 @@ fn migrate_artifacts_and_notes_conflict() {
         Cli::try_parse_from(["odm", "migrate", "x", "--coverage", "--artifacts"]).is_err(),
         "--coverage and --artifacts are mutually exclusive"
     );
+}
+
+// ----- s13: `migrate --vision` re-casts the project as the vision synthesis -
+
+const VISION_PLAN_BODY: &str = "\
+# Vision CLI Test — Plan
+
+## 1. Definition of done
+
+odm ships when the corpus is faithful and the vision is live.
+
+## 2. Scope
+
+Everything.
+";
+
+fn write_vision_plan_set(root: &Path) {
+    std::fs::write(root.join(".git"), "gitdir: fake\n").unwrap();
+    std::fs::write(root.join("project-plan.md"), VISION_PLAN_BODY).unwrap();
+}
+
+#[test]
+fn migrate_vision_recasts_the_project_as_the_synthesis() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    assert!(ok, "self-host dispatches cleanly:\n{err}");
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+    assert!(ok, "migrate --vision dispatches cleanly:\n{err}");
+    assert!(err.contains("project re-cast"), "status names what happened:\n{err}");
+    assert!(out.contains("vision synthesis"), "the report names the re-cast:\n{out}");
+
+    let store = Store::open(store_dir.path());
+    let all = store.load_all().unwrap();
+    let plan_1to1 = all
+        .iter()
+        .find(|d| d.frontmatter().number() == 1001)
+        .expect("the 1:1 project-plan node was minted");
+    assert_eq!(plan_1to1.body(), VISION_PLAN_BODY, "faithful 1:1 body");
+    assert!(
+        plan_1to1.frontmatter().source().unwrap().synthesis.is_none(),
+        "not itself a synthesis"
+    );
+
+    let project = all
+        .iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Project)
+        .expect("project node present");
+    let source = project.frontmatter().source().expect("source present");
+    assert_eq!(source.synthesis.as_deref(), Some("editorial-merge"));
+    assert!(source.attestation.is_some());
+    assert_eq!(project.frontmatter().edges().supersedes.len(), 1);
+    assert_eq!(project.frontmatter().edges().supersedes[0].node, plan_1to1.frontmatter().id());
+    assert!(project.body().contains("faithful and the vision is live"));
+}
+
+#[test]
+fn migrate_vision_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+
+    let (ok, _out, err) = run(
+        store_dir.path(),
+        &["migrate", plan_root.path().to_str().unwrap(), "--vision", "--dry-run"],
+    );
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let all = store.load_all().unwrap();
+    assert!(all.iter().all(|d| d.frontmatter().number() != 1001), "no 1:1 node minted");
+    let project = all.iter().find(|d| d.frontmatter().node_type() == NodeType::Project).unwrap();
+    assert!(
+        project.frontmatter().source().unwrap().synthesis.is_none(),
+        "the project is not yet re-cast"
+    );
+}
+
+#[test]
+fn migrate_vision_is_idempotent() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+
+    let (ok, _out, err) =
+        run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+    assert!(ok);
+    assert!(err.contains("nothing to do"), "a second run is a no-op:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let plan_1to1_count =
+        store.load_all().unwrap().into_iter().filter(|d| d.frontmatter().number() == 1001).count();
+    assert_eq!(plan_1to1_count, 1, "the second run did not mint a duplicate 1:1 node");
 }
 
 // ----- N-2: `odm check` is green on the migrated real ODD corpus -------------
