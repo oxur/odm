@@ -120,6 +120,26 @@ was in scope to *predict* going in — both were surfaces the adjudication proto
 designed to catch, and both were caught exactly where the protocol says they should be (the dry-run, and
 the pre-commit idempotence check), not downstream.
 
+### Post-close correction: a third bug, missed by CC's own verification, caught by the operator
+
+This slice's original F-6/F-7 verification recorded `odm check` at 14 errors post-fire — a mis-read.
+The real count was 15: `#1000`'s re-cast `edges.supersedes` is invalid on a `project` node per
+ODD-0020 §2's work/document field split (`project` is a work type; `supersedes` is document-only).
+`apply_project_vision`/`build_synthesis` sets `edges.supersedes` with no type check — a latent
+conflict between ODD-0025 §2.3 and ODD-0020 §2 that nothing before this slice had exercised on the
+same node through `check`. **The operator caught it**, not CC: asking why `find docs -name '*.md'
+| wc -l` (388) didn't reconcile with `node list --all`'s footer (373) led to a fresh `check` run
+that surfaced the miscount directly. Resolved same-day, operator-approved: `check_field_validity`
+now exempts a work node carrying `source.synthesis` from the `supersedes`/`affects` checks, keyed
+on that field rather than on `NodeType::Project`; ODD-0020 amended to v1.4; a fixture test proves
+both directions (`release/1.0.x@83acedb`). No live data changed — the store's `supersedes` edge was
+always correct under the intended model, only the validator's rule was wrong. `check` on the
+committed `26bea1d` store now shows exactly the 14 errors the original evidence claimed. **This is
+recorded as a real gap in CC's own verification discipline, not smoothed over**: the "F-6/F-7
+verified on the committed store" claim in this report's Verification table was, at close time,
+false by one finding — see `ledger.md`'s "Post-close correction" section for the full account,
+including a related, still-open `[no-vision]` warning regression the same investigation surfaced.
+
 ## Bubble-up to `../arc-plan.md` (LEDGER-DISCIPLINE v2.0 §A / PM Part IV)
 
 **Did s13 make the live corpus faithful and land the vision?** Yes, with one disclosed caveat. Every

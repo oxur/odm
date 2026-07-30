@@ -29,7 +29,12 @@
 > re-discovery, the living-plan-node policy, the promoted vision-apply path, ODD-0025 §4 resolved),
 > fixture-only. **s13 fired it all live**: every drifted node reconciled (0 remain), ODD-0017/0018's
 > paths corrected and resolving, and the **vision minted** — `#1001` a faithful 1:1 `project-plan` node,
-> `#1000` re-cast as the attested editorial-merge synthesis superseding it, clean lineage. Two real bugs
+> `#1000` re-cast as the attested editorial-merge synthesis superseding it, clean lineage. **A third,
+> post-close bug** (the operator's own investigation, not CC's verification, caught it): `#1000`'s
+> `supersedes` edge is invalid on a `project`-type node per ODD-0020 §2's work/document field split —
+> a latent conflict with ODD-0025 §2.3 nothing before s13 had exercised through `check`. Resolved
+> same-day: `check_field_validity` now exempts a `source.synthesis`-bearing work node; **ODD-0020 → v1.4**.
+> No live data changed. Two real bugs
 > in the live-invocation wiring were caught by the dry-run/idempotence gates and fixed before commit (see
 > `slice13-live-reconcile/closing-report.md`). **MF-7 done; MF-9 fidelity true on the live corpus** (doc-
 > coverage caveat aside). **The arc-close is next**: MF-9 composition + the P-12 self-host acceptance
@@ -133,6 +138,39 @@ destructive op is fixture-proven before it fires.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **fidelity true on the live corpus, doc-coverage caveat open** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain (recomputed against current sources), the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent (0/0/0), `check`'s `absolute-source-path` rule 0 findings. **`check` itself is not yet exit 0** — 14 pre-existing `uncovered-doc` errors for s11/12/13's own artifact-family docs (confirmed pre-existing at `2fc25f5`, not an s13 regression; needs a fresh `--artifacts` mint-all). **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now ready, modulo that one doc-coverage run. Reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
 
 ## Version History
+
+### v2.23 — 2026-07-30 — Post-close correction: s13's own verification undercounted `check` by one finding
+
+**Same day as s13's close.** The operator, reconciling `find docs -name '*.md' | wc -l` (388) against
+`odm node list --all`'s footer (373), asked a question whose investigation surfaced that s13's closing
+evidence for F-6/F-7 was wrong, not just incomplete: `odm check` was reporting **15** errors post-fire,
+not the 14 recorded — the 15th a genuine, undisclosed regression (`[wrong-type-field]` on `#1000`:
+`supersedes` is document-only per ODD-0020 §2, but `project` is a work type). A latent conflict between
+ODD-0025 §2.3 (project re-cast as synthesis, needs `supersedes`) and ODD-0020 §2 (work nodes can't carry
+it) that no prior slice had exercised on the same node through `check` — s11's synthesis fixtures never
+ran `NodeType::Project` through `content_validity`.
+
+**Resolved, operator-approved** (of three options presented — a `check.rs` carve-out, reconsidering the
+re-cast's edge shape, or reverting the live fire — chose the carve-out as smallest and most consistent
+with the already-Accepted model): `check_field_validity` now exempts a work node carrying
+`source.synthesis` from the `supersedes`/`affects` checks, keyed on that field rather than on
+`NodeType::Project`. **ODD-0020 → v1.4** records the decision; a new fixture test proves both
+directions. No live store data changed — `26bea1d` was always correct under the *intended* model, only
+the validator's rule was wrong (`release/1.0.x@83acedb`). `check` on the committed store now shows
+exactly 14 errors — the pre-existing `uncovered-doc` gap the original evidence claimed, confirmed for
+real this time.
+
+**A related, still-open finding surfaced by the same investigation, not yet resolved:** `#1000` and
+`#1001` both now trigger a `[no-vision]` warning (no `# Vision` heading in the body) — `#1000`'s body
+had one before this slice; `replan::vision_from_plan`'s Definition-of-done extraction doesn't preserve
+it. A warning, not an error; doesn't change `check`'s exit code; left for a follow-up decision (fix the
+extraction, or the predicate). Full account: `slice13-live-reconcile/ledger.md`'s "Post-close correction"
+section.
+
+**Named here because this is exactly the kind of thing LEDGER-DISCIPLINE's closure-discipline exists to
+catch and not bury**: CC's own "done, verified" claim for F-6/F-7 was false by one finding at the moment
+it was written, caught only because the operator asked a question CC's verification hadn't. Tracked as a
+correction to the child slice's already-closed record, not a silent rewrite of it.
 
 ### v2.22 — 2026-07-30 — s13 closed: live reconcile + vision mint fired (CDC verification pending)
 
