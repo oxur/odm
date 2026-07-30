@@ -764,7 +764,7 @@ fn vision(
         statement: "distills project-plan.md's Definition-of-done section verbatim".to_string(),
         on: today,
     };
-    let (vision_fm, vision_body) = apply_project_vision(
+    let (mut vision_fm, vision_body) = apply_project_vision(
         plan_id,
         plan_source_path,
         &project_plan_body,
@@ -776,6 +776,11 @@ fn vision(
         attestation,
     )
     .with_context(|| format!("building the vision synthesis from {}", plan_root.display()))?;
+    // `build_synthesis` doesn't stamp schema (schema versioning is a call-site
+    // concern) — without this the re-cast silently drops the project's
+    // existing `schema: project/v1.0` until an unrelated `migrate` upgrade
+    // pass patches it back in, a collateral change a re-run must not make.
+    vision_fm.stamp_schema();
     let vision_document = Document::new(vision_fm, vision_body);
 
     if !dry_run {
