@@ -22,6 +22,8 @@ edges:
   - node: 01KYSX4RGCZT9H1N83TJFX8XFB
     kind: updates
 ---
+# Vision
+
 `odm` is a markdown/git-native, dependency-ordered planning + documentation substrate
 that **mechanically actualizes** the collaboration framework: stable-identity nodes +
 an explicit dependency DAG + order *derived* by topological sort + per-edge
