@@ -713,9 +713,22 @@ fn vision(
         term::info(err, "migrate --vision: the project is already a synthesis — nothing to do")?;
         return Ok(());
     }
-    let Some(source) = fm.source().cloned() else {
-        bail!("project node #{} has no `source` yet — run `odm migrate --plan` first", fm.number());
-    };
+
+    // The project node never carries `source` (ODD-0025 §2.3 — its body is
+    // meant to become the synthesis, so self-host structurally excludes it
+    // from the ordinary source-population path). The 1:1 record this mints
+    // is therefore read fresh from `project-plan.md`, the same way every
+    // other migrated node's body is sourced — never from `project.body()`,
+    // which may carry stale text from an earlier `--replan` restamp.
+    let today = chrono::Utc::now().date_naive();
+    let project_plan_path = plan_root.join("project-plan.md");
+    let project_plan_body = std::fs::read_to_string(&project_plan_path)
+        .with_context(|| format!("reading {}", project_plan_path.display()))?;
+    let anchor = odm_migrate::fidelity::anchor_for(plan_root);
+    let (created, updated) =
+        odm_migrate::fidelity::git_derived_dates(&anchor, &project_plan_path, today);
+    let plan_source_path =
+        PathBuf::from(odm_migrate::fidelity::relativize(&anchor, &project_plan_path));
 
     let plan_id = Id::new();
     let mut plan_fm = Frontmatter::new(
@@ -723,8 +736,8 @@ fn vision(
         VISION_PLAN_NUMBER,
         NodeType::Project,
         fm.name().to_string(),
-        fm.created(),
-        fm.updated(),
+        created,
+        updated,
         Origin::Planned,
     );
     plan_fm.stamp_schema();
@@ -734,11 +747,18 @@ fn vision(
     if let Some(component) = fm.component() {
         plan_fm = plan_fm.with_component(component);
     }
-    let plan_source_path = source.paths[0].clone();
-    plan_fm = plan_fm.with_source(source);
-    let plan_document = Document::new(plan_fm, project.body().to_string());
+    plan_fm = plan_fm.with_source(odm_migrate::fidelity::build_source(
+        vec![plan_source_path.clone()],
+        "project-plan",
+        today,
+    ));
+    let plan_document = Document::new(plan_fm, project_plan_body.clone());
+    odm_migrate::fidelity::verify_body_hash(
+        &project_plan_body,
+        plan_document.body(),
+        format!("#{VISION_PLAN_NUMBER} (project-plan 1:1)"),
+    )?;
 
-    let today = chrono::Utc::now().date_naive();
     let attestation = Attestation {
         by: "odm-migrate".to_string(),
         statement: "distills project-plan.md's Definition-of-done section verbatim".to_string(),
@@ -747,7 +767,7 @@ fn vision(
     let (vision_fm, vision_body) = apply_project_vision(
         plan_id,
         plan_source_path,
-        project.body(),
+        &project_plan_body,
         plan_root,
         fm.id(),
         fm.number(),
