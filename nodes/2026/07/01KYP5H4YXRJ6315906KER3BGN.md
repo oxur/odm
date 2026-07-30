@@ -5,7 +5,7 @@ type: design
 schema: design/v1.1
 name: Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-29
 tags:
 - migration
 - source
@@ -26,7 +26,7 @@ source:
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-29
+  migrated_on: 2026-07-30
 status:
   accepted:
     reached: 2026-07-27
@@ -218,6 +218,36 @@ into the **same** node, hard-fail the §2.1 gate, and **preserve `id` / `edges` 
 is decidable by "the body is a lone H1." (s04 implements; bodyless nodes are
 deleted-then-re-migrated where update-in-place will not serve — arc-plan s04.)
 
+### 2.9 Reconcile re-establishes fidelity to a *changed* source (arc-migration-fidelity s12)
+
+§2.8's repair is scoped to a **stub**: a node whose body was never faithfully migrated in the first
+place. It deliberately **hard-fails** (never overwrites) a non-stub node whose body no longer matches
+its source — drift on an already-faithful node was, until s12, a dead end: skipped and recorded
+(design/research, s09/s10) or rejected outright (work-tree, §2.8's own wording), with no path back to
+fidelity. **Reconcile** is the missing operation: given a node whose source has **legitimately
+changed** since it was last snapshotted (the source file was edited, not the migration broken), it
+**re-snapshots the body from the current source in place** — `id`/`edges`/`status` preserved, exactly
+as §2.8 already requires for repair — rather than rejecting or skipping. The §2.1 gate stays
+**migration-time-only**: reconcile does not turn it into a continuous check; it simply re-runs the
+same "body came verbatim from source" verification against *whatever the source currently says*, so it
+always trivially holds by construction.
+
+**The living-plan-node policy (decided, s12 F-3):** a node whose source is a still-changing document
+(the arc-migration-fidelity `arc-plan.md` node is the concrete, continuously-recurring case — s08's CDC
+verification first surfaced it) reconciles the **same way** as any other drifted node: to current, with
+**no special exclusion**. Two things make this safe rather than a moving target: (1) the gate is
+migration-time-only, so inter-reconcile drift is *by design* invisible to `check` — there is no
+continuously-enforced "must match" that a living document could ever violate; and (2) at arc-close the
+source has stabilized, so the final reconcile pass leaves the node genuinely faithful. The project
+**synthesis** node is the one exception, and it already has one: it stays excluded from 1:1 entirely
+(§2.3) — its own re-cast is the separate vision-apply mechanism, not a reconcile target.
+
+Moved-source re-discovery is reconcile's other half: a node whose stored `source.paths` no longer
+resolves, because its source file relocated (the concrete case: arc-migration-fidelity s11's L-8b
+`01-draft/`→`04-accepted/` moves), is re-found by the corpus's own identity key for that family —
+`number` for design/research, the structural `(type, number)` coordinate for work-tree nodes — the
+same matching `self_host`/`backfill_source` already use, so a moved file is never invisible to it.
+
 ## 3. Disambiguation — three meanings of "research"
 
 **`docs/dev/research/`** (a source directory, 5 files) ≠ **`docs/dev/`** generally (26) ≠ the
@@ -236,8 +266,11 @@ things sharing one word.
   tooling-guaranteed bidirectional `superseded_by` invariant.
 - **ODD-0013 §9 (Migration):** replace the terse legacy-map with the §2.1 semantics — 1:1 verbatim,
   no-transform, hard body-hash gate, `source`-on-migration, and the §2.8 update-in-place repair.
-- **ODD-0020 §2 (Decision) + §4 (upgrade path):** add an **`artifact/v1.0`** schema marker; record
-  that adding `source`/`author`/`version` bumps the affected types' schema minor when typed in s03.
+- **ODD-0020 §2 (Decision) + §4 (upgrade path):** add an **`artifact`** schema marker — delivered as
+  **`artifact/v1.1`**, not a fresh `v1.0` (the schema-minor bump is one global generation counter
+  shared across every type, ODD-0020 §5, not a per-type axis — `artifact` is introduced already at
+  the then-current minor); record that adding `source`/`author`/`version` bumps the affected types'
+  schema minor when typed in s03.
 
 ## 5. Consequences
 
@@ -290,6 +323,27 @@ the arc's composition check (MF-9) passes against a corpus with real bodies, ful
   §2/§4 (amended); ODD-0002 §2.2 (the git-derived-author intent); ODD-0024 (ULID retained).
 
 ## Version History
+
+### v1.2 — 2026-07-29 — Accepted
+
+**New §2.9 (Reconcile re-establishes fidelity to a changed source, arc-migration-fidelity s12):**
+records the reconcile capability §2.8 didn't cover — a non-stub node whose source **legitimately
+changed** is re-snapshotted in place (id/edges/status preserved), not hard-failed or skipped; the §2.1
+gate stays migration-time-only throughout. Decides the **living-plan-node policy** (s12 F-3): a
+still-changing source (the arc-migration-fidelity `arc-plan.md` node, s08's CDC finding) reconciles the
+same way as any other drifted node — reconcile-to-current, no special exclusion — safe because the gate
+is migration-time-only (inter-reconcile drift is by design invisible to `check`) and because the source
+stabilizes by arc-close. Also records moved-source re-discovery (the s11 L-8b moves' mechanism).
+
+**§4 amendment reconciled:** the `artifact` schema-marker line now reads `artifact/v1.1` (the
+then-current global minor), not a fresh per-type `artifact/v1.0` — the schema-minor bump is one
+counter shared across every type (ODD-0020 §5), so a newly-introduced type is never at `v1.0` unless
+introduced at the model's inception. Closes the s09 CDC LOW finding (spec/delivery divergence on this
+one line); no behavioral change. Raised by arc-migration-fidelity s10 iteration 1 (initially deferred:
+editing this ODD is itself node #25's source, and no reconcile mechanism existed yet to absorb the
+resulting drift) and resolved here in **s12**, which built exactly that mechanism (§2.9,
+`mapping::reconcile_source`) — this edit is now a disclosed, tracked re-snapshot target for **s13**'s
+live reconcile run, not a dangling drift with no path back to fidelity.
 
 ### v1.1 — 2026-07-27 — Accepted
 

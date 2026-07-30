@@ -5,7 +5,7 @@ type: research
 schema: research/v1.1
 name: Research — Forecasting under small, bursty, DAG-structured work
 created: 2026-06-24
-updated: 2026-07-25
+updated: 2026-07-29
 tags:
 - research
 - forecasting
@@ -20,11 +20,11 @@ origin: planned
 reserved: false
 source:
   paths:
-  - docs/design/01-draft/0018-research-forecasting-under-small-bursty-dag-work.md
+  - docs/design/04-accepted/0018-research-forecasting-under-small-bursty-dag-work.md
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-29
+  migrated_on: 2026-07-30
 status:
   draft:
     reached: 2026-06-24
@@ -308,3 +308,18 @@ https://bryanfinster.com/whitepapers/dora-metrics · SPACE framework,
 https://queue.acm.org/detail.cfm?id=3454124 · less-flawed metrics,
 https://pmc.ncbi.nlm.nih.gov/articles/PMC10591122/ · estimate inflation,
 https://www.mountaingoatsoftware.com/blog/how-to-prevent-estimate-inflation
+
+## Version History
+
+### v1.1 — 2026-07-29 — L-8b: `state` corrected to Accepted (release-gate housekeeping)
+
+**`state: Draft` → `Accepted`.** L-8 (`arc-release-hardening/uat-coverage-audit.md` §L-8) flagged that
+this document was carrying `Draft` while its verdict (§0) already functions as accepted, foundational
+analysis for downstream planning (`arc07-two-clock-telemetry`, `arc08-forecasting`, both citing it as
+their basis). For a `research` document, "Accepted" means the analysis itself is accepted as the basis
+for planning — not that every open question in the field is resolved; the research gate-sequence
+mirrors `design`'s (ODD-0013 §5.1 v2.0) for exactly this reason: a research doc can be a settled,
+citable input while its subject matter remains actively studied. Corrected as a pre-release housekeeping
+item (arc-migration-fidelity **s11**, L-8b — reconcile before v1.0.0 ships). **Doc-tree only**: this
+file is relocated `01-draft/` → `04-accepted/` in the same change (`git mv`, history preserved). The
+corresponding **node's** gate vector is not touched here — that is **s12**'s reconcile, not this edit's.

@@ -2,28 +2,26 @@
 id: 01KWXMBBTJCJ30F3TE4BJJV2CB
 number: 1000
 type: project
-schema: project/v1.0
-name: odm v1.0.0 — Project Plan (arc roadmap)
+schema: project/v1.1
+name: Vision
 created: 2026-06-26
-updated: 2026-07-26
+updated: 2026-07-30
 origin: planned
 reserved: false
-status:
-  in-progress:
-    reached: 2026-07-07
-    evidence: asserted
-    evidence_dates:
-      asserted: 2026-07-07
-  planned:
-    reached: 2026-07-07
-    evidence: asserted
-    evidence_dates:
-      asserted: 2026-07-07
+source:
+  paths:
+  - docs/design-v1.0.0/project-plan.md
+  class: vision
+  normalization: trim+lf
+  migrated_by: odm-migrate/1.0.0
+  migrated_on: 2026-07-30
+  synthesis: editorial-merge
+  attestation: 'odm-migrate on 2026-07-30: distills project-plan.md''s Definition-of-done section verbatim'
+edges:
+  supersedes:
+  - node: 01KYSX4RGCZT9H1N83TJFX8XFB
+    kind: updates
 ---
-# odm v1.0.0 — Project Plan (arc roadmap)
-
-# Vision
-
 `odm` is a markdown/git-native, dependency-ordered planning + documentation substrate
 that **mechanically actualizes** the collaboration framework: stable-identity nodes +
 an explicit dependency DAG + order *derived* by topological sort + per-edge
