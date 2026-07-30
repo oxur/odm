@@ -1724,6 +1724,49 @@ fn l3b_a_stated_vision_clears_the_finding() {
 }
 
 #[test]
+fn l3b_a_superseded_project_is_exempt_from_the_vision_rule() {
+    // arc-migration-fidelity s13: the vision mint's faithful 1:1 record is a
+    // second `NodeType::Project` node — its body is a verbatim migrated copy
+    // and must stay that way (ODD-0025 §2.1), so it must not be flagged for
+    // lacking an injected `# Vision` heading. Only the still-active project
+    // (the synthesis superseding it) is what L-3b is actually about.
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let today = NaiveDate::from_ymd_opt(2026, 7, 30).unwrap();
+
+    let one_to_one =
+        Frontmatter::new(Id::new(), 1001, NodeType::Project, "Plan", today, today, Origin::Planned);
+    store
+        .persist(&Document::new(
+            one_to_one.clone(),
+            "## 1. Definition of done\n\nText.\n".to_string(),
+        ))
+        .unwrap();
+
+    let mut synthesis = Frontmatter::new(
+        Id::new(),
+        1000,
+        NodeType::Project,
+        "Vision",
+        today,
+        today,
+        Origin::Planned,
+    );
+    synthesis.edges_mut().supersedes =
+        vec![Supersedes { node: one_to_one.id(), kind: SupersedeKind::Updates }];
+    store
+        .persist(&Document::new(synthesis, "# Vision\n\nA planning substrate.\n".to_string()))
+        .unwrap();
+
+    let r = run(store_dir.path(), &["validate"]);
+    assert!(
+        !r.out.contains("no-vision"),
+        "the superseded 1:1 node is exempt and the synthesis states a vision: {}",
+        r.out
+    );
+}
+
+#[test]
 fn c6_rules_are_static_so_check_inherits_them() {
     // The taxonomy claim: all three are `validate` rules, and `check` runs
     // `validate` first — so they must appear identically under both verbs.

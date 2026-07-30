@@ -56,8 +56,10 @@ use crate::mapping::normalize_name;
 use crate::{MigrateError, Mode};
 
 /// The heading the project body carries its vision under — what `orient` looks
-/// for (L-3a).
-const VISION_HEADING: &str = "# Vision";
+/// for (L-3a), and what `check`'s `no-vision` warning requires
+/// ([`crate::synthesis::apply_project_vision`] also stamps it, arc-migration-
+/// fidelity s13 iteration).
+pub(crate) const VISION_HEADING: &str = "# Vision";
 
 /// What the plan says a node should look like, for one `(type, number)`.
 #[derive(Debug, Clone, PartialEq, Eq)]

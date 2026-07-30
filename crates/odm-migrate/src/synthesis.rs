@@ -216,6 +216,22 @@ pub enum VisionApplyError {
     Synthesis(#[from] SynthesisError),
 }
 
+/// The vision synthesis's body: `plan_root`'s Definition-of-done section,
+/// under the literal [`crate::replan::VISION_HEADING`] both `check`'s
+/// `no-vision` rule and `orient`'s L-3a excerpt look for (arc-migration-
+/// fidelity s13 — the mint path must produce what the old `restamp`/
+/// `with_vision` path always did).
+///
+/// # Errors
+///
+/// [`VisionApplyError::NoVisionText`] if `plan_root`'s `project-plan.md` has
+/// no `Definition of done` section.
+pub fn vision_body(plan_root: &std::path::Path) -> Result<String, VisionApplyError> {
+    let distilled = crate::replan::vision_from_plan(plan_root)
+        .ok_or_else(|| VisionApplyError::NoVisionText(plan_root.to_path_buf()))?;
+    Ok(format!("{}\n\n{distilled}", crate::replan::VISION_HEADING))
+}
+
 /// The project-vision re-cast (MF-7's live half; arc-migration-fidelity s12
 /// F-4): builds the **editorial-merge synthesis** node that supersedes the
 /// 1:1 `project-plan` node, using [`crate::replan::vision_from_plan`] for the
@@ -251,8 +267,7 @@ pub fn apply_project_vision(
     updated: NaiveDate,
     attestation: Attestation,
 ) -> Result<(Frontmatter, String), VisionApplyError> {
-    let vision_body = crate::replan::vision_from_plan(plan_root)
-        .ok_or_else(|| VisionApplyError::NoVisionText(plan_root.to_path_buf()))?;
+    let vision_body = vision_body(plan_root)?;
 
     let source = SynthesisSource {
         path: project_plan_source_path,

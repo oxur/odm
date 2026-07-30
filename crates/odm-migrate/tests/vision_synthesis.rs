@@ -183,6 +183,10 @@ fn apply_project_vision_yields_the_synthesis_over_the_faithful_1to1_node() {
     // Same criteria as the manual mechanism above, now exercised through the
     // promoted, reusable function every future caller (s13) actually calls.
     assert!(vision_body.contains("no file left behind"));
+    assert!(
+        vision_body.starts_with("# Vision\n"),
+        "carries the literal heading check/orient's L-3a lookup requires: {vision_body:?}"
+    );
     let vision_source = vision_fm.source().expect("source present");
     assert_eq!(vision_source.synthesis.as_deref(), Some("editorial-merge"));
     assert!(vision_source.attestation.is_some());

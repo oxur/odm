@@ -710,7 +710,45 @@ fn vision(
     let fm = project.frontmatter();
 
     if fm.source().is_some_and(|s| s.synthesis.is_some()) {
-        term::info(err, "migrate --vision: the project is already a synthesis — nothing to do")?;
+        // Idempotent, but not blind: re-derive what the body *should* be
+        // today and compare, rather than unconditionally no-op-ing — the
+        // same "re-establish fidelity" principle s12's reconcile uses for
+        // every other node type (ODD-0025 §2.9), applied to the one node
+        // with no external file to reconcile against; its "source" is the
+        // deterministic `vision_body` derivation itself.
+        let expected = odm_migrate::synthesis::vision_body(plan_root)
+            .with_context(|| format!("re-deriving the vision body from {}", plan_root.display()))?;
+        if project.body() == expected {
+            term::info(
+                err,
+                "migrate --vision: the project is already a synthesis — nothing to do",
+            )?;
+            return Ok(());
+        }
+        let today = chrono::Utc::now().date_naive();
+        if !dry_run {
+            let mut refreshed = fm.clone();
+            refreshed.set_updated(today);
+            store
+                .persist(&Document::new(refreshed, expected))
+                .context("refreshing the vision synthesis body")?;
+        }
+        let verb = if dry_run { "would refresh" } else { "refreshed" };
+        writeln!(
+            out,
+            "migrate --vision: {verb} #{}'s body (derivation drift since the mint ran).",
+            fm.number()
+        )?;
+        let status = format!(
+            "migrate --vision{}: synthesis body refreshed{}",
+            if dry_run { " (dry-run)" } else { "" },
+            if dry_run { " — nothing written" } else { "" },
+        );
+        if dry_run {
+            term::info(err, &status)?
+        } else {
+            term::success(err, &status)?
+        }
         return Ok(());
     }
 

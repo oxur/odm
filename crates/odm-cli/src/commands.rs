@@ -1632,7 +1632,18 @@ fn aggregate(
     // for the one body it needs. A project that cannot be loaded is skipped
     // rather than reported: that is a store problem, and the schema pass above
     // already owns it.
-    for fm in frontmatters.iter().filter(|f| f.node_type() == NodeType::Project) {
+    //
+    // A **superseded** project (arc-migration-fidelity s13: the vision mint's
+    // faithful 1:1 record, ODD-0025 §2.3) is exempt — its body is a verbatim
+    // migrated copy and must stay that way, not gain an injected heading; the
+    // synthesis that supersedes it is the vision-bearing node this rule is
+    // actually about.
+    let superseded: std::collections::HashSet<Id> =
+        full.iter().flat_map(|f| f.edges().supersedes.iter().map(|s| s.node)).collect();
+    for fm in frontmatters
+        .iter()
+        .filter(|f| f.node_type() == NodeType::Project && !superseded.contains(&f.id()))
+    {
         let Ok(doc) = store.load(fm.id()) else { continue };
         if !has_vision(doc.body()) {
             let file = store.path_of(fm.id());

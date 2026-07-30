@@ -343,6 +343,30 @@ fn migrate_vision_recasts_the_project_as_the_synthesis() {
     assert_eq!(project.frontmatter().edges().supersedes.len(), 1);
     assert_eq!(project.frontmatter().edges().supersedes[0].node, plan_1to1.frontmatter().id());
     assert!(project.body().contains("faithful and the vision is live"));
+    assert!(
+        project.body().starts_with("# Vision\n"),
+        "carries the literal heading check/orient's L-3a lookup requires: {:?}",
+        project.body()
+    );
+}
+
+#[test]
+fn migrate_vision_recast_body_satisfies_the_no_vision_check() {
+    // The re-cast body must not just contain the distilled text (asserted
+    // above) but must do so under a literal `# Vision` heading — otherwise
+    // `odm check`'s `no-vision` warning fires on the very node built to
+    // carry the vision (a real regression this test guards against).
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+
+    let (_code, out) = run_code(store_dir.path(), &["check"]);
+    assert!(
+        !out.contains("no-vision"),
+        "no-vision warning must not fire on the re-cast project:\n{out}"
+    );
 }
 
 #[test]
@@ -386,6 +410,61 @@ fn migrate_vision_is_idempotent() {
     let plan_1to1_count =
         store.load_all().unwrap().into_iter().filter(|d| d.frontmatter().number() == 1001).count();
     assert_eq!(plan_1to1_count, 1, "the second run did not mint a duplicate 1:1 node");
+}
+
+#[test]
+fn migrate_vision_refreshes_a_synthesis_body_that_drifted_from_the_derivation() {
+    // Simulates exactly what happened on the live `.worktrees/odm` corpus: a
+    // synthesis minted before the `# Vision` heading fix landed, whose body
+    // no longer matches what `vision_body` derives today. A re-run must
+    // notice and repair it in place, not treat "already a synthesis" as
+    // license to ignore drift forever.
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    write_vision_plan_set(plan_root.path());
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap()]);
+    run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+
+    let store = Store::open(store_dir.path());
+    let project = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Project)
+        .unwrap();
+    let stale_body = project.body().trim_start_matches("# Vision\n\n").to_string();
+    let original_id = project.frontmatter().id();
+    let original_supersedes = project.frontmatter().edges().supersedes.clone();
+    store.persist(&Document::new(project.frontmatter().clone(), stale_body)).unwrap();
+
+    let (ok, out, err) =
+        run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(err.contains("refreshed"), "status names the refresh, not a no-op:\n{err}");
+    assert!(out.contains("refreshed"), "the report names it too:\n{out}");
+
+    let refreshed = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Project)
+        .unwrap();
+    assert!(
+        refreshed.body().starts_with("# Vision\n"),
+        "the heading is restored: {:?}",
+        refreshed.body()
+    );
+    assert_eq!(refreshed.frontmatter().id(), original_id, "identity preserved");
+    assert_eq!(
+        refreshed.frontmatter().edges().supersedes,
+        original_supersedes,
+        "lineage preserved"
+    );
+
+    // Idempotent from here: a third run over the now-correct body is a no-op.
+    let (_ok, _out, err) =
+        run(store_dir.path(), &["migrate", plan_root.path().to_str().unwrap(), "--vision"]);
+    assert!(err.contains("nothing to do"), "settles once the body matches: {err}");
 }
 
 #[test]
