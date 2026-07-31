@@ -287,6 +287,160 @@ fn migrate_artifacts_and_notes_conflict() {
     );
 }
 
+// ----- s13: `migrate --all` composes every derivation into one pass ---------
+
+const ALL_GATES: &str = "\
+[gates.project]
+sequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]
+[gates.arc]
+sequence = [\"planned\", \"in-progress\", \"complete\", \"verified\"]
+[gates.slice]
+sequence = [\"planned\", \"built\", \"tested\"]
+";
+
+/// A `docs_root` combining all three families `--all` composes: a legacy
+/// design corpus, a plan set, and dev docs — plus a store `config.toml`
+/// pointing `docs_directory`/`dev_directory` at the first and third.
+fn write_all_fixture(store_root: &Path) {
+    std::fs::write(
+        store_root.join("config.toml"),
+        format!("docs_directory = \"./docs/design\"\ndev_directory = \"./docs/dev\"\n{ALL_GATES}"),
+    )
+    .unwrap();
+
+    let legacy_doc = store_root.join("docs/design/01-draft/0001-early-draft.md");
+    std::fs::create_dir_all(legacy_doc.parent().unwrap()).unwrap();
+    std::fs::write(
+        &legacy_doc,
+        "---\nnumber: 1\ntitle: \"An early draft\"\nstate: Draft\nversion: 0.1\n---\n\n\
+         # An early draft\n\nBody carried verbatim.\n",
+    )
+    .unwrap();
+
+    let plan_root = store_root.join("docs/design-v1.0.0");
+    std::fs::create_dir_all(&plan_root).unwrap();
+    std::fs::write(plan_root.join(".git"), "gitdir: fake\n").unwrap();
+    std::fs::write(plan_root.join("project-plan.md"), "# All CLI Test — Plan\n\nNo DoD yet.\n")
+        .unwrap();
+    let arc_dir = plan_root.join("arc01-alpha");
+    std::fs::create_dir_all(&arc_dir).unwrap();
+    std::fs::write(arc_dir.join("arc-plan.md"), "# Arc 01 — Alpha\n\nBody.\n").unwrap();
+
+    let dev_doc = store_root.join("docs/dev/notes/0001-scratch.md");
+    std::fs::create_dir_all(dev_doc.parent().unwrap()).unwrap();
+    std::fs::write(&dev_doc, "# Scratch\n\nBody.\n").unwrap();
+}
+
+#[test]
+fn migrate_all_composes_every_derivation() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "docs", "--all"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(err.contains("migrate --all"), "status names the composite:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let all = store.load_all().unwrap();
+
+    assert!(
+        all.iter()
+            .any(|d| d.frontmatter().number() == 1
+                && d.frontmatter().node_type() == NodeType::Design),
+        "the legacy design doc was reconciled/created: {:?}",
+        all.iter().map(|d| d.frontmatter().node_type()).collect::<Vec<_>>()
+    );
+    assert!(
+        all.iter().any(|d| d.frontmatter().node_type() == NodeType::Arc),
+        "the plan set was self-hosted (arc present)"
+    );
+    assert!(
+        all.iter().any(|d| d.frontmatter().node_type() == NodeType::Project),
+        "the plan set was self-hosted (project present)"
+    );
+    assert!(
+        all.iter().any(|d| d.frontmatter().node_type() == NodeType::Note),
+        "the dev doc was minted as a note"
+    );
+    // No `# Vision`/Definition-of-done section in the fixture's
+    // project-plan.md — `--all` must skip the vision step, not error.
+    assert!(
+        all.iter().all(|d| d.frontmatter().source().is_none_or(|s| s.synthesis.is_none())),
+        "no synthesis was minted (nothing to distill)"
+    );
+}
+
+#[test]
+fn migrate_all_is_idempotent() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+    run(store_dir.path(), &["migrate", "docs", "--all"]);
+
+    let store = Store::open(store_dir.path());
+    let before = store.load_all().unwrap().len();
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "docs", "--all"]);
+    assert!(ok, "second run dispatches cleanly:\n{err}");
+
+    let after = store.load_all().unwrap().len();
+    assert_eq!(before, after, "a second run creates nothing new");
+}
+
+#[test]
+fn migrate_all_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "docs", "--all", "--dry-run"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
+    assert!(!store_dir.path().join("nodes").exists(), "dry-run wrote nothing");
+}
+
+#[test]
+fn migrate_all_falls_back_to_legacy_config_directories() {
+    // Same fixture, but docs_directory/dev_directory only exist under
+    // `[legacy]` (what `odm store init` writes when it finds a pre-split
+    // odm.toml, arc-migration-fidelity s13) — no top-level keys at all.
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+    std::fs::write(
+        store_dir.path().join("config.toml"),
+        format!(
+            "[legacy]\ndocs_directory = \"./docs/design\"\ndev_directory = \"./docs/dev\"\n{ALL_GATES}"
+        ),
+    )
+    .unwrap();
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "docs", "--all"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let all = store.load_all().unwrap();
+    assert!(
+        all.iter()
+            .any(|d| d.frontmatter().number() == 1
+                && d.frontmatter().node_type() == NodeType::Design),
+        "the legacy design doc was found via [legacy].docs_directory"
+    );
+    assert!(
+        all.iter().any(|d| d.frontmatter().node_type() == NodeType::Note),
+        "the dev doc was found via [legacy].dev_directory"
+    );
+}
+
+#[test]
+fn migrate_all_conflicts_with_the_other_action_flags() {
+    for flag in
+        ["--plan", "--legacy", "--replan", "--coverage", "--artifacts", "--notes", "--vision"]
+    {
+        assert!(
+            Cli::try_parse_from(["odm", "migrate", "x", "--all", flag]).is_err(),
+            "--all conflicts with {flag}"
+        );
+    }
+}
+
 // ----- s13: `migrate --vision` re-casts the project as the vision synthesis -
 
 const VISION_PLAN_BODY: &str = "\

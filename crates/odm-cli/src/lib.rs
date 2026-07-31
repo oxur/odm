@@ -632,6 +632,18 @@ enum Command {
         /// synthesis.
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"])]
         vision: bool,
+        /// Compose every derivation into one idempotent, dry-run-able pass
+        /// over `legacy_path` (a docs root): self-host every plan-set
+        /// directory found under it, reconcile design/research over the
+        /// configured `docs_directory`, mint-all `--artifacts` + `--notes`,
+        /// and check/refresh the vision synthesis — closing the gap where
+        /// a forgotten `--artifacts` re-run lets newly-authored docs sit
+        /// uncovered (arc-migration-fidelity slice13).
+        #[arg(
+            long,
+            conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes", "vision"]
+        )]
+        all: bool,
     },
     /// Manage nodes: create, inspect, relate, and advance them.
     ///
@@ -813,6 +825,7 @@ pub fn dispatch(
             artifacts,
             notes,
             vision,
+            all,
         } => {
             let forced = if plan {
                 Some(odm_migrate::Corpus::Plan)
@@ -825,7 +838,16 @@ pub fn dispatch(
                 &store,
                 root,
                 &legacy_path,
-                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes, vision },
+                migrate::Options {
+                    forced,
+                    replan,
+                    dry_run,
+                    coverage,
+                    artifacts,
+                    notes,
+                    vision,
+                    all,
+                },
                 out,
                 err,
             )?;

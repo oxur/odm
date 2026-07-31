@@ -308,6 +308,12 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
         )));
     }
 
+    // 0. Whatever pre-split (odm 0.3.x) settings the repo's own `odm.toml`
+    //    already carries — read before anything below touches that file, so
+    //    this captures the true pre-migration state, not a partially-written
+    //    one.
+    let legacy = detect_legacy_settings(&plan.repo_root);
+
     // 1. The worktree + orphan branch. First, because everything after it is
     //    only meaningful once the home exists.
     if let Some(parent) = store_root.parent() {
@@ -318,9 +324,15 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
     // 2. The locator — now that there is something to point at.
     write_locator(&plan.repo_root, &plan.location)?;
 
-    // 3. The store's own config + an empty `nodes/`.
+    // 3. The store's own config + an empty `nodes/` — the defaults, plus a
+    //    `[legacy]` block if step 0 found pre-split settings worth
+    //    preserving as a historical record (arc-migration-fidelity s13).
     let config = store_root.join(OPERATIONAL_FILE);
-    std::fs::write(&config, DEFAULT_OPERATIONAL_CONFIG).map_err(|e| StoreError::io(&config, e))?;
+    let config_text = match legacy.render() {
+        Some(block) => format!("{DEFAULT_OPERATIONAL_CONFIG}{block}"),
+        None => DEFAULT_OPERATIONAL_CONFIG.to_string(),
+    };
+    std::fs::write(&config, config_text).map_err(|e| StoreError::io(&config, e))?;
     let nodes = store_root.join(crate::layout::NODES_DIR);
     std::fs::create_dir_all(&nodes).map_err(|e| StoreError::io(&nodes, e))?;
 
@@ -339,6 +351,75 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
         location: plan.location.clone(),
         git_version: Some(git_version),
     })
+}
+
+/// The pre-split, odm-0.3.x operational keys `bootstrap` looks for in
+/// whatever `odm.toml` already sits at `repo_root` — every pre-migration
+/// repo has one, since the format predates the locator/config split
+/// (ODD-0022 §4.2). Detected, never assumed: a repo with no `odm.toml`, or
+/// one already in the new locator-only shape, has none of these.
+struct LegacySettings {
+    docs_directory: Option<String>,
+    dev_directory: Option<String>,
+    preserve_dustbin_structure: Option<bool>,
+    auto_stage_git: Option<bool>,
+}
+
+impl LegacySettings {
+    /// Whether anything was actually found — an all-`None` value is the same
+    /// as "no legacy config", not an empty `[legacy]` block worth writing.
+    fn is_empty(&self) -> bool {
+        self.docs_directory.is_none()
+            && self.dev_directory.is_none()
+            && self.preserve_dustbin_structure.is_none()
+            && self.auto_stage_git.is_none()
+    }
+
+    /// Renders as a `[legacy]` TOML block, or `None` if empty.
+    fn render(&self) -> Option<String> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut out = String::from(
+            "\n# The pre-split (odm 0.3.x) operational settings this repo's own\n\
+             # `odm.toml` carried before `odm store init` — preserved here, not acted\n\
+             # on, so a future migration pass has the historical record rather than\n\
+             # having to re-derive or lose it (arc-migration-fidelity s13).\n\
+             [legacy]\n",
+        );
+        if let Some(v) = &self.docs_directory {
+            out.push_str(&format!("docs_directory = {v:?}\n"));
+        }
+        if let Some(v) = &self.dev_directory {
+            out.push_str(&format!("dev_directory = {v:?}\n"));
+        }
+        if let Some(v) = self.preserve_dustbin_structure {
+            out.push_str(&format!("preserve_dustbin_structure = {v}\n"));
+        }
+        if let Some(v) = self.auto_stage_git {
+            out.push_str(&format!("auto_stage_git = {v}\n"));
+        }
+        Some(out)
+    }
+}
+
+/// Reads whatever `odm.toml` already sits at `repo_root` (if any) and pulls
+/// out the pre-split operational keys, before [`write_locator`] appends the
+/// new `[store]` section to that same file.
+///
+/// A missing file, an unparsable one, or one with none of these keys (e.g.
+/// already locator-only) all resolve the same way: nothing to carry forward.
+fn detect_legacy_settings(repo_root: &Path) -> LegacySettings {
+    let text = std::fs::read_to_string(repo_root.join(LOCATOR_FILE)).unwrap_or_default();
+    let value: toml::Value = text.parse().unwrap_or(toml::Value::Table(Default::default()));
+    LegacySettings {
+        docs_directory: value.get("docs_directory").and_then(|v| v.as_str()).map(str::to_string),
+        dev_directory: value.get("dev_directory").and_then(|v| v.as_str()).map(str::to_string),
+        preserve_dustbin_structure: value
+            .get("preserve_dustbin_structure")
+            .and_then(toml::Value::as_bool),
+        auto_stage_git: value.get("auto_stage_git").and_then(toml::Value::as_bool),
+    }
 }
 
 /// Appends the `[store]` section to the code-branch `odm.toml`, preserving
@@ -528,6 +609,25 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// Initializes a real git repo at `dir` with one commit — `bootstrap`
+    /// (non-dry-run) shells out to `git worktree add --detach`, which needs a
+    /// resolvable `HEAD`, not just a repo.
+    fn git_init(dir: &Path) {
+        let run = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .status()
+                .expect("git command");
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        std::fs::write(dir.join(".gitkeep"), "").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "initial"]);
+    }
+
     #[test]
     fn test_plan_defaults_and_overrides() {
         let plan = Plan::new("/repo", None, None);
@@ -538,6 +638,76 @@ mod tests {
         let plan = Plan::new("/repo", Some("planning"), Some("plan"));
         assert_eq!(plan.store_root(), Path::new("/repo/.worktrees/planning"));
         assert_eq!(plan.location.branch_name, "plan");
+    }
+
+    #[test]
+    fn test_detect_legacy_settings_finds_the_pre_split_keys() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join(LOCATOR_FILE),
+            "docs_directory = \"./docs\"\n\
+             dev_directory = \"./docs/dev\"\n\
+             preserve_dustbin_structure = true\n\
+             auto_stage_git = false\n",
+        )
+        .unwrap();
+        let legacy = detect_legacy_settings(dir.path());
+        assert_eq!(legacy.docs_directory.as_deref(), Some("./docs"));
+        assert_eq!(legacy.dev_directory.as_deref(), Some("./docs/dev"));
+        assert_eq!(legacy.preserve_dustbin_structure, Some(true));
+        assert_eq!(legacy.auto_stage_git, Some(false));
+        assert!(!legacy.is_empty());
+    }
+
+    #[test]
+    fn test_detect_legacy_settings_is_empty_with_no_odm_toml() {
+        let dir = TempDir::new().unwrap();
+        assert!(detect_legacy_settings(dir.path()).is_empty());
+        assert!(detect_legacy_settings(dir.path()).render().is_none());
+    }
+
+    #[test]
+    fn test_detect_legacy_settings_is_empty_for_a_locator_only_file() {
+        // Already in the new, split shape — nothing pre-split to carry forward.
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join(LOCATOR_FILE),
+            "[store]\nworktree_base = \"..\"\nworktree_name = \"odm\"\nbranch_name = \"odm\"\n",
+        )
+        .unwrap();
+        assert!(detect_legacy_settings(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn test_bootstrap_ports_legacy_settings_into_the_stores_legacy_block() {
+        let dir = TempDir::new().unwrap();
+        git_init(dir.path());
+        std::fs::write(
+            dir.path().join(LOCATOR_FILE),
+            "docs_directory = \"./docs\"\ndev_directory = \"./docs/dev\"\n",
+        )
+        .unwrap();
+        let plan = Plan::new(dir.path(), None, None);
+        let out = bootstrap(&plan).unwrap();
+
+        let config = std::fs::read_to_string(out.store_root.join(OPERATIONAL_FILE)).unwrap();
+        assert!(config.contains("[legacy]"), "the block is present:\n{config}");
+        assert!(config.contains("docs_directory = \"./docs\""), "carries the old value:\n{config}");
+        assert!(config.contains("dev_directory = \"./docs/dev\""), "and this one:\n{config}");
+        assert!(
+            config.contains("docs_directory = \"./docs/design\""),
+            "the modern default is still present, unreplaced:\n{config}"
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_writes_no_legacy_block_with_nothing_to_carry() {
+        let dir = TempDir::new().unwrap();
+        git_init(dir.path());
+        let plan = Plan::new(dir.path(), None, None);
+        let out = bootstrap(&plan).unwrap();
+        let config = std::fs::read_to_string(out.store_root.join(OPERATIONAL_FILE)).unwrap();
+        assert!(!config.contains("[legacy]"), "nothing to carry, nothing written:\n{config}");
     }
 
     #[test]

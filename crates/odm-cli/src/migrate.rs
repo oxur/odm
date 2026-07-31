@@ -50,6 +50,10 @@ pub(crate) struct Options {
     /// Re-cast the project node as the vision synthesis and exit
     /// (arc-migration-fidelity slice12/slice13).
     pub vision: bool,
+    /// Compose every derivation into one idempotent, dry-run-able pass:
+    /// self-host + design/research reconcile + `--artifacts` + `--notes` +
+    /// `--vision` (arc-migration-fidelity slice13).
+    pub all: bool,
 }
 
 pub(crate) fn migrate(
@@ -81,6 +85,13 @@ pub(crate) fn migrate(
     if options.vision {
         return vision(store, &legacy, dry_run, out, err);
     }
+    // `--all` composes every derivation into one idempotent, dry-run-able
+    // pass (arc-migration-fidelity s13 — the exact gap that let s11/12/13's
+    // own artifact docs sit uncovered for three slices because nothing
+    // reminded the operator to re-run `--artifacts`).
+    if options.all {
+        return all(store, root, &legacy, dry_run, out, err);
+    }
 
     // The re-stamp is a different operation from an import: it rewrites nodes
     // that already exist rather than creating any, so it short-circuits here.
@@ -93,6 +104,21 @@ pub(crate) fn migrate(
     if corpus == odm_migrate::Corpus::Plan {
         return self_host_inner(store, &legacy, dry_run, out, err);
     }
+    reconcile_design_research(store, root, &legacy, dry_run, out, err)
+}
+
+/// The design/research derivation: reconciles every existing node against
+/// its current legacy file, then imports anything genuinely new. Shared by
+/// the default `migrate <legacy-path>` dispatch and `--all`'s design/research
+/// step (arc-migration-fidelity s13).
+fn reconcile_design_research(
+    store: &Store,
+    root: &Path,
+    legacy: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
     let (gates, _) = commands::load_gate_config(root)?;
     // A repo may configure either document gate-set; each falls back to its
     // canonical sequence independently (C-2: `research` mirrors `design` today,
@@ -113,7 +139,7 @@ pub(crate) fn migrate(
     // design/research node against its legacy file **first**, then the
     // ordinary create pass below picks up anything genuinely new (an
     // as-yet-unmigrated ODD). Both steps already honor `--dry-run` identically.
-    let backfill_report = backfill_source(store, &legacy, mode)
+    let backfill_report = backfill_source(store, legacy, mode)
         .with_context(|| format!("backfilling source onto {}", legacy.display()))?;
     render_backfill(&backfill_report, out)?;
 
@@ -124,7 +150,7 @@ pub(crate) fn migrate(
     // re-snapshotting a body that no longer matches the current legacy
     // content — the migration-fidelity reconcile (not the unrelated
     // `odm reconcile` / `odm-reconcile` desired-facts command).
-    let reconcile_report = reconcile_source(store, &legacy, mode)
+    let reconcile_report = reconcile_source(store, legacy, mode)
         .with_context(|| format!("reconciling source for {}", legacy.display()))?;
     render_reconcile_source(&reconcile_report, out)?;
 
@@ -135,11 +161,11 @@ pub(crate) fn migrate(
     // `reconcile_source` above: that pass already writes canonical paths for
     // any node it touches, so this only ever has leftover pure-path-form
     // cases (an absolute-but-still-resolving path) to canonicalize.
-    let canonicalize_report = canonicalize_source_paths(store, &legacy, mode)
+    let canonicalize_report = canonicalize_source_paths(store, legacy, mode)
         .with_context(|| format!("canonicalizing source.paths under {}", legacy.display()))?;
     render_canonicalize(&canonicalize_report, out)?;
 
-    let report = odm_migrate::migrate_with_gates(store, &legacy, mode, &doc_gates)
+    let report = odm_migrate::migrate_with_gates(store, legacy, mode, &doc_gates)
         .with_context(|| format!("migrating the legacy corpus at {}", legacy.display()))?;
 
     render(&report, out)?;
@@ -164,6 +190,108 @@ pub(crate) fn migrate(
         term::success(err, &status)?
     }
     Ok(())
+}
+
+/// `migrate --all`: composes every derivation into one idempotent,
+/// dry-run-able pass over `docs_root` (arc-migration-fidelity s13) — the
+/// gap that let s11/12/13's own artifact docs sit uncovered for three
+/// slices, because nothing reminded the operator `--artifacts` needed a
+/// re-run. Each step is exactly the function its own flag already calls;
+/// this only orchestrates and resolves roots the operator would otherwise
+/// have to type out:
+///
+/// 1. self-host every plan-set directory found under `docs_root`
+/// 2. design/research reconcile over the configured `docs_directory`
+///    (`[legacy].docs_directory` if the modern key isn't set — arc-
+///    migration-fidelity s13's `odm store init` port-forward), falling back
+///    to `docs_root` itself if neither is configured
+/// 3. `--artifacts` mint-all over `docs_root`
+/// 4. `--notes` mint-all over the configured `dev_directory`
+///    (`[legacy].dev_directory` likewise) — skipped, not errored, if
+///    unconfigured or the directory doesn't exist
+/// 5. `--vision` for every discovered plan-set directory that has a
+///    `project-plan.md` — safe to always include: idempotent once minted,
+///    and self-refreshing on derivation drift (s13's `no-vision` fix)
+///
+/// All five already honor `--dry-run` identically; running it twice with
+/// nothing changed in between is a 0-change no-op on every step.
+fn all(
+    store: &Store,
+    root: &Path,
+    docs_root: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let plan_roots = discover_plan_roots(docs_root).with_context(|| {
+        format!("discovering plan-set directories under {}", docs_root.display())
+    })?;
+
+    for plan_root in &plan_roots {
+        self_host_inner(store, plan_root, dry_run, out, err)?;
+    }
+
+    let legacy_root =
+        commands::configured_docs_directory(root).unwrap_or_else(|| docs_root.to_path_buf());
+    reconcile_design_research(store, root, &legacy_root, dry_run, out, err)?;
+
+    artifacts(store, docs_root, dry_run, out, err)?;
+
+    if let Some(dev_root) = commands::configured_dev_directory(root) {
+        if dev_root.is_dir() {
+            notes(store, &dev_root, dry_run, out, err)?;
+        }
+    }
+
+    // A direct `--vision` errors when `project-plan.md` has no
+    // Definition-of-done section — the right behavior for an explicit ask.
+    // `--all` is a broad, best-effort sweep instead: a plan set that simply
+    // doesn't have that section yet (common for an early-stage project) is
+    // skipped, not a reason to fail every other step that already succeeded.
+    for plan_root in plan_roots
+        .iter()
+        .filter(|p| p.join("project-plan.md").is_file())
+        .filter(|p| odm_migrate::replan::vision_from_plan(p).is_some())
+    {
+        vision(store, plan_root, dry_run, out, err)?;
+    }
+
+    let verb = if dry_run { "migrate --all (dry-run)" } else { "migrate --all" };
+    let status = format!(
+        "{verb}: {} plan root(s) self-hosted, design/research reconciled, artifacts + notes minted, vision checked{}",
+        plan_roots.len(),
+        if dry_run { " — nothing written" } else { "" }
+    );
+    if dry_run {
+        term::info(err, &status)?
+    } else {
+        term::success(err, &status)?
+    }
+    Ok(())
+}
+
+/// The plan-set directories under `docs_root`: `docs_root` itself if it
+/// directly is one (`detect_corpus`'s own definition — a `project-plan.md`
+/// or an `arc*` child), else every immediate child `detect_corpus`
+/// classifies as [`odm_migrate::Corpus::Plan`]. Sorted for a deterministic
+/// self-host order.
+fn discover_plan_roots(docs_root: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    if odm_migrate::detect_corpus(docs_root) == odm_migrate::Corpus::Plan {
+        return Ok(vec![docs_root.to_path_buf()]);
+    }
+    let mut found = Vec::new();
+    let entries =
+        std::fs::read_dir(docs_root).with_context(|| format!("reading {}", docs_root.display()))?;
+    for entry in entries {
+        let path = entry
+            .with_context(|| format!("reading an entry under {}", docs_root.display()))?
+            .path();
+        if path.is_dir() && odm_migrate::detect_corpus(&path) == odm_migrate::Corpus::Plan {
+            found.push(path);
+        }
+    }
+    found.sort();
+    Ok(found)
 }
 
 /// The plan-set derivation: **reconciles, then imports** a `design-vX.Y.Z/`

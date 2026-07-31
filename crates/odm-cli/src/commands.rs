@@ -550,6 +550,41 @@ fn coverage_scan_root(root: &Path) -> Option<PathBuf> {
     Some(if path.is_absolute() { path.to_path_buf() } else { root.join(path) })
 }
 
+/// Resolves a directory setting from the operational config text: the
+/// top-level key first, falling back to the same key under `[legacy]` (the
+/// pre-split odm-0.3.x settings `odm store init` ports forward when it finds
+/// them, arc-migration-fidelity s13) — so a store that has only ever seen the
+/// legacy value still resolves correctly, without requiring the modern key
+/// to be set explicitly.
+fn configured_directory(root: &Path, key: &str) -> Option<PathBuf> {
+    let text = StoreHome::resolve(root).operational_text();
+    let value: toml::Value = text.parse().ok()?;
+    let configured = value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .or_else(|| value.get("legacy")?.get(key)?.as_str())?;
+    let path = Path::new(configured);
+    Some(if path.is_absolute() { path.to_path_buf() } else { root.join(path) })
+}
+
+/// The `docs_directory` setting from the operational config
+/// (arc-migration-fidelity s13, `migrate --all`): the design/research root
+/// the default (non-plan) `migrate` derivation reconciles, resolved so
+/// `--all` doesn't require the operator to type it out.
+///
+/// Read from the raw text like [`display_max_width`]/[`coverage_scan_root`]
+/// — a source-tree location is not author identity, so it does not belong
+/// in `StoreConfig`.
+pub(crate) fn configured_docs_directory(root: &Path) -> Option<PathBuf> {
+    configured_directory(root, "docs_directory")
+}
+
+/// The `dev_directory` setting from the operational config — `migrate --all`'s
+/// default root for the `--notes` mint-all pass.
+pub(crate) fn configured_dev_directory(root: &Path) -> Option<PathBuf> {
+    configured_directory(root, "dev_directory")
+}
+
 /// `show X` — node + edges + way-finding (parent and children). Data → `out`.
 /// Writes the node's gate ladder: the normalized state, then every rung with
 /// whether it is reached and at what evidence.
