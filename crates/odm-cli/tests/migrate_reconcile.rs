@@ -35,6 +35,19 @@ fn write(root: &Path, relative: &str, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
+/// Points the store's `docs_directory` at `plan_root` (arc-migration-
+/// fidelity s14: `migrate` is config-driven, no more `<LEGACY_PATH>`
+/// positional) — `plan_root` is Plan-shaped, so the self-host derivation
+/// resolves it directly (`discover_plan_roots` recognizes `docs_root`
+/// itself as the one plan root when it directly qualifies).
+fn set_docs_directory(store_root: &Path, plan_root: &Path) {
+    std::fs::write(
+        store_root.join("config.toml"),
+        format!("docs_directory = {:?}\n", plan_root.display().to_string()),
+    )
+    .unwrap();
+}
+
 fn day() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 7, 20).unwrap()
 }
@@ -144,9 +157,10 @@ fn migrate_reconciles_before_importing_the_whole_flow_in_one_pass() {
     write_plan_set(root);
 
     let store_dir = TempDir::new().unwrap();
+    set_docs_directory(store_dir.path(), root);
     let (project_id, arc_id, slice_id) = seed_pre_existing(&Store::open(store_dir.path()));
 
-    let (ok, out, err) = run(store_dir.path(), &["migrate", root.to_str().unwrap()]);
+    let (ok, out, err) = run(store_dir.path(), &["migrate"]);
     assert!(ok, "migrate dispatches cleanly:\n{out}\n{err}");
 
     // The status line names all three counts — reconcile ran (F-2), and
@@ -208,10 +222,11 @@ fn migrate_dry_run_previews_reconcile_and_import_writing_nothing() {
     write_plan_set(root);
 
     let store_dir = TempDir::new().unwrap();
+    set_docs_directory(store_dir.path(), root);
     seed_pre_existing(&Store::open(store_dir.path()));
     let before = snapshot_bytes(store_dir.path());
 
-    let (ok, out, err) = run(store_dir.path(), &["migrate", root.to_str().unwrap(), "--dry-run"]);
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--dry-run"]);
     assert!(ok, "dry-run dispatches cleanly:\n{out}\n{err}");
     assert!(
         out.contains("would reconcile") || out.contains("RECONCILE"),
@@ -232,9 +247,10 @@ fn migrate_reconcile_rerun_is_idempotent() {
     write_plan_set(root);
 
     let store_dir = TempDir::new().unwrap();
+    set_docs_directory(store_dir.path(), root);
     seed_pre_existing(&Store::open(store_dir.path()));
 
-    let (ok, _out, err) = run(store_dir.path(), &["migrate", root.to_str().unwrap()]);
+    let (ok, _out, err) = run(store_dir.path(), &["migrate"]);
     assert!(ok, "first run: {err}");
     let store = Store::open(store_dir.path());
     let first_count = store.load_all().unwrap().len();
@@ -244,7 +260,7 @@ fn migrate_reconcile_rerun_is_idempotent() {
     // Second run: every node is now source-bearing, so nothing is reconciled
     // and nothing is (re-)created — pure idempotence (arc-migration-fidelity
     // s05's source-keyed identity, exercised end-to-end through this flow).
-    let (ok, _out, err) = run(store_dir.path(), &["migrate", root.to_str().unwrap()]);
+    let (ok, _out, err) = run(store_dir.path(), &["migrate"]);
     assert!(ok, "second run: {err}");
     assert!(err.contains("0 reconciled"), "nothing left to reconcile:\n{err}");
     assert!(err.contains("0 created"), "nothing left to import:\n{err}");

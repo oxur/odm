@@ -585,6 +585,146 @@ pub(crate) fn configured_dev_directory(root: &Path) -> Option<PathBuf> {
     configured_directory(root, "dev_directory")
 }
 
+/// The design/research corpus root: `docs_directory` **joined with
+/// `"design"`** (arc-migration-fidelity s14 F-2) — the legacy (v0.3.5−)
+/// semantic `migrate --all` dropped by using `docs_directory` as-is. It
+/// happened to still work while the live config set `docs_directory =
+/// "./docs/design"` directly; once the config carries the canonical,
+/// wider `docs_directory = "./docs"` (the umbrella `--artifacts`/self-host
+/// sweep root, F-3), an as-is read would reconcile design/research over the
+/// *whole* docs tree — applying the NN-state + §2.4 frontmatter rules to
+/// files (a plan tree, dev docs) that must never get them. The append keeps
+/// those rules scoped to the one subtree that carries them.
+pub(crate) fn configured_design_directory(root: &Path) -> Option<PathBuf> {
+    configured_docs_directory(root).map(|d| d.join("design"))
+}
+
+/// The persisted extra legacy directories (arc-migration-fidelity s14 F-5):
+/// `[legacy].additional_paths`, each resolved relative to `root` if not
+/// already absolute. `additional_paths` has no legacy top-level form (it is
+/// a new concept `migrate --all` introduces), so — unlike
+/// [`configured_directory`] — it is read **only** from `[legacy]`.
+///
+/// Absent, unparsable, or non-array is the same as "none configured": an
+/// empty `Vec`, never an error — a malformed or missing config is a reason
+/// to fall back to "nothing extra," not to fail every other derivation
+/// `migrate --all` would otherwise still run cleanly.
+pub(crate) fn configured_additional_paths(root: &Path) -> Vec<PathBuf> {
+    let text = StoreHome::resolve(root).operational_text();
+    let Ok(value) = text.parse::<toml::Value>() else {
+        return Vec::new();
+    };
+    let Some(array) =
+        value.get("legacy").and_then(|l| l.get("additional_paths")).and_then(|v| v.as_array())
+    else {
+        return Vec::new();
+    };
+    array
+        .iter()
+        .filter_map(|v| v.as_str())
+        .map(|s| {
+            let path = Path::new(s);
+            if path.is_absolute() { path.to_path_buf() } else { root.join(path) }
+        })
+        .collect()
+}
+
+/// The raw `[legacy].additional_paths` strings, as stored — the identity
+/// [`write_additional_paths`] unions new positional paths against (string
+/// equality, not resolved-path equality: `additional_paths` is stored in
+/// whatever relative form the operator typed, and re-typing the same string
+/// must not appear as "new").
+fn configured_additional_path_strings(root: &Path) -> Vec<String> {
+    let text = StoreHome::resolve(root).operational_text();
+    let Ok(value) = text.parse::<toml::Value>() else {
+        return Vec::new();
+    };
+    value
+        .get("legacy")
+        .and_then(|l| l.get("additional_paths"))
+        .and_then(|v| v.as_array())
+        .map(|array| array.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
+}
+
+/// Unions `new_paths` (the just-passed positional strings, already trimmed
+/// and empties-dropped) into `[legacy].additional_paths`, sorted +
+/// deduplicated, and writes the result back to the operational config file
+/// (arc-migration-fidelity s14 F-5) — so a forgotten re-pass of the same
+/// positional still covers everything a prior run was told about.
+///
+/// A no-op (no write, `Ok(false)`) when the union already equals what is
+/// stored: idempotency (F-8) falls out of comparing *before* writing, not
+/// from hoping a format-preserving edit happens to reproduce the same bytes.
+/// `dry_run` short-circuits the same way, before any comparison — the
+/// caller decides whether to call this at all, but a defensive check here
+/// means a future call site can't forget to gate it.
+///
+/// Edits with `toml_edit` (`DocumentMut`), not a `toml::Value` round-trip:
+/// the operational config is a long-lived, heavily-commented file a human
+/// reads and edits directly, and reserializing from `toml::Value` would
+/// discard every comment. Only the one key this function owns is touched;
+/// everything else in the document is preserved byte-for-byte.
+///
+/// # Errors
+///
+/// Returns an error if the operational file cannot be read (when it exists)
+/// or the write fails. A missing file is not an error — the config is
+/// created fresh, matching a flat store's existing "no config yet" bootstrap.
+pub(crate) fn write_additional_paths(
+    root: &Path,
+    new_paths: &[String],
+    dry_run: bool,
+) -> anyhow::Result<bool> {
+    if dry_run {
+        return Ok(false);
+    }
+    let mut union: Vec<String> = configured_additional_path_strings(root)
+        .into_iter()
+        .chain(new_paths.iter().cloned())
+        .collect();
+    union.sort();
+    union.dedup();
+
+    if union == configured_additional_path_strings(root) {
+        return Ok(false);
+    }
+
+    let home = StoreHome::resolve(root);
+    let path =
+        home.operational_path.unwrap_or_else(|| root.join(odm_store::home::OPERATIONAL_FILE));
+    let text = if path.is_file() {
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?
+    } else {
+        String::new()
+    };
+    let mut doc = text.parse::<toml_edit::DocumentMut>().with_context(|| {
+        format!("parsing {} as TOML for the additional_paths write-back", path.display())
+    })?;
+
+    // A bare `doc["legacy"][...]` auto-vivifies an *inline* table
+    // (`legacy = { additional_paths = [...] }`), inconsistent with every
+    // other section in this file (`[gates.project]`, `[display]`, …) — build
+    // an explicit, non-implicit `[legacy]` table so a first-time write reads
+    // the same way a hand-authored one would.
+    if !doc.contains_key("legacy") {
+        let mut table = toml_edit::Table::new();
+        table.set_implicit(false);
+        doc["legacy"] = toml_edit::Item::Table(table);
+    }
+
+    let mut array = toml_edit::Array::new();
+    for p in &union {
+        array.push(p.as_str());
+    }
+    array.set_trailing_comma(false);
+    doc["legacy"]["additional_paths"] = toml_edit::value(array);
+
+    std::fs::write(&path, doc.to_string())
+        .with_context(|| format!("writing {}", path.display()))?;
+    Ok(true)
+}
+
 /// `show X` — node + edges + way-finding (parent and children). Data → `out`.
 /// Writes the node's gate ladder: the normalized state, then every rung with
 /// whether it is reached and at what evidence.
@@ -2325,6 +2465,40 @@ pub fn chain(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ----- s14 F-5/F-6: the additional_paths write-back ---------------------
+
+    #[test]
+    fn test_write_additional_paths_creates_a_fresh_config_when_none_exists() {
+        let dir = TempDir::new().unwrap();
+        let wrote = write_additional_paths(dir.path(), &["research".to_string()], false).unwrap();
+        assert!(wrote, "a fresh config is created and reports a change");
+        let config = std::fs::read_to_string(dir.path().join("config.toml")).unwrap();
+        assert!(
+            config.contains("[legacy]") && config.contains("additional_paths = [\"research\"]"),
+            "written from nothing:\n{config}"
+        );
+    }
+
+    #[test]
+    fn test_write_additional_paths_errors_on_unparsable_existing_config() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("config.toml"), "not = [valid : toml").unwrap();
+        let result = write_additional_paths(dir.path(), &["x".to_string()], false);
+        assert!(result.is_err(), "a malformed config is a real error, not a silent no-op");
+    }
+
+    #[test]
+    fn test_configured_additional_paths_is_empty_for_unparsable_config() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("config.toml"), "not = [valid : toml").unwrap();
+        assert!(
+            configured_additional_paths(dir.path()).is_empty(),
+            "a malformed config resolves to nothing extra, not an error \
+             (--all's other steps must still run)"
+        );
+    }
 
     // ----- L-3b: the no-vision predicate ------------------------------------
 

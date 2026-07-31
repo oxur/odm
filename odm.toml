@@ -10,3 +10,7 @@
 worktree_base = ".."
 worktree_name = "odm"
 branch_name = "odm"
+
+[legacy]
+docs_directory = "./docs"
+dev_directory = "./docs/dev"

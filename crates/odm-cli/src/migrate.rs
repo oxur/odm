@@ -32,19 +32,24 @@ use crate::term;
 /// migration hits a store I/O failure. Per-document problems are reported in the
 /// table, not raised.
 pub(crate) struct Options {
-    /// Force a derivation instead of detecting it (F-14).
+    /// Force one derivation instead of running both (the bare, no-flag
+    /// dispatch's own default — arc-migration-fidelity s14): `Some(Plan)`
+    /// self-hosts only, `Some(Legacy)` reconciles design/research only,
+    /// `None` runs both, since their roots are separately and unambiguously
+    /// known from config — there is no longer one path whose shape must be
+    /// guessed.
     pub forced: Option<odm_migrate::Corpus>,
     /// Re-derive the existing plan nodes in place (C-5).
     pub replan: bool,
     /// Report and write nothing.
     pub dry_run: bool,
-    /// Report the coverage/gap inventory over `legacy_path` (a docs root) and
-    /// exit — read-only (arc-migration-fidelity slice01).
+    /// Report the coverage/gap inventory over the configured `docs_directory`
+    /// and exit — read-only (arc-migration-fidelity slice01).
     pub coverage: bool,
-    /// Mint the artifact-family corpus over `legacy_path` (a docs root) and
-    /// exit (arc-migration-fidelity slice09/slice10).
+    /// Mint the artifact-family corpus over the configured `docs_directory`
+    /// and exit (arc-migration-fidelity slice09/slice10).
     pub artifacts: bool,
-    /// Mint the note corpus over `legacy_path` (a dev-docs root) and exit
+    /// Mint the note corpus over the configured `dev_directory` and exit
     /// (arc-migration-fidelity slice10).
     pub notes: bool,
     /// Re-cast the project node as the vision synthesis and exit
@@ -52,59 +57,129 @@ pub(crate) struct Options {
     pub vision: bool,
     /// Compose every derivation into one idempotent, dry-run-able pass:
     /// self-host + design/research reconcile + `--artifacts` + `--notes` +
-    /// `--vision` (arc-migration-fidelity slice13).
+    /// `--vision` + the additional-paths sweep (arc-migration-fidelity
+    /// slice13/slice14).
     pub all: bool,
+}
+
+/// Root resolution shared by every mode (arc-migration-fidelity s14 F-3):
+/// `docs_directory` from the operational config, the umbrella under which
+/// the plan-set(s), the design/research corpus, and the `--artifacts` sweep
+/// all live (**D-1**: reusing `docs_directory` as the parent rather than a
+/// dedicated umbrella key — the project layout is `docs/{design,
+/// design-v1.0.0,dev}`, and `docs_directory=./docs` already names that
+/// parent; a fixture never argued for a separate key, so the recommendation
+/// was adopted as-is).
+///
+/// # Errors
+///
+/// Returns an error naming the missing config key — every mode needs this
+/// root, and a positional argument no longer exists to fall back to.
+fn docs_root(root: &Path) -> anyhow::Result<PathBuf> {
+    commands::configured_docs_directory(root).ok_or_else(|| {
+        anyhow::anyhow!(
+            "no `docs_directory` configured — set it in the operational config \
+             (top-level or under `[legacy]`) before running `migrate`"
+        )
+    })
 }
 
 pub(crate) fn migrate(
     store: &Store,
     root: &Path,
-    legacy_path: &str,
+    additional_paths: &[String],
     options: Options,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let dry_run = options.dry_run;
-    let legacy = resolve(root, legacy_path);
 
     // Coverage is a report, not a derivation: it never creates, upgrades, or
     // re-derives a node, so it short-circuits before any of that machinery.
     if options.coverage {
-        return coverage(store, &legacy, out, err);
+        return coverage(store, &docs_root(root)?, out, err);
     }
-    // Artifact/note mint-all are their own derivations — a different node
-    // family, over a different (usually broader) root than the plan-set or
-    // legacy-ODD walks below — so each short-circuits the same way `coverage`
-    // does.
+    // Artifact mint-all is its own derivation — a different node family, over
+    // the umbrella root rather than the plan-set or legacy-ODD walks below —
+    // so it short-circuits the same way `coverage` does.
     if options.artifacts {
-        return artifacts(store, &legacy, dry_run, out, err);
+        return artifacts(store, &docs_root(root)?, dry_run, out, err);
     }
     if options.notes {
-        return notes(store, &legacy, dry_run, out, err);
+        let dev_root = commands::configured_dev_directory(root).ok_or_else(|| {
+            anyhow::anyhow!(
+                "no `dev_directory` configured — set it in the operational config \
+                 (top-level or under `[legacy]`) before running `migrate --notes`"
+            )
+        })?;
+        return notes(store, &dev_root, dry_run, out, err);
     }
     if options.vision {
-        return vision(store, &legacy, dry_run, out, err);
+        let docs_root = docs_root(root)?;
+        let plan_root = one_plan_root_with_a_vision_section(&docs_root)?;
+        return vision(store, &plan_root, dry_run, out, err);
     }
     // `--all` composes every derivation into one idempotent, dry-run-able
     // pass (arc-migration-fidelity s13 — the exact gap that let s11/12/13's
     // own artifact docs sit uncovered for three slices because nothing
-    // reminded the operator to re-run `--artifacts`).
+    // reminded the operator to re-run `--artifacts`; s14 restores the
+    // `docs_directory`+`"design"` append and adds the persistent
+    // additional-paths sweep).
     if options.all {
-        return all(store, root, &legacy, dry_run, out, err);
+        let docs_root = docs_root(root)?;
+        return all(store, root, &docs_root, additional_paths, dry_run, out, err);
     }
 
     // The re-stamp is a different operation from an import: it rewrites nodes
     // that already exist rather than creating any, so it short-circuits here.
     if options.replan {
-        return replan(store, root, &legacy, dry_run, out, err);
+        let docs_root = docs_root(root)?;
+        let plan_roots = discover_plan_roots(&docs_root)?;
+        for plan_root in &plan_roots {
+            replan(store, root, plan_root, dry_run, out, err)?;
+        }
+        return Ok(());
     }
 
-    // One verb, two derivations — the shape decides unless told otherwise.
-    let corpus = options.forced.unwrap_or_else(|| odm_migrate::detect_corpus(&legacy));
-    if corpus == odm_migrate::Corpus::Plan {
-        return self_host_inner(store, &legacy, dry_run, out, err);
+    // No flags, or `--plan`/`--legacy`: both derivations, unless narrowed.
+    // `--plan`/`--legacy` used to force `detect_corpus`'s reading of one
+    // ambiguous positional; with the roots separately and unambiguously
+    // known from config, they now just mean "only this one."
+    let docs_root = docs_root(root)?;
+    if options.forced != Some(odm_migrate::Corpus::Legacy) {
+        for plan_root in discover_plan_roots(&docs_root)? {
+            self_host_inner(store, &plan_root, dry_run, out, err)?;
+        }
     }
-    reconcile_design_research(store, root, &legacy, dry_run, out, err)
+    if options.forced != Some(odm_migrate::Corpus::Plan) {
+        let design_root =
+            commands::configured_design_directory(root).unwrap_or_else(|| docs_root.join("design"));
+        reconcile_design_research(store, root, &design_root, dry_run, out, err)?;
+    }
+    Ok(())
+}
+
+/// Resolves `--vision`'s single target plan root (arc-migration-fidelity
+/// s14): the discovered plan roots under `docs_root`, narrowed to the first
+/// one that actually has a Definition-of-done section to distill. Unlike
+/// `--all`'s best-effort sweep (which silently skips a plan root with no
+/// such section), a direct `--vision` is an explicit ask — finding *nothing*
+/// to act on is an error, not a quiet no-op.
+///
+/// # Errors
+///
+/// Returns an error if no plan root under `docs_root` has both a
+/// `project-plan.md` and a Definition-of-done section.
+fn one_plan_root_with_a_vision_section(docs_root: &Path) -> anyhow::Result<PathBuf> {
+    discover_plan_roots(docs_root)?
+        .into_iter()
+        .find(|p| odm_migrate::replan::vision_from_plan(p).is_some())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no plan root under {} has a project-plan.md with a Definition-of-done section",
+                docs_root.display()
+            )
+        })
 }
 
 /// The design/research derivation: reconciles every existing node against
@@ -193,32 +268,38 @@ fn reconcile_design_research(
 }
 
 /// `migrate --all`: composes every derivation into one idempotent,
-/// dry-run-able pass over `docs_root` (arc-migration-fidelity s13) — the
-/// gap that let s11/12/13's own artifact docs sit uncovered for three
-/// slices, because nothing reminded the operator `--artifacts` needed a
-/// re-run. Each step is exactly the function its own flag already calls;
+/// dry-run-able pass over `docs_root` (arc-migration-fidelity s13, extended
+/// s14) — the gap that let s11/12/13's own artifact docs sit uncovered for
+/// three slices, because nothing reminded the operator `--artifacts` needed
+/// a re-run. Each step is exactly the function its own flag already calls;
 /// this only orchestrates and resolves roots the operator would otherwise
 /// have to type out:
 ///
 /// 1. self-host every plan-set directory found under `docs_root`
-/// 2. design/research reconcile over the configured `docs_directory`
-///    (`[legacy].docs_directory` if the modern key isn't set — arc-
-///    migration-fidelity s13's `odm store init` port-forward), falling back
-///    to `docs_root` itself if neither is configured
+/// 2. design/research reconcile over `docs_directory` **+ `"design"`**
+///    (s14 F-2 — the restored legacy append; *not* `docs_root` as-is, which
+///    would apply the design/research frontmatter rules to the whole tree)
 /// 3. `--artifacts` mint-all over `docs_root`
-/// 4. `--notes` mint-all over the configured `dev_directory`
-///    (`[legacy].dev_directory` likewise) — skipped, not errored, if
-///    unconfigured or the directory doesn't exist
+/// 4. `--notes` mint-all over the configured `dev_directory` — skipped, not
+///    errored, if unconfigured or the directory doesn't exist
 /// 5. `--vision` for every discovered plan-set directory that has a
-///    `project-plan.md` — safe to always include: idempotent once minted,
-///    and self-refreshing on derivation drift (s13's `no-vision` fix)
+///    Definition-of-done section — safe to always include: idempotent once
+///    minted, self-refreshing on derivation drift (s13's `no-vision` fix)
+/// 6. the additional-paths sweep (s14 F-4/F-5/F-7): `additional_paths`
+///    (the just-passed positional) unioned with `[legacy].additional_paths`
+///    (config), sorted + deduplicated and written back, then each path not
+///    already covered by steps 1–4's roots migrated as its own corpus
+///    (plan-set escape hatch) or generic supporting docs (D-2)
 ///
-/// All five already honor `--dry-run` identically; running it twice with
-/// nothing changed in between is a 0-change no-op on every step.
+/// All six already honor `--dry-run` identically (including the config
+/// write-back); running it twice with nothing changed in between is a
+/// 0-change no-op on every step.
+#[allow(clippy::too_many_arguments)]
 fn all(
     store: &Store,
     root: &Path,
     docs_root: &Path,
+    additional_paths: &[String],
     dry_run: bool,
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -231,15 +312,18 @@ fn all(
         self_host_inner(store, plan_root, dry_run, out, err)?;
     }
 
-    let legacy_root =
-        commands::configured_docs_directory(root).unwrap_or_else(|| docs_root.to_path_buf());
-    reconcile_design_research(store, root, &legacy_root, dry_run, out, err)?;
+    // s14 F-2: the restored `docs_directory` + `"design"` append — never
+    // `docs_root` (the parent) as-is.
+    let design_root =
+        commands::configured_design_directory(root).unwrap_or_else(|| docs_root.join("design"));
+    reconcile_design_research(store, root, &design_root, dry_run, out, err)?;
 
     artifacts(store, docs_root, dry_run, out, err)?;
 
-    if let Some(dev_root) = commands::configured_dev_directory(root) {
+    let dev_root = commands::configured_dev_directory(root);
+    if let Some(dev_root) = &dev_root {
         if dev_root.is_dir() {
-            notes(store, &dev_root, dry_run, out, err)?;
+            notes(store, dev_root, dry_run, out, err)?;
         }
     }
 
@@ -256,10 +340,32 @@ fn all(
         vision(store, plan_root, dry_run, out, err)?;
     }
 
+    // s14 F-5: union + persist, before computing what's effective this run —
+    // the stored set always reflects everything the operator has ever named,
+    // even a path F-7 goes on to exclude from processing (it's still
+    // remembered, just not swept by the generic pass).
+    commands::write_additional_paths(root, additional_paths, dry_run)
+        .context("writing additional_paths back to the operational config")?;
+
+    // s14 F-7: set-subtraction dedup — nothing steps 1–4 already own gets
+    // re-processed by the generic pass.
+    let effective = effective_additional_paths(
+        root,
+        additional_paths,
+        &design_root,
+        dev_root.as_deref(),
+        &plan_roots,
+    );
+    for extra in &effective {
+        migrate_additional(store, extra, dry_run, out, err)?;
+    }
+
     let verb = if dry_run { "migrate --all (dry-run)" } else { "migrate --all" };
     let status = format!(
-        "{verb}: {} plan root(s) self-hosted, design/research reconciled, artifacts + notes minted, vision checked{}",
+        "{verb}: {} plan root(s) self-hosted, design/research reconciled, artifacts + notes \
+         minted, vision checked, {} additional dir(s) swept{}",
         plan_roots.len(),
+        effective.len(),
         if dry_run { " — nothing written" } else { "" }
     );
     if dry_run {
@@ -268,6 +374,71 @@ fn all(
         term::success(err, &status)?
     }
     Ok(())
+}
+
+/// The effective additional directories to sweep this run (arc-migration-
+/// fidelity s14 F-7): the union of the just-passed `positional` paths and
+/// the persisted `[legacy].additional_paths`, each resolved relative to
+/// `root`, de-duplicated, and set-subtracted against `design_root`,
+/// `dev_root`, and every discovered `plan_roots` entry — a dir already
+/// owned by one of those passes must never be swept a second time by the
+/// generic (artifact) derivation, which would apply the wrong,
+/// custom-rule-less pass to it. Overlap in either direction (an additional
+/// that *is* a design/dev/plan root, or that *contains* one) is excluded,
+/// not doubled.
+fn effective_additional_paths(
+    root: &Path,
+    positional: &[String],
+    design_root: &Path,
+    dev_root: Option<&Path>,
+    plan_roots: &[PathBuf],
+) -> Vec<PathBuf> {
+    let mut resolved: Vec<PathBuf> = positional
+        .iter()
+        .map(|s| resolve(root, s))
+        .chain(commands::configured_additional_paths(root))
+        .collect();
+    resolved.sort();
+    resolved.dedup();
+
+    let excluded: Vec<&Path> = std::iter::once(design_root)
+        .chain(dev_root)
+        .chain(plan_roots.iter().map(PathBuf::as_path))
+        .collect();
+
+    resolved.into_iter().filter(|p| !excluded.iter().any(|e| overlaps(p, e))).collect()
+}
+
+/// Whether `a` and `b` are the same path, or one contains the other
+/// (arc-migration-fidelity s14 F-7) — the symmetric overlap test the
+/// set-subtraction dedup needs, since an additional path could equal a
+/// design/dev/plan root, sit inside one, or (an operator's typo) contain one.
+fn overlaps(a: &Path, b: &Path) -> bool {
+    a == b || a.starts_with(b) || b.starts_with(a)
+}
+
+/// Migrates one effective additional directory (arc-migration-fidelity s14
+/// F-4, **D-2**): if it turns out to be a plan-set after all — the escape
+/// hatch, since an operator's "extra" dir could really be an unlabeled
+/// corpus — it gets the self-host derivation; otherwise it's swept as
+/// generic supporting docs via the `--artifacts` mint-all derivation, since
+/// these are un-typed legacy dirs (research notes, brainstorm sessions, chat
+/// logs) with no frontmatter/state-dir contract of their own. (Recommended
+/// resolution, per the slice-doc; a fixture never argued for a third,
+/// design/research-shaped branch, so none was added — `mint_artifacts`
+/// mints nothing over a dir with no `.md` files, and nothing over one whose
+/// docs are already covered, so this is idempotent-safe either way.)
+fn migrate_additional(
+    store: &Store,
+    extra: &Path,
+    dry_run: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if odm_migrate::detect_corpus(extra) == odm_migrate::Corpus::Plan {
+        return self_host_inner(store, extra, dry_run, out, err);
+    }
+    artifacts(store, extra, dry_run, out, err)
 }
 
 /// The plan-set directories under `docs_root`: `docs_root` itself if it

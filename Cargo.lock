@@ -1846,6 +1846,7 @@ dependencies = [
  "tabled",
  "tempfile",
  "toml 0.8.23",
+ "toml_edit",
 ]
 
 [[package]]

@@ -41,20 +41,26 @@ fn run(root: &Path, args: &[&str]) -> (Option<u8>, String, String) {
     (code, String::from_utf8(out).unwrap(), String::from_utf8(err).unwrap())
 }
 
-/// Sets up a self-hosted temp store: writes the gate config, imports the real
-/// `docs/design` documents, and self-hosts the real `design-v1.0.0` plan set. Returns
-/// the TempDir (kept alive by the caller).
+/// Sets up a self-hosted temp store: writes `docs_directory` (arc-migration-
+/// fidelity s14: config-driven, no more path positional) pointed at the
+/// **parent** `docs/` — which imports the real `docs/design` documents (via
+/// the restored `+ "design"` append, F-2) and self-hosts the real
+/// `design-v1.0.0` plan set (`discover_plan_roots` finds it as the one
+/// Plan-shaped child), both in the one bare `migrate` call now that their
+/// roots are separately and unambiguously known. Returns the TempDir (kept
+/// alive by the caller).
 fn self_hosted_store(with_gates: bool) -> TempDir {
     let dir = TempDir::new().unwrap();
     if with_gates {
-        std::fs::write(dir.path().join("odm.toml"), GATES).unwrap();
+        let docs_root = repo().join("docs");
+        std::fs::write(
+            dir.path().join("config.toml"),
+            format!("docs_directory = {:?}\n{GATES}", docs_root.display().to_string()),
+        )
+        .unwrap();
     }
-    let docs = repo().join("docs/design");
-    let plan = repo().join("docs/design-v1.0.0");
-    let (m, _o, _e) = run(dir.path(), &["migrate", docs.to_str().unwrap()]);
-    assert_eq!(m, Some(0), "migrate the document corpus");
-    let (s, _o, _e) = run(dir.path(), &["migrate", plan.to_str().unwrap()]);
-    assert_eq!(s, Some(0), "self-host plan set");
+    let (m, _o, e) = run(dir.path(), &["migrate"]);
+    assert_eq!(m, Some(0), "migrate (design/research + self-host) the real corpus: {e}");
     dir
 }
 

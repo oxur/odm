@@ -582,20 +582,28 @@ enum Command {
     },
     /// Import a document corpus or a plan set into the node model.
     ///
-    /// The tree's shape decides which derivation runs — a plan set (arcs and
-    /// slices) yields work nodes, a legacy state-directory corpus yields
-    /// document nodes — and `--plan`/`--legacy` force it either way.
+    /// **Config-driven, not path-driven** (arc-migration-fidelity s14): every
+    /// root — the plan-set(s), the design/research corpus
+    /// (`docs_directory` + `"design"`), the dev-doc corpus (`dev_directory`)
+    /// — resolves from the operational config (`[legacy]`, or the top-level
+    /// key). Run from where that config lives; there is no path argument for
+    /// "the corpus." Without `--plan`/`--legacy`, both the plan-set and the
+    /// design/research derivations run — their roots are separate and
+    /// unambiguous, so there is no shape to guess.
     ///
     /// Idempotent (re-running is a no-op, keyed on the preserved number),
     /// `--dry-run`-able, and never deletes or mutates a source file.
     Migrate {
-        /// Path to the corpus (a `docs/design` with `NN-state/` dirs, or a plan
-        /// set with `arcNN-*/` directories).
-        legacy_path: String,
-        /// Treat the path as a plan set, whatever its shape looks like.
+        /// Extra legacy directories to sweep — un-typed dirs beyond
+        /// `docs_directory`/`dev_directory` (research notes, brainstorm
+        /// sessions, chat logs) that `--all` migrates and remembers between
+        /// runs. Comma-separated, e.g. `research,brainstorm,chats`; only
+        /// meaningful with `--all` (arc-migration-fidelity s14 F-1/F-4/F-5).
+        additional_paths: Option<String>,
+        /// Treat the plan-set(s) as the only derivation to run.
         #[arg(long, conflicts_with = "legacy")]
         plan: bool,
-        /// Treat the path as a legacy state-directory corpus.
+        /// Treat the design/research corpus as the only derivation to run.
         #[arg(long)]
         legacy: bool,
         /// Re-derive the **existing** plan nodes in place: normalized names,
@@ -610,19 +618,20 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
         /// Report the doc-coverage/representation/stub-body/provenance gap
-        /// inventory over `legacy_path` (a docs root) and exit. Read-only: mints
-        /// no node, changes no schema (arc-migration-fidelity slice01).
+        /// inventory over the configured `docs_directory` and exit.
+        /// Read-only: mints no node, changes no schema (arc-migration-
+        /// fidelity slice01).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "dry_run"])]
         coverage: bool,
-        /// Mint an `artifact` node for every supporting doc under
-        /// `legacy_path` (a docs root) not already covered — mint-all, no
+        /// Mint an `artifact` node for every supporting doc under the
+        /// configured `docs_directory` not already covered — mint-all, no
         /// exemption (arc-migration-fidelity slice09/slice10, ODD-0025 §2.6).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage"])]
         artifacts: bool,
-        /// Mint a `note` node for every dev doc under `legacy_path` (a
-        /// dev-docs root, e.g. the configured `dev_directory`) not already
-        /// covered — mint-all, uncontained, tagged by its immediate
-        /// subdirectory (arc-migration-fidelity slice10, operator decision).
+        /// Mint a `note` node for every dev doc under the configured
+        /// `dev_directory` not already covered — mint-all, uncontained,
+        /// tagged by its immediate subdirectory (arc-migration-fidelity
+        /// slice10, operator decision).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts"])]
         notes: bool,
         /// Re-cast the project node as an editorial-merge synthesis
@@ -632,13 +641,13 @@ enum Command {
         /// synthesis.
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"])]
         vision: bool,
-        /// Compose every derivation into one idempotent, dry-run-able pass
-        /// over `legacy_path` (a docs root): self-host every plan-set
-        /// directory found under it, reconcile design/research over the
-        /// configured `docs_directory`, mint-all `--artifacts` + `--notes`,
-        /// and check/refresh the vision synthesis — closing the gap where
+        /// Compose every derivation into one idempotent, dry-run-able pass:
+        /// self-host every plan-set directory found under `docs_directory`,
+        /// reconcile design/research over `docs_directory` + `"design"`,
+        /// mint-all `--artifacts` + `--notes`, check/refresh the vision
+        /// synthesis, and sweep `[ADDITIONAL_PATHS]` — closing the gap where
         /// a forgotten `--artifacts` re-run lets newly-authored docs sit
-        /// uncovered (arc-migration-fidelity slice13).
+        /// uncovered (arc-migration-fidelity slice13/slice14).
         #[arg(
             long,
             conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes", "vision"]
@@ -816,7 +825,7 @@ pub fn dispatch(
             },
         },
         Command::Migrate {
-            legacy_path,
+            additional_paths,
             plan,
             legacy,
             replan,
@@ -834,10 +843,21 @@ pub fn dispatch(
             } else {
                 None
             };
+            // Trimmed, empties-dropped (arc-migration-fidelity s14 F-1): a
+            // trailing/doubled comma or stray whitespace must not smuggle an
+            // empty string into `[legacy].additional_paths`.
+            let additional_paths: Vec<String> = additional_paths
+                .as_deref()
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
             migrate::migrate(
                 &store,
                 root,
-                &legacy_path,
+                &additional_paths,
                 migrate::Options {
                     forced,
                     replan,
