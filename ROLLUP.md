@@ -1,4 +1,4 @@
-<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. fingerprint=44088f8c24fbd9147cc8a4d25addf76a9ffb68c5680846d54e1fd9bc49623de7 -->
+<!-- GENERATED — do not edit by hand. Regenerate with `odm rollup`. fingerprint=099f7e1282cdcf70d2b34ee502044a3294d10047254ad9686a0fb55a23acac45 -->
 
 # Rollup
 
@@ -332,10 +332,24 @@
     - slice #58837410 Slice 10 (Migration Fidelity) — Coverage live run (plan-of-record) — planned=–, built=–, tested=–
       - artifact #562390100 CC Prompt — Slice 10 (Migration Fidelity): Coverage live run
       - artifact #509907700 Slice 10 (Migration Fidelity): Coverage live run
+      - artifact #514401000 CC Prompt — Slice 10 (Migration Fidelity), **iteration 1**: source-path portability regression + enforced invariant
+      - artifact #532438200 Slice 10 (Migration Fidelity) — CDC verification: Coverage live run (+ iteration 1)
+      - artifact #521363000 Slice 10 closing report — Coverage live run
     - artifact #536513400 odm migration / provenance / synthesis — design decisions & open forks
     - slice #58837411 Slice 11 (Migration Fidelity) — Synthesis capability + L-8b reconciliation (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #505225400 CC Prompt — Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
+      - artifact #585462700 Slice 11 (Migration Fidelity) — CDC verification: Synthesis capability + L-8b
+      - artifact #510494700 Slice 11 closing report — Synthesis capability + L-8b reconciliation
+      - artifact #572948000 Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
     - slice #58837412 Slice 12 (Migration Fidelity) — Reconcile capability (plan-of-record) — planned=asserted, built=asserted, tested=asserted
+      - artifact #575161900 CC Prompt — Slice 12 (Migration Fidelity): Reconcile capability
+      - artifact #556344000 Slice 12 (Migration Fidelity) — CDC verification: Reconcile capability
+      - artifact #500884000 Slice 12 closing report — Reconcile capability
+      - artifact #579338300 Slice 12 (Migration Fidelity): Reconcile capability
     - slice #58837413 Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record) — planned=–, built=–, tested=–
+      - artifact #543313400 CC Prompt — Slice 13 (Migration Fidelity): Live reconcile + vision mint
+      - artifact #551417900 Slice 13 closing report — Live reconcile + vision mint
+      - artifact #554492000 Slice 13 (Migration Fidelity): Live reconcile + vision mint
   - arc #1800 Arc 08 — Forecasting (plan-of-record) — planned=asserted, in-progress=asserted, complete=–, verified=–
 - research #21 Research — Information-Theoretic Complexity of Text (Code and Prose) — draft=asserted, under-review=–, revised=–, accepted=–, active=–, final=–
 - artifact #543468700 CDC Session Bootstrap — pick up where we left off
@@ -688,6 +702,20 @@
 - note #772202000 PM Post-Mortem — project-x: what went wrong, what to do instead
 - slice #58837413 Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record)
 - project #1001 odm v1.0.0 — Project Plan (arc roadmap)
+- artifact #514401000 CC Prompt — Slice 10 (Migration Fidelity), **iteration 1**: source-path portability regression + enforced invariant
+- artifact #532438200 Slice 10 (Migration Fidelity) — CDC verification: Coverage live run (+ iteration 1)
+- artifact #521363000 Slice 10 closing report — Coverage live run
+- artifact #505225400 CC Prompt — Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
+- artifact #585462700 Slice 11 (Migration Fidelity) — CDC verification: Synthesis capability + L-8b
+- artifact #510494700 Slice 11 closing report — Synthesis capability + L-8b reconciliation
+- artifact #572948000 Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
+- artifact #575161900 CC Prompt — Slice 12 (Migration Fidelity): Reconcile capability
+- artifact #556344000 Slice 12 (Migration Fidelity) — CDC verification: Reconcile capability
+- artifact #500884000 Slice 12 closing report — Reconcile capability
+- artifact #579338300 Slice 12 (Migration Fidelity): Reconcile capability
+- artifact #543313400 CC Prompt — Slice 13 (Migration Fidelity): Live reconcile + vision mint
+- artifact #551417900 Slice 13 closing report — Live reconcile + vision mint
+- artifact #554492000 Slice 13 (Migration Fidelity): Live reconcile + vision mint
 
 ## Blocked
 
@@ -791,6 +819,7 @@ _(none)_
 - arc #61823100 Arc — Release Hardening: CLI, types, naming & output (UAT-driven) — plan-of-record
 - artifact #500359600 CDC Verification — Arc 02 / Slice 04: Derived order & satisfaction
 - artifact #500633500 Slice 05.1 (Arc 02): Evidence-transition dates
+- artifact #500884000 Slice 12 closing report — Reconcile capability
 - artifact #501198900 Slice 01 (arc-store-home) — CDC verification
 - artifact #502265800 Slice 03 (Arc 03): orient / brief + bare-`odm`
 - artifact #502361600 Slice 02 closing report — The fidelity model (ODD-0025)
@@ -801,6 +830,7 @@ _(none)_
 - artifact #503794500 Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
 - artifact #504020200 CDC Verification — Arc 04 / Slice 01: Index record + snapshot persistence
 - artifact #504170700 Closing report — Slice 05 (Arc 05): `affects` edge + stale-doc-vs-decision check (C5)
+- artifact #505225400 CC Prompt — Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
 - artifact #505931500 Coverage report
 - artifact #507313500 Slice 03 (Arc 05): `odm reconcile` (on demand)
 - artifact #507489400 Slice 05 (Migration Fidelity): Source-based identity
@@ -809,6 +839,7 @@ _(none)_
 - artifact #509948700 UAT punch list — batch 1 (first-pass, NON-AUTHORITATIVE)
 - artifact #509959200 CDC Verification — Arc 05 / Slice 03: `odm reconcile` (on demand)
 - artifact #510459900 Closing report — Slice 01 (Arc 06): `migrate` importer core
+- artifact #510494700 Slice 11 closing report — Synthesis capability + L-8b reconciliation
 - artifact #511202200 CC Prompt — Slice 03 (Migration Fidelity): Fidelity core
 - artifact #511307900 Slice 01: Workspace scaffolding
 - artifact #511548900 Closing report — Arc 04 / Slice 04: Enrich record + wire consumers (seam a)
@@ -826,6 +857,7 @@ _(none)_
 - artifact #513858500 Closing report — Arc 04 / Slice 02: Cold-path build
 - artifact #513960000 Closing Report — Slice 05.1 (Arc 02): Evidence-transition dates
 - artifact #514030400 CC Prompt — Slice 07 (Migration Fidelity): Live repair run
+- artifact #514401000 CC Prompt — Slice 10 (Migration Fidelity), **iteration 1**: source-path portability regression + enforced invariant
 - artifact #514643300 Slice 03 (Arc 01): Frontmatter schema + round-trip
 - artifact #514836800 Slice 03 (Migration Fidelity): Fidelity core
 - artifact #514901800 CC Prompt — Slice 06 (Arc 01): `check` v1 + link-integrity
@@ -844,6 +876,7 @@ _(none)_
 - artifact #520951000 Amendment stub — ODD-0020 (per-type schema markers) for RH C-2
 - artifact #521125300 Slice 03 (arc-store-home) — CDC verification
 - artifact #521323700 Closing Report — Slice 07 (Arc 02): CLI graph-mutators
+- artifact #521363000 Slice 10 closing report — Coverage live run
 - artifact #521410400 C-5 closing report — the dogfood cutover + derivation overhaul
 - artifact #521488700 Slice 04 — `odm store rename` (ledger)
 - artifact #521789700 Slice 08 (Migration Fidelity) — CDC verification: Source-path portability
@@ -868,6 +901,7 @@ _(none)_
 - artifact #530854900 Amendment to ODD-0022 — worktree-general store discovery & project scoping
 - artifact #531812600 Arc closing report — Store Home & `init` (`arc-store-home`)
 - artifact #532159300 Slice 02 (Arc 02): Cycle detection + tears
+- artifact #532438200 Slice 10 (Migration Fidelity) — CDC verification: Coverage live run (+ iteration 1)
 - artifact #532474400 CDC Verification — Arc 04 / Slice 07: Early-cutoff invalidation
 - artifact #533654700 Arc 03 — Close: recomposition / silent-drop check
 - artifact #533952100 CC Prompt — Slice 05 (Arc 04): Index→graph adapter + wire graph readers & composed views
@@ -892,6 +926,7 @@ _(none)_
 - artifact #542740900 CDC Verification — Arc 04 / Slice 02: Cold-path build
 - artifact #542834700 CDC Verification — Arc 05 / Slice 05: `affects` edge + stale-doc-vs-decision check (C5)
 - artifact #543186200 Slice 04 (Arc 04): Enrich record + wire consumers
+- artifact #543313400 CC Prompt — Slice 13 (Migration Fidelity): Live reconcile + vision mint
 - artifact #543468700 CDC Session Bootstrap — pick up where we left off
 - artifact #543707700 Closing report — Arc 04 / Slice 06: Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
 - artifact #544302200 CC Prompt — Slice 04 (Arc 05): drift in `rollup` / `orient`
@@ -911,6 +946,7 @@ _(none)_
 - artifact #550261700 Closing report — Slice 01 (Arc 05): `desired_facts` schema + `Probe` trait + shell probe
 - artifact #550625700 Closing Report — Slice 05 (Arc 02): Decomposition/recomposition integrity
 - artifact #550874000 Slice 06 (Arc 01): `check` v1 + link-integrity
+- artifact #551417900 Slice 13 closing report — Live reconcile + vision mint
 - artifact #551612300 CC Prompt — Slice 03 (Arc 05): `odm reconcile` (on demand)
 - artifact #551849000 CC Prompt — Slice 01 (Arc 06): `migrate` importer core
 - artifact #552678100 Slice 04 (Arc 06): self-host cutover
@@ -919,10 +955,12 @@ _(none)_
 - artifact #553974400 CC Prompt — Slice 04 (Arc 04): Enrich record + wire consumers
 - artifact #554081700 Slice 07 closing report — Live repair run
 - artifact #554131200 RH C-5 (cutover) — CDC verification + arc-store-home close endorsement
+- artifact #554492000 Slice 13 (Migration Fidelity): Live reconcile + vision mint
 - artifact #555260300 CDC Verification — Arc 03 / Slice 02: Rollup generation
 - artifact #555750000 C-1 closing report — Adopt Oxur themed output in odm (via `oxur-term`)
 - artifact #555938700 CDC Verification — Arc 04 / Slice 08: Benchmark harness (the arc capstone)
 - artifact #556238200 Closing Report — Slice 01 (Arc 03): Arc 02 cleanup
+- artifact #556344000 Slice 12 (Migration Fidelity) — CDC verification: Reconcile capability
 - artifact #556645700 CDC Verification — Arc 05 / Slice 07: incremental drift — probes-as-rules + the `.odm/` drift snapshot
 - artifact #557558400 CC Prompt — Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
 - artifact #557733600 Slice 04 (Arc 05): drift in `rollup` / `orient`
@@ -975,6 +1013,8 @@ _(none)_
 - artifact #572248600 Slice 07 (Arc 05): incremental drift — probes-as-rules + the `.odm/` drift snapshot
 - artifact #572258000 cc-prompt — arc-store-home slice 01: Store resolution + two-config split
 - artifact #572625500 Slice 07 (Arc 04): Early-cutoff invalidation
+- artifact #572948000 Slice 11 (Migration Fidelity): Synthesis capability + L-8b reconciliation
+- artifact #575161900 CC Prompt — Slice 12 (Migration Fidelity): Reconcile capability
 - artifact #575850300 CC Prompt — Slice 04 (Arc 02): Derived order & satisfaction
 - artifact #576458800 Closing Report — Slice 01 (Arc 02): Graph construction + reverse edges
 - artifact #576782900 Slice 01 (Arc 03): Arc 02 cleanup
@@ -982,6 +1022,7 @@ _(none)_
 - artifact #577589300 RH C-6 (`validate` hardening) — CDC verification
 - artifact #577599100 Slice 03 (Arc 04): Warm-path change detection
 - artifact #578511200 CDC Verification — Arc 02 / Slice 05.1: Evidence-transition dates
+- artifact #579338300 Slice 12 (Migration Fidelity): Reconcile capability
 - artifact #579742200 Closing Report — Slice 06 (Arc 02): `check` v2
 - artifact #579810800 CC Prompt — Slice 02: Stable identity core
 - artifact #579909000 Slice 06 (Arc 04): Enrich `origin`+`decomposed` + wire `check`/`rollup`/`orient`
@@ -999,6 +1040,7 @@ _(none)_
 - artifact #583747000 cc-prompt — RH C-1: Adopt Oxur table styling in odm (via `oxur-table`)
 - artifact #584217500 CC Prompt — Slice 01 (Arc 02): Graph construction + reverse edges
 - artifact #584664700 CDC Verification — Slice 06: `check` v1 + link-integrity
+- artifact #585462700 Slice 11 (Migration Fidelity) — CDC verification: Synthesis capability + L-8b
 - artifact #585914900 Slice 03 closing report — `init` attach + ff-sync
 - artifact #586243300 CC Prompt — Slice 01 (Arc 04): Index record + snapshot persistence
 - artifact #586594500 Closing report — Slice 03 (Arc 06): schema versioning (ODD-0020)

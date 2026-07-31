@@ -15,12 +15,15 @@
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
 > **Status:** s01–s13 **closed** (s13 2026-07-30); s04–s12 CDC-verified PASS, s13 CDC verification
-> pending. Coverage is **enforced live**: `odm check`'s `absolute-source-path` rule 0 findings, but
-> `check` overall is **not** exit 0 — 14 pre-existing `uncovered-doc` errors (s11/s12/s13's own
-> artifact-family docs, uncovered since s10's last `--artifacts` mint-all; confirmed pre-existing at
-> `2fc25f5`, not a regression; routed to the arc-close). On the committed `odm` corpus (commit `26bea1d`,
-> atop `2fc25f5`, atop the s10 mint `355404a`, atop known-good `7226797`) — mint-all (254 `artifact` + 31
-> `note` nodes), **all** design/research nodes now source-bearing and reconciled to current sources (the 2
+> pending. Coverage is **enforced live and fully green**: `odm check` exit 0, 0 errors — the doc-coverage
+> gap disclosed at s13's close (14 `uncovered-doc` errors for s11/12/13's own artifact-family docs) is
+> **closed** as of `e06fffe`, fired by a new `migrate --all` (composes self-host + design/research
+> reconcile + `--artifacts` + `--notes` + `--vision` into one idempotent pass — built the same day the gap
+> was disclosed, prompted by an operator question about why nothing composed the five separate
+> derivations). `388/388` docs covered. On the committed `odm` corpus (commit `e06fffe`, atop `e1e94bf`,
+> atop `26bea1d`, atop `2fc25f5`, atop the s10 mint `355404a`, atop known-good `7226797`) — mint-all
+> (268 `artifact` + 31 `note` nodes), **all** design/research nodes now source-bearing and reconciled to
+> current sources (the 2
 > disclosed-drifted ODD-0013/0020 + the moved-and-drifted ODD-0017/0018 + ODD-0025 itself, all fired live
 > by s13), all `source.paths` portable (CDC v2.8 Finding 1, durably enforced by the `absolute-source-path`
 > rule). s11 built synthesis (`supersedes`→`Vec` + bidirectional lineage + `concatenation`/
@@ -135,9 +138,32 @@ destructive op is fixture-proven before it fires.
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | **done** — s09 built **mint-all** (`mint_artifacts`, ODD-0025 §2.6, no exemption incl. `coverage-report.md`) and the enforcing `check` rule; **s10 fired it live**: 254 `artifact` nodes minted (commit `355404a`), `[coverage] scan_root` active, `odm check` exit 0. Widened beyond the original criterion's `.md` scope by s10's operator-directed additions: `docs/dev/**` also covered via 31 minted `NodeType::Note` nodes, and `docs/design/index.md`/templates correctly excluded rather than counted as gaps (`slice10-coverage-live-run/closing-report.md`); reproduced by direct read of commit `355404a` |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | **done** — s11 built the `Vec`-typed `supersedes` + bidirectional-lineage `check` rule + both synthesis regimes; s12 promoted the vision-apply mechanism to reusable library code. **s13 fired the vision mint live**: `#1001` a faithful, hash-clean 1:1 `project-plan` node (verbatim `project-plan.md`, 426/426 lines byte-identical); `#1000` re-cast in place as the editorial-merge synthesis superseding it, with a recorded attestation and a clean `supersedes` edge (`check`'s lineage rule green); reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | **done** — s11 corrected the doc-tree states (ODD-0013/0017/0018 → `Accepted`, `git mv`'d into `04-accepted/`). **s13 reconciled the corresponding node gate vectors live**: ODD-0013/0020 re-snapshotted, ODD-0017/0018 re-discovered by identity and their `source.paths` rewritten to the new `04-accepted/`-relative location (both resolve); reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
-| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **fidelity true on the live corpus, doc-coverage caveat open** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain (recomputed against current sources), the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent (0/0/0), `check`'s `absolute-source-path` rule 0 findings. **`check` itself is not yet exit 0** — 14 pre-existing `uncovered-doc` errors for s11/12/13's own artifact-family docs (confirmed pre-existing at `2fc25f5`, not an s13 regression; needs a fresh `--artifacts` mint-all). **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now ready, modulo that one doc-coverage run. Reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
+| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **done** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain, the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent. **The disclosed doc-coverage gap is now closed too**: a new `migrate --all` (built the same day, prompted by the operator asking why nothing composes the five separate derivations into one idempotent pass) fired live — 2 nodes reconciled (this session's own in-flight edits to `arc-plan.md` and ODD-0020, both living-plan-node drift) + 14 artifact nodes minted (the s11/12/13 gap). `odm check`: **exit 0, 0 errors** (was 14); `388/388` docs covered (was 374/388). Re-run verified idempotent (0/0/0 every sub-step) before commit. **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now fully faithful and fully covered. Reproduced by direct read of commit `e06fffe` (`odm` branch) |
 
 ## Version History
+
+### v2.24 — 2026-07-30 — `migrate --all` built and fired live; the disclosed doc-coverage gap closed
+
+**Same investigation, same day, one more step.** After the v2.23 correction, the operator asked why
+`odm migrate` had no single command to idempotently reingest everything — self-host, design/research
+reconcile, `--artifacts`, `--notes`, and `--vision` had always been five separate invocations, and it
+was exactly that gap (nothing reminding the operator `--artifacts` needed a re-run) that let s11/12/13's
+own artifact docs sit uncovered for three slices.
+
+**Built `migrate --all <docs-root>`** (`release/1.0.x@3d4d8fd`): composes all five into one pass,
+resolving `docs_directory`/`dev_directory` from the store's `config.toml` rather than requiring them
+typed out, with a new `[legacy]` fallback section for onboarding projects that still have a pre-split
+odm.toml (`odm store init` now ports pre-split settings forward automatically when it finds them —
+confirmed via `main` branch's own original `odm.toml` that nothing was lost for *this* repo at the RH
+C-5 cutover; the `docs_directory` narrowing from `"./docs"` to `"./docs/design"` was a deliberate
+rebuild-era taxonomy change, not a loss). `--vision`'s step is best-effort: a plan set with no
+Definition-of-done section yet is skipped, not a reason to fail the other four steps.
+
+**Fired live**: dry-run adjudicated (2 reconciles — this session's own in-flight edits to `arc-plan.md`
+and ODD-0020, both living-plan-node drift — + 14 artifact mints, exactly the disclosed gap), fired as one
+commit `e06fffe` atop `e1e94bf`, re-run verified idempotent (0/0/0 every sub-step) before that commit.
+**`odm check` is now exit 0, 0 errors** (was 14). `388/388` docs covered (was 374/388). **MF-9 moves to
+done** — every disclosed s13 deviation is now resolved, not just tracked.
 
 ### v2.23 — 2026-07-30 — Post-close correction: s13's own verification undercounted `check` by one finding
 
