@@ -117,3 +117,31 @@ arc-close resumes.
 
 _Verified by: CDC (independent), 2026-08-01 — against `release/1.0.x` (`1c779ec`); `odm@e06fffe` unchanged.
 Code/fixtures/ODD reproduced by direct read; execution rows attested-by-CC → CI._
+
+---
+
+## Addendum — Iteration 1 (wire the collapse into `migrate --all`) — CDC re-verified
+
+> 2026-08-01 · commit `3617813` (`release/1.0.x`) · `odm@e06fffe` unchanged.
+
+The s15 (`1c779ec`) freeze dry-run adjudication caught that `collapse_project_vision` had **no CLI
+caller** — the collapse was correct but unreachable, so `migrate --all` never fired it (CDC iteration-1
+prompt). **The wire lands and re-verifies clean — invocation path traced, not just logic:**
+
+- `migrate.rs::all()` now calls `odm_migrate::collapse::collapse_project_vision(store, plan_root, mode)`
+  per plan root, **guarded on `plan_root.join("project-plan.md").is_file()`** (the D-2 escape-hatch shape —
+  an `arc*`-only plan root — is never handed to the collapse; CC cites the same bug class s15 F-3 fixed),
+  **before `self_host_inner`** so the just-collapsed 1:1 project reconciles in the same pass, `mode` threaded
+  for dry-run.
+- `render_collapse` emits a `COLLAPSE` / `COLLAPSE (DRY RUN)` table (re-cast project + retired base + a
+  one-pair summary); no-op when `report.collapsed` is `None` (nothing to collapse).
+- **Compose fixture** `migrate_all_collapses_a_vision_pair_and_then_reconciles_it_in_the_same_pass`
+  (non-vacuous): asserts the collapsed project's body equals the *amended* `project-plan.md` after one
+  `--all` run — i.e. collapse **then** reconcile compose. Plus `migrate_all_collapse_dry_run_writes_nothing`.
+- 72/72 suites, clippy/fmt clean; `.worktrees/odm` untouched.
+
+**Disposition:** iteration-1 code **CDC-verified**. s15 stays **CDC-verified PASS** (this was a reachability
+wire, not a logic change). **Final live sign-off is the freeze dry-run re-run** (operator-run; the binary is
+macOS): the adjudication gate is now that a **`COLLAPSE (DRY RUN)`** section appears — `#1000` "would
+re-cast", `#1001` "would retire" — on top of the already-confirmed reconciles, with still no `no-vision`,
+no index/template mint, and nothing unexpected. When that preview is clean, the freeze is clear to fire.
