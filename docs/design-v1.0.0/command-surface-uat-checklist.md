@@ -82,3 +82,27 @@ like a table?). A row closes when both columns are ✓; when every row closes, c
 `reconcile`, `project`, `use`, mutators, `store`) need only your human pass. The ⚠ ones (`next`,
 `blocked`, `chain`, `rollup`, `orient`, the `--json` dates, F-22) are the LLM-arc build work — and
 each gets *both* our sign-offs as it lands. That's the close-out gate.
+
+## 6. Batch-2 additions (Duncan, 2026-08-01) — grounded at 387 nodes, not the §-header's `8de6d0d`/60
+
+> **Re-ground note.** §1–§5 were run against `8de6d0d` (60 nodes). The store is now ~387 nodes, so the
+> read-command outputs (esp. `next`, `orient`, `rollup`) are materially bigger — these three items are
+> from Duncan running the current binary. A full re-ground of §1 against the live store is itself a
+> punch item (below).
+
+| # | Item | Kind | LLM note / disposition | Route |
+|---|---|---|---|---|
+| B2-1 | **`next` dumps a huge, flat, ungrouped list** — doesn't answer "what could we work on next." If that much output is *correct*, it must be **grouped** and use the **tree/branching glyphs** `node list` uses to show relationships. | command-surface (extends L-4) | Two questions folded in: (a) *correctness* — should `next` really return that many? A dependency-ordered tool's "next" should be the **ready frontier**, not every unblocked node; the retired-#1605 leak (F-22) is one symptom that the readiness set is too loose. (b) *presentation* — once the set is right, render it **typed + grouped + tree**, matching `node list` (the reference surface). This supersedes the terse L-4 "typed + ordered" with the stronger "typed + **grouped-tree** + ordered." | LLM arc **slice 02** (L-4, upgraded) |
+| B2-2 | **`next` shows non-ULID numeric IDs** — are they functional in v1.0+? | clarification (answered) | **Answered by direct read of the store (2026-08-01): every edge target in every node is a ULID** — `part_of`/`depends_on`/`blocked_by`/`supersedes` all reference ULIDs; **zero** relations use the numeric handle. The `number` (e.g. `1001`, `7773600`) is a **human-facing coordinate only** — used for `node show <n>`, display, and the coverage structural-fallback match-by-number. So the numbers are *not* wired to anything relational; they're a display affordance. **Open sub-question for slice 02:** should `next` display the **ULID** (like `node list`'s ID column) instead of / alongside the number? Leaning ULID-in-the-ID-column for consistency, number as the short handle. | LLM arc **slice 02** |
+| B2-3 | **Semantic redundancy in document titles** — e.g. `(plan-of-record)` on `arc-plan.md`/`slice-doc.md` titles (an arc-plan *is* the plan of record; the parenthetical restates the filename's role). ~67 occurrences across the plan tree. | doc convention (not command-surface) | Real wart. Also includes type-name echoes in titles. **Going forward: drop `(plan-of-record)` and similar role-restating parentheticals from authored titles** (CDC will stop adding them — noted, mea culpa: s14/s15 slice-docs carry it). A bulk cleanup of the existing ~67 is a separate low-risk sweep — worth doing before the SKILL-writing close-out so the corpus reads clean. | doc-hygiene sweep (pre-close-out); CDC to stop adding immediately |
+
+## 7. Punch-list status (2026-08-01)
+
+**This** file is the live tracker; `arc-release-hardening/uat-punch-list.md` is its **raw predecessor**
+(Duncan's first-pass batch-1), superseded by the triage in §5 here. **It has *not* been updated during
+the arc-migration-fidelity arc (s01–s15)** — correctly, because MF is a *different* arc (migration
+faithfulness), and none of its slices touch the command-surface items parked here. Those items
+(`next`, `blocked`, `chain`, `rollup` polish, `orient` verbosity, F-21/F-22, and now B2-1…B2-3) remain
+routed to the **LLM-command-surface arc**, which has not yet run. So: the MF fixes are tracked in
+`arc-migration-fidelity/{arc-plan,*/ledger}.md`; the command-surface punch items are tracked *here* and
+await their arc. Nothing is lost — but nothing here is getting *fixed* until the LLM arc starts.
