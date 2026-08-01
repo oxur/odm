@@ -11,7 +11,7 @@
 > remains the SDLC step-2 definition and ODD-0015 the step-4 breakdown; this file is
 > the *living* roadmap that arc-close bubble-ups maintain from here forward.
 
-## 1. Definition of done & boundaries
+## Vision
 
 `odm` is a markdown/git-native, dependency-ordered planning + documentation substrate
 that **mechanically actualizes** the collaboration framework: stable-identity nodes +
@@ -20,6 +20,8 @@ staleness/reconciliation + one *complete* graph as the source of truth. Success 
 a fresh session reaches full situational awareness from `odm orient` alone.
 
 The architecture is fixed in **ODD-0013** (this file is the plan, not the design).
+
+## 1. Definition of done & boundaries
 
 **In scope (v1.0.0):** one unified node graph (work nodes project/arc/slice +
 document nodes odd/adr/note); stable ULID identity; typed edges → petgraph DAG; cycle
