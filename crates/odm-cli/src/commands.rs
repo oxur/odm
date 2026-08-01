@@ -1812,7 +1812,14 @@ fn aggregate(
     // faithful 1:1 record, ODD-0025 §2.3) is exempt — its body is a verbatim
     // migrated copy and must stay that way, not gain an injected heading; the
     // synthesis that supersedes it is the vision-bearing node this rule is
-    // actually about.
+    // actually about. A **retired** project is exempt for the same reason
+    // (arc-migration-fidelity s15 F-1 — the collapse retires the superseded
+    // 1:1 base *without* a supersedes edge, since the surviving node drops
+    // its own `supersedes` too; retirement alone is the historical-record
+    // signal here, matching `replan.rs`'s established principle). `retired`
+    // is not part of the index projection (only id/type/edges/status —
+    // `Derived::load`'s doc), so it's read off the freshly-loaded `doc`
+    // below, not the index-reconstructed `fm`.
     let superseded: std::collections::HashSet<Id> =
         full.iter().flat_map(|f| f.edges().supersedes.iter().map(|s| s.node)).collect();
     for fm in frontmatters
@@ -1820,6 +1827,9 @@ fn aggregate(
         .filter(|f| f.node_type() == NodeType::Project && !superseded.contains(&f.id()))
     {
         let Ok(doc) = store.load(fm.id()) else { continue };
+        if doc.frontmatter().retired().is_some() {
+            continue;
+        }
         if !has_vision(doc.body()) {
             let file = store.path_of(fm.id());
             entries.push(CheckEntry {

@@ -125,7 +125,10 @@ fn write_plan_set(root: &Path) {
 }
 
 /// Seeds the store with the pre-slice06 shape the flow must reconcile: a
-/// **synthesis-shaped project** (no 1:1 source, must stay that way), a
+/// **faithful, sourceless project** (body already matches `project-plan.md`,
+/// just needs `source` backfilled — arc-migration-fidelity s15 F-3: the
+/// project is no longer excluded by `node_type` alone, so a sourceless
+/// project reconciles the same way any other pre-source legacy node does), a
 /// **faithful** arc01 (body already matches its source, just needs `source`
 /// added), and a **stub** slice01 (needs its body replaced).
 fn seed_pre_existing(store: &Store) -> (Id, Id, Id) {
@@ -134,7 +137,7 @@ fn seed_pre_existing(store: &Store) -> (Id, Id, Id) {
         PROJECT_NUMBER,
         NodeType::Project,
         "odm",
-        "# odm\n\n# Vision\n\nSynthesized vision text, not the source verbatim.\n",
+        "# Test Project\n\nThe real plan-of-record content.\n",
     );
     let arc_id = persist(
         store,
@@ -170,16 +173,16 @@ fn migrate_reconciles_before_importing_the_whole_flow_in_one_pass() {
     let store = Store::open(store_dir.path());
     let nodes = nodes_by_key(&store);
 
-    // The project: untouched body, still no `source` — excluded by *every*
-    // path this flow exercises (F-6).
+    // The project (s15 F-3): faithful body kept verbatim, `source` backfilled
+    // — reconciles exactly like arc01 below, no longer excluded outright.
     let project = &nodes[&(NodeType::Project, PROJECT_NUMBER)];
     assert_eq!(project.frontmatter().id(), project_id, "project identity preserved");
     assert_eq!(
         project.body(),
-        "# odm\n\n# Vision\n\nSynthesized vision text, not the source verbatim.\n",
-        "project body untouched"
+        "# Test Project\n\nThe real plan-of-record content.\n",
+        "faithful project body is a content no-op"
     );
-    assert!(project.frontmatter().source().is_none(), "project never gets a 1:1 source");
+    assert!(project.frontmatter().source().is_some(), "project source backfilled");
 
     // arc01: faithful body kept verbatim, `source` added, schema bumped.
     let arc = &nodes[&(NodeType::Arc, arc_number(1))];

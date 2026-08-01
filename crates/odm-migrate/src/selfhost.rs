@@ -329,16 +329,20 @@ pub fn self_host(
         }
         if let Some(existing_doc) = by_coordinate.get(&key) {
             ids.insert(key, existing_doc.frontmatter().id());
-            let excluded = node.node_type == NodeType::Project
-                || existing_doc.frontmatter().retired().is_some();
+            let excluded =
+                is_synthesis(existing_doc) || existing_doc.frontmatter().retired().is_some();
             if excluded {
-                // The project's body is a synthesis, never a 1:1 migration
-                // (ODD-0025 §2.3); a retired node is a historical record, not
-                // live work (`replan.rs`'s established principle) — either is
-                // recognized by coordinate, never queued for the gated backfill
-                // below (arc-migration-fidelity s06 F-1/F-5/F-10, CDC v2.1
-                // finding: this transition used to stamp `source` onto the
-                // project ungated, and carried no retired guard at all).
+                // A node carrying `source.synthesis` is a merge, never a 1:1
+                // migration (ODD-0025 §2.3, keyed arc-migration-fidelity s15
+                // F-3 — not on `node_type == Project`: post-collapse the
+                // project carries no `source` at all here, so this branch is
+                // reached by the `retired` half alone for it); a retired node
+                // is a historical record, not live work (`replan.rs`'s
+                // established principle) — either is recognized by
+                // coordinate, never queued for the gated backfill below
+                // (arc-migration-fidelity s06 F-1/F-5/F-10, CDC v2.1 finding:
+                // this transition used to stamp `source` onto the project
+                // ungated, and carried no retired guard at all).
                 skipped.push(Skipped {
                     number: Some(node.number),
                     path: plan_root.to_path_buf(),
@@ -522,20 +526,33 @@ impl RepairReport {
     }
 }
 
+/// Whether `document` carries a `source.synthesis` record — a merge node
+/// (ODD-0025 §2.3), never a 1:1 migration target. The **sole** reconcile
+/// exclusion (arc-migration-fidelity s15 F-3, ODD-0020 v1.4's key), replacing
+/// the former blanket `node_type == Project` check: post-collapse the project
+/// carries no `source.synthesis` at all, so it reconciles like any other plan
+/// node; a genuine future synthesis (project or otherwise) still carries this
+/// key and stays excluded. Mirrors
+/// [`odm_core::check::check_field_validity`]'s identical predicate.
+fn is_synthesis(document: &Document) -> bool {
+    document.frontmatter().source().is_some_and(|s| s.synthesis.is_some())
+}
+
 /// Reconciles one existing node's `source` record against its plan-set
 /// source, **update-in-place** (ODD-0025 §2.8) — the single gated,
-/// project-excluding policy [`repair`] and [`self_host`]'s coordinate→source
-/// transition both use (arc-migration-fidelity s06 F-1/F-5/F-10, unifying
-/// what CDC's v2.1 finding identified as two independent `source`-backfill
-/// paths, one of them ungated).
+/// synthesis-excluding policy [`repair`] and [`self_host`]'s
+/// coordinate→source transition both use (arc-migration-fidelity s06
+/// F-1/F-5/F-10, unifying what CDC's v2.1 finding identified as two
+/// independent `source`-backfill paths, one of them ungated).
 ///
-/// Returns `Ok(None)` for the **project** node, or a **retired** one, without
-/// touching or reading anything else: the project's body is a *synthesis* of
-/// `project-plan.md` §1 (`replan.rs::vision_from_plan`), never a 1:1 migration
-/// (ODD-0025 §2.3), so it can never pass the gate below (F-6); a retired node
-/// is a historical record, not live work — `replan.rs`'s established
-/// principle, extended here so a tombstone that happens to share a coordinate
-/// with a live plan directory is never silently rewritten.
+/// Returns `Ok(None)` for a node carrying `source.synthesis`, or a
+/// **retired** one, without touching or reading anything else: a synthesis
+/// node's body is a *merge* (ODD-0025 §2.3), never a 1:1 migration, so it can
+/// never pass the gate below (F-6, s15 F-3 — keyed on `source.synthesis`, not
+/// `node_type == Project`); a retired node is a historical record, not live
+/// work — `replan.rs`'s established principle, extended here so a tombstone
+/// that happens to share a coordinate with a live plan directory is never
+/// silently rewritten.
 ///
 /// For any other node:
 /// - **A stub** ([`crate::fidelity::is_stub_body`], ≤ 1 non-blank body line —
@@ -575,7 +592,7 @@ fn reconcile_source(
     today: NaiveDate,
     force_resnapshot: bool,
 ) -> Result<Option<Document>, MigrateError> {
-    if plan_node.node_type == NodeType::Project || document.frontmatter().retired().is_some() {
+    if is_synthesis(document) || document.frontmatter().retired().is_some() {
         return Ok(None);
     }
     let fm = document.frontmatter();
@@ -666,7 +683,7 @@ pub fn repair(store: &Store, plan_root: &Path, mode: Mode) -> Result<RepairRepor
         };
         let Some(new_document) = reconcile_source(document, plan_node, &anchor, today, false)?
         else {
-            continue; // the project node, or a retired node — excluded (F-6)
+            continue; // a synthesis node, or a retired node — excluded (F-6, s15 F-3)
         };
 
         repaired.push(Repaired {
@@ -705,15 +722,17 @@ impl ReconcileReport {
     }
 }
 
-/// Reconciles every **already-sourced** `arc`/`slice` node in `store` against
-/// its current plan-set source under `plan_root` (arc-migration-fidelity
-/// s12) — [`repair`]'s complement, the way
-/// [`crate::mapping::reconcile_source`] complements
+/// Reconciles every **already-sourced** `project`/`arc`/`slice` node in
+/// `store` against its current plan-set source under `plan_root`
+/// (arc-migration-fidelity s12, project included since s15) — [`repair`]'s
+/// complement, the way [`crate::mapping::reconcile_source`] complements
 /// [`crate::mapping::backfill_source`] for the design/research family: that
 /// function only ever touches a *sourceless* node; this one only ever
-/// touches a node that already carries a `source`. The project node is
-/// excluded (ODD-0025 §2.3 — its re-cast is the separate vision-apply path);
-/// a retired node is a historical record, never reconciled.
+/// touches a node that already carries a `source`. A node carrying
+/// `source.synthesis` is excluded (ODD-0025 §2.3, keyed s15 F-3 — post-
+/// collapse the project carries none, so it reconciles like any other plan
+/// node; a genuine future synthesis stays excluded); a retired node is a
+/// historical record, never reconciled.
 ///
 /// For each eligible node, [`discover`] is re-run over `plan_root` and
 /// matched by `(type, number)` — the same structural key `self_host`/
@@ -756,8 +775,8 @@ pub fn reconcile(
     let mut reconciled = Vec::new();
     for document in &corpus {
         let fm = document.frontmatter();
-        if !matches!(fm.node_type(), NodeType::Arc | NodeType::Slice) {
-            continue; // project excluded (§2.3); design/research is mapping.rs's
+        if !matches!(fm.node_type(), NodeType::Project | NodeType::Arc | NodeType::Slice) {
+            continue; // design/research is mapping.rs's territory
         }
         if fm.source().is_none() {
             continue; // sourceless — repair()'s territory
@@ -765,6 +784,18 @@ pub fn reconcile(
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
             continue; // no current plan-set entry to reconcile against — left as-is
         };
+        // `discover` always invents a project entry at `plan_root/project-plan.md`
+        // regardless of whether that file exists (unlike an arc/slice entry,
+        // which only ever exists for a real directory) — a `plan_root` with no
+        // project-plan.md of its own (the D-2 escape-hatch self-host of a
+        // detached arc directory, `migrate --all <extra>`) must not be treated
+        // as *the* corpus-wide project's home just because `PROJECT_NUMBER` is
+        // a fixed constant every `discover` call reproduces (arc-migration-
+        // fidelity s15 F-3 — this guard is only reachable now that the project
+        // is in scope here at all).
+        if plan_node.node_type == NodeType::Project && !plan_node.source.is_file() {
+            continue;
+        }
         let Some(new_document) = reconcile_source(document, plan_node, &anchor, today, true)?
         else {
             continue; // retired — excluded
@@ -1138,11 +1169,11 @@ mod tests {
         assert_eq!(terminal_index(NodeType::Slice, WorkStatus::Planned), 0);
     }
 
-    // ----- s06 F-1/F-5/F-10: reconcile_source is the one gated, project- ----
-    // ----- excluding `source`-population policy -----------------------------
+    // ----- s06 F-1/F-5/F-10 (rekeyed s15 F-3): reconcile_source is the one --
+    // ----- gated, synthesis-excluding `source`-population policy -----------
 
     #[test]
-    fn reconcile_source_excludes_the_project_node() {
+    fn reconcile_source_excludes_a_synthesis_node() {
         let node = PlanNode {
             node_type: NodeType::Project,
             number: PROJECT_NUMBER,
@@ -1150,7 +1181,51 @@ mod tests {
             parent_key: None,
             status: WorkStatus::Active,
             // A path that does not exist: exclusion must happen *before* any
-            // attempt to read a source body — the project is never gated.
+            // attempt to read a source body — a synthesis is never gated.
+            source: Path::new("/nonexistent/project-plan.md").to_path_buf(),
+        };
+        let fm = Frontmatter::new(
+            Id::new(),
+            PROJECT_NUMBER,
+            NodeType::Project,
+            "odm",
+            today(),
+            today(),
+            Origin::Planned,
+        )
+        .with_source(odm_core::frontmatter::Source {
+            paths: vec![std::path::PathBuf::from("project-plan.md")],
+            class: "vision".to_string(),
+            normalization: "trim+lf".to_string(),
+            migrated_by: "odm-migrate/test".to_string(),
+            migrated_on: today(),
+            synthesis: Some("editorial-merge".to_string()),
+            attestation: Some("operator: distills the source".to_string()),
+        });
+        let document =
+            Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());
+
+        let result = reconcile_source(&document, &node, Path::new("/anchor"), today(), false);
+        assert!(
+            matches!(result, Ok(None)),
+            "a source.synthesis-bearing node is excluded outright, not gated and rejected: \
+             {result:?}"
+        );
+    }
+
+    #[test]
+    fn reconcile_source_does_not_exclude_a_sourceless_project() {
+        // s15 F-3: the exclusion is keyed on `source.synthesis`, not
+        // `node_type == Project` — a project with no `source` at all (the
+        // by_coordinate transition case) is *not* excluded outright any
+        // more; it reaches the ordinary gate like any other node, so a
+        // nonexistent source path surfaces as a read error, not `Ok(None)`.
+        let node = PlanNode {
+            node_type: NodeType::Project,
+            number: PROJECT_NUMBER,
+            name: "odm".to_string(),
+            parent_key: None,
+            status: WorkStatus::Active,
             source: Path::new("/nonexistent/project-plan.md").to_path_buf(),
         };
         let fm = Frontmatter::new(
@@ -1162,14 +1237,48 @@ mod tests {
             today(),
             Origin::Planned,
         );
-        let document =
-            Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());
+        let document = Document::new(fm, "# odm\n\nSome plain body.\n".to_string());
 
         let result = reconcile_source(&document, &node, Path::new("/anchor"), today(), false);
         assert!(
-            matches!(result, Ok(None)),
-            "the project is excluded outright, not gated and rejected: {result:?}"
+            matches!(result, Err(MigrateError::SourceRead { .. })),
+            "a sourceless project is no longer excluded outright: {result:?}"
         );
+    }
+
+    #[test]
+    fn reconcile_source_reconciles_a_faithful_1to1_project_like_any_other_node() {
+        // Post-collapse (s15), the project has no `source.synthesis` and
+        // reconciles exactly like an arc/slice — a faithful body is a
+        // content no-op that only backfills `source`.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let body = "# Test Project\n\nThe real, faithful plan content.\n";
+        std::fs::write(tmp.path().join("project-plan.md"), body).unwrap();
+
+        let node = PlanNode {
+            node_type: NodeType::Project,
+            number: PROJECT_NUMBER,
+            name: "odm".to_string(),
+            parent_key: None,
+            status: WorkStatus::Active,
+            source: tmp.path().join("project-plan.md"),
+        };
+        let fm = Frontmatter::new(
+            Id::new(),
+            PROJECT_NUMBER,
+            NodeType::Project,
+            "odm",
+            today(),
+            today(),
+            Origin::Planned,
+        );
+        let document = Document::new(fm, body.to_string());
+
+        let reconciled =
+            reconcile_source(&document, &node, tmp.path(), today(), false).unwrap().unwrap();
+        assert_eq!(reconciled.body(), body, "content no-op — the existing body is kept verbatim");
+        let source = reconciled.frontmatter().source().expect("source backfilled");
+        assert!(source.synthesis.is_none(), "a faithful 1:1 project carries no synthesis key");
     }
 
     #[test]

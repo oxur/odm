@@ -8,7 +8,11 @@
 //! - **dates** were the cutover date, identical for 45 of 46 nodes, so `created`
 //!   said when the *importer ran* rather than when the work began (F-20);
 //! - the project node had **no vision body**, so `odm orient` printed "no vision
-//!   text yet" on odm's own repo (L-3a).
+//!   text yet" on odm's own repo (L-3a) — this third fix was later superseded:
+//!   [`restamp`] originally patched a `# Vision` section directly into the
+//!   project's body, which arc-migration-fidelity s15 (ODD-0025 §2.3 reversal)
+//!   removed as a competing body-mutation path once the project became a
+//!   single, always-1:1 node — the vision is now a rendered view only.
 //!
 //! ## Why a re-stamp and not a re-derivation
 //!
@@ -81,8 +85,6 @@ pub struct Restamped {
     pub name: Option<(String, String)>,
     /// Its `created` before and after, when it changed.
     pub created: Option<(NaiveDate, NaiveDate)>,
-    /// Whether a vision body was written (the project node only).
-    pub vision: bool,
     /// Whether correcting `created` moved the file to another month shard.
     pub moved: bool,
 }
@@ -91,7 +93,7 @@ impl Restamped {
     /// Whether this node changed at all.
     #[must_use]
     pub fn is_change(&self) -> bool {
-        self.name.is_some() || self.created.is_some() || self.vision
+        self.name.is_some() || self.created.is_some()
     }
 }
 
@@ -167,13 +169,20 @@ pub fn vision_from_plan(plan_root: &Path) -> Option<String> {
 
 /// Rewrites every plan node in `store` to match `derived`, in place.
 ///
+/// **Never touches a node's body** (arc-migration-fidelity s15 F-1/F-2,
+/// ODD-0025 §2.3 reversal): this used to also inject a `# Vision` section
+/// into the project's body directly — the project is now always a plain 1:1
+/// migration (or a collapsed one), and a body-patching re-stamp would
+/// silently break that invariant. The vision is a **rendered view**
+/// (`orient`), never a stored body edit; a genuine future synthesis is built
+/// via [`crate::synthesis`], not this re-stamp.
+///
 /// # Errors
 ///
 /// [`MigrateError`] on a store read/write failure.
 pub fn restamp(
     store: &Store,
     derived: &BTreeMap<(NodeType, u32), Derived>,
-    vision: Option<&str>,
     mode: Mode,
 ) -> Result<Vec<Restamped>, MigrateError> {
     let documents = store.load_all().map_err(MigrateError::LoadCorpus)?;
@@ -198,8 +207,7 @@ pub fn restamp(
         };
 
         let old_path = store.path_of(document.frontmatter().id());
-        let mut change =
-            Restamped { number, name: None, created: None, vision: false, moved: false };
+        let mut change = Restamped { number, name: None, created: None, moved: false };
 
         if document.frontmatter().name() != want.name {
             change.name = Some((document.frontmatter().name().to_string(), want.name.clone()));
@@ -213,15 +221,6 @@ pub fn restamp(
         }
         if let Some(updated) = want.updated {
             document.frontmatter_mut().set_updated(updated);
-        }
-        // The project carries the vision (L-3a).
-        if node_type == NodeType::Project
-            && let Some(vision) = vision
-            && !document.body().contains(VISION_HEADING)
-        {
-            let body = with_vision(document.body(), vision);
-            document.set_body(body);
-            change.vision = true;
         }
 
         if !change.is_change() {
@@ -249,37 +248,13 @@ pub fn restamp(
     Ok(changes)
 }
 
-/// The body with a `# Vision` section inserted after the title line.
-fn with_vision(body: &str, vision: &str) -> String {
-    let mut lines = body.lines();
-    let title = lines.next().unwrap_or_default();
-    let rest: Vec<&str> = lines.collect();
-    let mut out = String::new();
-    out.push_str(title);
-    out.push_str("\n\n");
-    out.push_str(VISION_HEADING);
-    out.push_str("\n\n");
-    out.push_str(vision.trim());
-    out.push('\n');
-    let rest = rest.join("\n");
-    if !rest.trim().is_empty() {
-        out.push('\n');
-        out.push_str(rest.trim_start_matches('\n'));
-    }
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
-    out
-}
-
 /// The re-stamp report as a summary line.
 #[must_use]
 pub fn summarize(changes: &[Restamped]) -> String {
     let names = changes.iter().filter(|c| c.name.is_some()).count();
     let dates = changes.iter().filter(|c| c.created.is_some()).count();
     let moved = changes.iter().filter(|c| c.moved).count();
-    let vision = changes.iter().filter(|c| c.vision).count();
-    format!("{names} name(s), {dates} date(s), {moved} relocated, {vision} vision")
+    format!("{names} name(s), {dates} date(s), {moved} relocated")
 }
 
 /// The paths a re-stamp would leave behind, for a caller that needs to clean up.
@@ -293,32 +268,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vision_is_inserted_after_the_title() {
-        let out = with_vision("# odm\n\nSome existing prose.\n", "The vision text.");
-        let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines[0], "# odm", "the title stays first");
-        assert_eq!(lines[2], VISION_HEADING, "the vision heading follows it");
-        assert!(out.contains("The vision text."));
-        assert!(out.contains("Some existing prose."), "existing body survives");
-    }
-
-    #[test]
-    fn test_vision_insertion_handles_a_title_only_body() {
-        let out = with_vision("# odm\n", "V.");
-        assert!(out.starts_with("# odm\n"));
-        assert!(out.contains("# Vision"));
-        assert!(out.trim_end().ends_with("V."));
-    }
-
-    #[test]
     fn test_restamped_reports_whether_anything_changed() {
-        let none = Restamped { number: 1, name: None, created: None, vision: false, moved: false };
+        let none = Restamped { number: 1, name: None, created: None, moved: false };
         assert!(!none.is_change());
         let some = Restamped {
             number: 1,
             name: Some(("a".into(), "b".into())),
             created: None,
-            vision: false,
             moved: false,
         };
         assert!(some.is_change());
@@ -331,7 +287,6 @@ mod tests {
                 number: 1,
                 name: Some(("a".into(), "b".into())),
                 created: None,
-                vision: true,
                 moved: false,
             },
             Restamped {
@@ -341,7 +296,6 @@ mod tests {
                     NaiveDate::from_ymd_opt(2026, 7, 7).unwrap(),
                     NaiveDate::from_ymd_opt(2026, 6, 20).unwrap(),
                 )),
-                vision: false,
                 moved: true,
             },
         ];
@@ -349,6 +303,5 @@ mod tests {
         assert!(s.contains("1 name(s)"), "{s}");
         assert!(s.contains("1 date(s)"), "{s}");
         assert!(s.contains("1 relocated"), "{s}");
-        assert!(s.contains("1 vision"), "{s}");
     }
 }

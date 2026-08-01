@@ -151,10 +151,10 @@ fn reconcile_is_idempotent_and_dry_run_writes_nothing() {
     assert_eq!(second.reconciled_count(), 0, "already reconciled — nothing left to do");
 }
 
-// ----- project excluded (§2.3 — the vision-apply path is separate) --------
+// ----- s15 F-3: the project reconciles like any other plan node ------------
 
 #[test]
-fn reconcile_excludes_the_project_node() {
+fn reconcile_reconciles_a_drifted_project_body() {
     let repo = TempDir::new().unwrap();
     write_plan_set_with_git(repo.path(), "arc01-alpha", "# Arc 01 — Alpha\n\nOriginal.\n");
     let plan_root = repo.path().join("docs/design-v1.0.0");
@@ -162,12 +162,62 @@ fn reconcile_excludes_the_project_node() {
     let store_dir = TempDir::new().unwrap();
     let store = Store::open(store_dir.path());
     self_host(&store, &plan_root, Mode::Commit).expect("self-host");
+    let original_id = project_node(&store).frontmatter().id();
+    write(repo.path(), "docs/design-v1.0.0/project-plan.md", "# Test Project\n\nAmended.\n");
+
+    let report = reconcile(&store, &plan_root, Mode::Commit).expect("reconcile");
+    assert!(
+        report.reconciled.iter().any(|r| r.node_type == NodeType::Project),
+        "the faithful 1:1 project reconciles like any other plan node: {:?}",
+        report.reconciled
+    );
+
+    let project = project_node(&store);
+    assert_eq!(project.frontmatter().id(), original_id, "same node, not re-minted");
+    assert!(project.body().contains("Amended"), "project body re-snapshotted: {}", project.body());
+}
+
+// ----- a `source.synthesis`-bearing project stays excluded (ODD-0025 §2.3) -
+
+#[test]
+fn reconcile_excludes_a_synthesis_bearing_project() {
+    let repo = TempDir::new().unwrap();
+    write_plan_set_with_git(repo.path(), "arc01-alpha", "# Arc 01 — Alpha\n\nOriginal.\n");
+    let plan_root = repo.path().join("docs/design-v1.0.0");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    self_host(&store, &plan_root, Mode::Commit).expect("self-host");
+
+    // Re-cast the project as a synthesis in place (mirrors what the
+    // vision-apply mechanism used to do), then drift the real source.
+    let mut project = project_node(&store);
+    let fm = project.frontmatter_mut();
+    *fm = fm.clone().with_source(odm_core::frontmatter::Source {
+        paths: vec![Path::new("docs/design-v1.0.0/project-plan.md").to_path_buf()],
+        class: "vision".to_string(),
+        normalization: "trim+lf".to_string(),
+        migrated_by: "odm-migrate/test".to_string(),
+        migrated_on: fm.updated(),
+        synthesis: Some("editorial-merge".to_string()),
+        attestation: Some("operator: distills the source".to_string()),
+    });
+    store.persist(&project).unwrap();
     write(repo.path(), "docs/design-v1.0.0/project-plan.md", "# Test Project\n\nAmended.\n");
 
     let report = reconcile(&store, &plan_root, Mode::Commit).expect("reconcile");
     assert!(
         report.reconciled.iter().all(|r| r.node_type != NodeType::Project),
-        "the project node is never reconciled here: {:?}",
+        "a source.synthesis-bearing project is never reconciled: {:?}",
         report.reconciled
     );
+}
+
+fn project_node(store: &Store) -> odm_core::frontmatter::Document {
+    store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Project)
+        .expect("project node")
 }

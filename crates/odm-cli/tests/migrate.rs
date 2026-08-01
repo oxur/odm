@@ -469,11 +469,12 @@ fn migrate_all_composes_every_derivation() {
         all.iter().any(|d| d.frontmatter().node_type() == NodeType::Note),
         "the dev doc was minted as a note"
     );
-    // No `# Vision`/Definition-of-done section in the fixture's
-    // project-plan.md — `--all` must skip the vision step, not error.
+    // `--all` no longer has a vision step at all (arc-migration-fidelity
+    // s15 F-2, ODD-0025 §2.3 reversal) — the project migrates as a plain
+    // 1:1 node, so nothing ever carries `source.synthesis`.
     assert!(
         all.iter().all(|d| d.frontmatter().source().is_none_or(|s| s.synthesis.is_none())),
-        "no synthesis was minted (nothing to distill)"
+        "no synthesis was minted (the vision step no longer exists)"
     );
 }
 
@@ -536,9 +537,7 @@ fn migrate_all_falls_back_to_legacy_config_directories() {
 
 #[test]
 fn migrate_all_conflicts_with_the_other_action_flags() {
-    for flag in
-        ["--plan", "--legacy", "--replan", "--coverage", "--artifacts", "--notes", "--vision"]
-    {
+    for flag in ["--plan", "--legacy", "--replan", "--coverage", "--artifacts", "--notes"] {
         assert!(
             Cli::try_parse_from(["odm", "migrate", "--all", flag]).is_err(),
             "--all conflicts with {flag}"
@@ -788,254 +787,19 @@ fn migrate_coverage_and_artifacts_resolve_docs_root_from_config_not_a_positional
     assert!(out.contains("Coverage report"), "the report renders:\n{out}");
 }
 
-// ----- s13: `migrate --vision` re-casts the project as the vision synthesis -
-
-const VISION_PLAN_BODY: &str = "\
-# Vision CLI Test — Plan
-
-## 1. Definition of done
-
-odm ships when the corpus is faithful and the vision is live.
-
-## 2. Scope
-
-Everything.
-";
-
-fn write_vision_plan_set(root: &Path) {
-    std::fs::write(root.join(".git"), "gitdir: fake\n").unwrap();
-    std::fs::write(root.join("project-plan.md"), VISION_PLAN_BODY).unwrap();
-}
-
-#[test]
-fn migrate_vision_recasts_the_project_as_the_synthesis() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-
-    let (ok, _out, err) = run(store_dir.path(), &["migrate"]);
-    assert!(ok, "self-host dispatches cleanly:\n{err}");
-
-    let (ok, out, err) = run(store_dir.path(), &["migrate", "--vision"]);
-    assert!(ok, "migrate --vision dispatches cleanly:\n{err}");
-    assert!(err.contains("project re-cast"), "status names what happened:\n{err}");
-    assert!(out.contains("vision synthesis"), "the report names the re-cast:\n{out}");
-
-    let store = Store::open(store_dir.path());
-    let all = store.load_all().unwrap();
-    let plan_1to1 = all
-        .iter()
-        .find(|d| d.frontmatter().number() == 1001)
-        .expect("the 1:1 project-plan node was minted");
-    assert_eq!(plan_1to1.body(), VISION_PLAN_BODY, "faithful 1:1 body");
-    assert!(
-        plan_1to1.frontmatter().source().unwrap().synthesis.is_none(),
-        "not itself a synthesis"
-    );
-
-    let project = all
-        .iter()
-        .find(|d| d.frontmatter().node_type() == NodeType::Project)
-        .expect("project node present");
-    let source = project.frontmatter().source().expect("source present");
-    assert_eq!(source.synthesis.as_deref(), Some("editorial-merge"));
-    assert!(source.attestation.is_some());
-    assert_eq!(project.frontmatter().edges().supersedes.len(), 1);
-    assert_eq!(project.frontmatter().edges().supersedes[0].node, plan_1to1.frontmatter().id());
-    assert!(project.body().contains("faithful and the vision is live"));
-    assert!(
-        project.body().starts_with("# Vision\n"),
-        "carries the literal heading check/orient's L-3a lookup requires: {:?}",
-        project.body()
-    );
-}
-
-#[test]
-fn migrate_vision_recast_body_satisfies_the_no_vision_check() {
-    // The re-cast body must not just contain the distilled text (asserted
-    // above) but must do so under a literal `# Vision` heading — otherwise
-    // `odm check`'s `no-vision` warning fires on the very node built to
-    // carry the vision (a real regression this test guards against).
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-    run(store_dir.path(), &["migrate", "--vision"]);
-
-    let (_code, out) = run_code(store_dir.path(), &["check"]);
-    assert!(
-        !out.contains("no-vision"),
-        "no-vision warning must not fire on the re-cast project:\n{out}"
-    );
-}
-
-#[test]
-fn migrate_vision_dry_run_writes_nothing() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-
-    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--vision", "--dry-run"]);
-    assert!(ok, "dispatches cleanly:\n{err}");
-    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
-
-    let store = Store::open(store_dir.path());
-    let all = store.load_all().unwrap();
-    assert!(all.iter().all(|d| d.frontmatter().number() != 1001), "no 1:1 node minted");
-    let project = all.iter().find(|d| d.frontmatter().node_type() == NodeType::Project).unwrap();
-    assert!(
-        project.frontmatter().source().unwrap().synthesis.is_none(),
-        "the project is not yet re-cast"
-    );
-}
-
-#[test]
-fn migrate_vision_is_idempotent() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-    run(store_dir.path(), &["migrate", "--vision"]);
-
-    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--vision"]);
-    assert!(ok);
-    assert!(err.contains("nothing to do"), "a second run is a no-op:\n{err}");
-
-    let store = Store::open(store_dir.path());
-    let plan_1to1_count =
-        store.load_all().unwrap().into_iter().filter(|d| d.frontmatter().number() == 1001).count();
-    assert_eq!(plan_1to1_count, 1, "the second run did not mint a duplicate 1:1 node");
-}
-
-#[test]
-fn migrate_vision_refreshes_a_synthesis_body_that_drifted_from_the_derivation() {
-    // Simulates exactly what happened on the live `.worktrees/odm` corpus: a
-    // synthesis minted before the `# Vision` heading fix landed, whose body
-    // no longer matches what `vision_body` derives today. A re-run must
-    // notice and repair it in place, not treat "already a synthesis" as
-    // license to ignore drift forever.
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-    run(store_dir.path(), &["migrate", "--vision"]);
-
-    let store = Store::open(store_dir.path());
-    let project = store
-        .load_all()
-        .unwrap()
-        .into_iter()
-        .find(|d| d.frontmatter().node_type() == NodeType::Project)
-        .unwrap();
-    let stale_body = project.body().trim_start_matches("# Vision\n\n").to_string();
-    let original_id = project.frontmatter().id();
-    let original_supersedes = project.frontmatter().edges().supersedes.clone();
-    store.persist(&Document::new(project.frontmatter().clone(), stale_body)).unwrap();
-
-    let (ok, out, err) = run(store_dir.path(), &["migrate", "--vision"]);
-    assert!(ok, "dispatches cleanly:\n{err}");
-    assert!(err.contains("refreshed"), "status names the refresh, not a no-op:\n{err}");
-    assert!(out.contains("refreshed"), "the report names it too:\n{out}");
-
-    let refreshed = store
-        .load_all()
-        .unwrap()
-        .into_iter()
-        .find(|d| d.frontmatter().node_type() == NodeType::Project)
-        .unwrap();
-    assert!(
-        refreshed.body().starts_with("# Vision\n"),
-        "the heading is restored: {:?}",
-        refreshed.body()
-    );
-    assert_eq!(refreshed.frontmatter().id(), original_id, "identity preserved");
-    assert_eq!(
-        refreshed.frontmatter().edges().supersedes,
-        original_supersedes,
-        "lineage preserved"
-    );
-
-    // Idempotent from here: a third run over the now-correct body is a no-op.
-    let (_ok, _out, err) = run(store_dir.path(), &["migrate", "--vision"]);
-    assert!(err.contains("nothing to do"), "settles once the body matches: {err}");
-}
-
-#[test]
-fn migrate_vision_errors_when_no_project_node_exists() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-
-    let cli = Cli::try_parse_from(["odm", "migrate", "--vision"]).unwrap();
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    let result = odm_cli::dispatch(cli, store_dir.path(), &mut out, &mut err);
-    let message =
-        result.expect_err("no project node exists yet — --vision must refuse").to_string();
-    assert!(message.contains("no project node found"), "names the real problem:\n{message}");
-}
-
-#[test]
-fn migrate_vision_preserves_the_projects_tags_and_component() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-
-    let store = Store::open(store_dir.path());
-    let project = store
-        .load_all()
-        .unwrap()
-        .into_iter()
-        .find(|d| d.frontmatter().node_type() == NodeType::Project)
-        .expect("self-host minted the project");
-    let tagged_fm = project
-        .frontmatter()
-        .clone()
-        .with_tags(vec!["v1.0.0".to_string()])
-        .with_component("odm".to_string());
-    store.persist(&Document::new(tagged_fm, project.body().to_string())).unwrap();
-
-    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--vision"]);
-    assert!(ok, "migrate --vision dispatches cleanly:\n{err}");
-
-    let all = store.load_all().unwrap();
-    let plan_1to1 = all
-        .iter()
-        .find(|d| d.frontmatter().number() == 1001)
-        .expect("the 1:1 project-plan node was minted");
-    assert_eq!(plan_1to1.frontmatter().tags(), ["v1.0.0"], "tags carried onto the 1:1 node");
-    assert_eq!(
-        plan_1to1.frontmatter().component(),
-        Some("odm"),
-        "component carried onto the 1:1 node"
-    );
-}
-
 // ----- s14: --replan, and the two other config-driven error paths ----------
 
 #[test]
 fn migrate_replan_resolves_plan_roots_from_config() {
     let store_dir = TempDir::new().unwrap();
     let plan_root = TempDir::new().unwrap();
-    write_vision_plan_set(plan_root.path());
+    std::fs::write(plan_root.path().join(".git"), "gitdir: fake\n").unwrap();
+    std::fs::write(plan_root.path().join("project-plan.md"), "# Replan CLI Test\n").unwrap();
     set_docs_directory(store_dir.path(), plan_root.path());
     run(store_dir.path(), &["migrate"]);
 
     // Amend the plan's own name — --replan should pick it up in place.
-    std::fs::write(
-        plan_root.path().join("project-plan.md"),
-        VISION_PLAN_BODY.replace("Vision CLI Test", "Renamed CLI Test"),
-    )
-    .unwrap();
+    std::fs::write(plan_root.path().join("project-plan.md"), "# Renamed CLI Test\n").unwrap();
 
     let (ok, out, err) = run(store_dir.path(), &["migrate", "--replan"]);
     assert!(ok, "dispatches cleanly:\n{err}");
@@ -1055,26 +819,6 @@ fn migrate_notes_errors_when_dev_directory_is_not_configured() {
     let result = odm_cli::dispatch(cli, store_dir.path(), &mut out, &mut err);
     let message = result.expect_err("no dev_directory configured").to_string();
     assert!(message.contains("dev_directory"), "names the missing key:\n{message}");
-}
-
-#[test]
-fn migrate_vision_errors_when_no_plan_root_has_a_vision_section() {
-    let store_dir = TempDir::new().unwrap();
-    let plan_root = TempDir::new().unwrap();
-    std::fs::write(plan_root.path().join(".git"), "gitdir: fake\n").unwrap();
-    std::fs::write(plan_root.path().join("project-plan.md"), "# No DoD Here\n").unwrap();
-    set_docs_directory(store_dir.path(), plan_root.path());
-    run(store_dir.path(), &["migrate"]);
-
-    let cli = Cli::try_parse_from(["odm", "migrate", "--vision"]).unwrap();
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    let result = odm_cli::dispatch(cli, store_dir.path(), &mut out, &mut err);
-    let message = result.expect_err("no plan root has a Definition-of-done section").to_string();
-    assert!(
-        message.contains("Definition-of-done"),
-        "names the real problem, not just 'no project':\n{message}"
-    );
 }
 
 // ----- N-2: `odm check` is green on the migrated real ODD corpus -------------

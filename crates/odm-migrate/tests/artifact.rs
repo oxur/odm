@@ -217,6 +217,89 @@ fn artifact_mint_dry_run_writes_nothing() {
     assert_eq!(store.load_all().unwrap().len(), before, "dry-run wrote nothing");
 }
 
+// ----- s15 F-4: a drifted, already-minted artifact re-snapshots in place ---
+
+#[test]
+fn artifact_mint_reconciles_a_drifted_already_minted_artifact() {
+    let docs = TempDir::new().unwrap();
+    copy_tree(&plan_set(), docs.path());
+    write(docs.path(), "arc01-alpha/slice01-aa/ledger.md", "# Ledger\n\nOriginal rows.\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    self_host(&store, docs.path(), Mode::Commit).expect("self-host");
+    let first = mint_artifacts(&store, docs.path(), Mode::Commit).expect("first mint");
+    assert!(first.minted_count() > 0);
+    let path = "arc01-alpha/slice01-aa/ledger.md";
+    let original = &artifacts_by_path(&store)[path];
+    let original_id = original.frontmatter().id();
+    let original_part_of = original.frontmatter().edges().part_of;
+
+    write(docs.path(), "arc01-alpha/slice01-aa/ledger.md", "# Ledger\n\nAmended rows.\n");
+    let second = mint_artifacts(&store, docs.path(), Mode::Commit).expect("second mint");
+    assert_eq!(second.minted_count(), 0, "already covered — not re-minted");
+    assert!(second.reconciled_count() >= 1, "the drifted artifact is reconciled, not skipped");
+
+    let by_path = artifacts_by_path(&store);
+    let artifact = &by_path[path];
+    assert_eq!(artifact.frontmatter().id(), original_id, "identity preserved");
+    assert_eq!(artifact.frontmatter().edges().part_of, original_part_of, "containment preserved");
+    assert_eq!(artifact.body(), "# Ledger\n\nAmended rows.\n");
+
+    // Un-drifted + re-run: a no-op.
+    let third = mint_artifacts(&store, docs.path(), Mode::Commit).expect("third mint");
+    assert_eq!(third.minted_count(), 0);
+    assert_eq!(third.reconciled_count(), 0, "already faithful — idempotent no-op");
+}
+
+#[test]
+fn artifact_mint_reconcile_dry_run_writes_nothing() {
+    let docs = TempDir::new().unwrap();
+    copy_tree(&plan_set(), docs.path());
+    write(docs.path(), "arc01-alpha/slice01-aa/ledger.md", "# Ledger\n\nOriginal rows.\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    self_host(&store, docs.path(), Mode::Commit).expect("self-host");
+    mint_artifacts(&store, docs.path(), Mode::Commit).expect("first mint");
+
+    write(docs.path(), "arc01-alpha/slice01-aa/ledger.md", "# Ledger\n\nAmended rows.\n");
+    let path = "arc01-alpha/slice01-aa/ledger.md";
+    let before = artifacts_by_path(&store)[path].body().to_string();
+
+    let dry = mint_artifacts(&store, docs.path(), Mode::DryRun).expect("dry-run mint");
+    assert!(dry.reconciled_count() >= 1, "the plan still lists what would be reconciled");
+
+    let after = artifacts_by_path(&store)[path].body().to_string();
+    assert_eq!(before, after, "dry-run wrote nothing");
+}
+
+// ----- s15 F-5: index.md / templates/ are never minted, regardless of root --
+
+#[test]
+fn artifact_mint_never_mints_index_or_template_files() {
+    let docs = TempDir::new().unwrap();
+    copy_tree(&plan_set(), docs.path());
+    // Both classify `Other` (artifact-family) since they sit outside
+    // `docs/design/`/`docs/dev/` — without the guard both would be minted.
+    write(docs.path(), "index.md", "# Index\n");
+    write(docs.path(), "arc01-alpha/index.md", "# Arc index\n");
+    write(docs.path(), "templates/x.md", "# Template\n");
+    write(docs.path(), "arc01-alpha/templates/y.md", "# Nested template\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    self_host(&store, docs.path(), Mode::Commit).expect("self-host");
+    mint_artifacts(&store, docs.path(), Mode::Commit).expect("mint");
+
+    let by_path = artifacts_by_path(&store);
+    for excluded in
+        ["index.md", "arc01-alpha/index.md", "templates/x.md", "arc01-alpha/templates/y.md"]
+    {
+        assert!(!by_path.contains_key(excluded), "{excluded} must never be minted");
+    }
+}
+
 // ----- F-6: body is verbatim 1:1, under the hard body-hash gate -------------
 
 #[test]

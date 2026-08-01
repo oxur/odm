@@ -606,8 +606,8 @@ enum Command {
         /// Treat the design/research corpus as the only derivation to run.
         #[arg(long)]
         legacy: bool,
-        /// Re-derive the **existing** plan nodes in place: normalized names,
-        /// git-derived dates, and the project's vision body.
+        /// Re-derive the **existing** plan nodes in place: normalized names
+        /// and git-derived dates.
         ///
         /// Ordinary import skips nodes that already exist, so this is how a
         /// derivation fix reaches a corpus already minted. Ids, numbers, gates
@@ -634,23 +634,17 @@ enum Command {
         /// slice10, operator decision).
         #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts"])]
         notes: bool,
-        /// Re-cast the project node as an editorial-merge synthesis
-        /// superseding a newly-established 1:1 `project-plan` node
-        /// (arc-migration-fidelity slice12/slice13, ODD-0025 §2.3). A
-        /// one-time mint: idempotent no-op if the project is already a
-        /// synthesis.
-        #[arg(long, conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"])]
-        vision: bool,
         /// Compose every derivation into one idempotent, dry-run-able pass:
-        /// self-host every plan-set directory found under `docs_directory`,
-        /// reconcile design/research over `docs_directory` + `"design"`,
-        /// mint-all `--artifacts` + `--notes`, check/refresh the vision
-        /// synthesis, and sweep `[ADDITIONAL_PATHS]` — closing the gap where
-        /// a forgotten `--artifacts` re-run lets newly-authored docs sit
-        /// uncovered (arc-migration-fidelity slice13/slice14).
+        /// self-host every plan-set directory found under `docs_directory`
+        /// (project included — arc-migration-fidelity slice15 F-3: it
+        /// reconciles like any other plan node), reconcile design/research
+        /// over `docs_directory` + `"design"`, mint-or-reconcile the artifact
+        /// and note corpora, and sweep `[ADDITIONAL_PATHS]` — closing the gap
+        /// where a forgotten `--artifacts` re-run lets newly-authored docs
+        /// sit uncovered (arc-migration-fidelity slice13/slice14).
         #[arg(
             long,
-            conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes", "vision"]
+            conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"]
         )]
         all: bool,
     },
@@ -833,7 +827,6 @@ pub fn dispatch(
             coverage,
             artifacts,
             notes,
-            vision,
             all,
         } => {
             let forced = if plan {
@@ -858,16 +851,7 @@ pub fn dispatch(
                 &store,
                 root,
                 &additional_paths,
-                migrate::Options {
-                    forced,
-                    replan,
-                    dry_run,
-                    coverage,
-                    artifacts,
-                    notes,
-                    vision,
-                    all,
-                },
+                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes, all },
                 out,
                 err,
             )?;

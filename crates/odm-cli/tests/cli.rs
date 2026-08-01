@@ -1767,6 +1767,31 @@ fn l3b_a_superseded_project_is_exempt_from_the_vision_rule() {
 }
 
 #[test]
+fn l3b_a_retired_project_is_exempt_from_the_vision_rule() {
+    // arc-migration-fidelity s15 F-1: the collapse retires the 1:1 base it
+    // supersede-doesn't-delete — no supersedes *edge* points at it any more
+    // (the surviving node drops its own `supersedes` on collapse), so only
+    // `retired()` marks it as a historical record, not live work.
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let today = NaiveDate::from_ymd_opt(2026, 8, 1).unwrap();
+
+    let mut retired_base =
+        Frontmatter::new(Id::new(), 1001, NodeType::Project, "Plan", today, today, Origin::Planned);
+    retired_base.retire("collapsed into the faithful 1:1 project node", today);
+    store
+        .persist(&Document::new(retired_base, "## 1. Definition of done\n\nText.\n".to_string()))
+        .unwrap();
+
+    let r = run(store_dir.path(), &["validate"]);
+    assert!(
+        !r.out.contains("no-vision"),
+        "a retired project is a historical record, exempt from the vision rule: {}",
+        r.out
+    );
+}
+
+#[test]
 fn c6_rules_are_static_so_check_inherits_them() {
     // The taxonomy claim: all three are `validate` rules, and `check` runs
     // `validate` first — so they must appear identically under both verbs.

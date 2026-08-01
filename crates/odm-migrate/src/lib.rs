@@ -51,6 +51,7 @@
 //! interim mapping (revisitable if a real deferred ODD appears).
 
 pub mod artifact;
+pub mod collapse;
 pub mod coverage;
 pub mod fidelity;
 pub mod legacy;

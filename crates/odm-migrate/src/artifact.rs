@@ -10,7 +10,7 @@
 //! plan-set's arc/slice-directory walk `discover()` performs, and mints a
 //! different node family with no `part_of` requirement.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use odm_core::frontmatter::{Document, Frontmatter};
@@ -85,11 +85,30 @@ pub struct MintedArtifact {
     pub contained_by: Option<Id>,
 }
 
-/// The outcome of an artifact mint-all run.
+/// One already-covered artifact whose body had drifted from its current
+/// source and was re-snapshotted in place (arc-migration-fidelity s15 F-4) —
+/// `id`/`number`/`part_of` preserved, only `body`/`source`/`updated` change.
+#[derive(Debug, Clone)]
+pub struct ReconciledArtifact {
+    /// The path, relative to `docs_root`.
+    pub path: PathBuf,
+    /// The node's identity (unchanged — a reconcile never re-mints).
+    pub id: Id,
+    /// The node's `number` handle (unchanged).
+    pub number: u32,
+    /// The node's name.
+    pub name: String,
+}
+
+/// The outcome of an artifact mint-or-reconcile run.
 #[derive(Debug, Clone)]
 pub struct ArtifactReport {
     /// Artifacts minted (or, under `--dry-run`, that would be minted).
     pub minted: Vec<MintedArtifact>,
+    /// Already-covered artifacts re-snapshotted because their body had
+    /// drifted from their current source (or, under `--dry-run`, that would
+    /// be) — s15 F-4.
+    pub reconciled: Vec<ReconciledArtifact>,
     /// Whether this was a dry run (nothing written).
     pub dry_run: bool,
 }
@@ -99,6 +118,12 @@ impl ArtifactReport {
     #[must_use]
     pub fn minted_count(&self) -> usize {
         self.minted.len()
+    }
+
+    /// The number of artifacts reconciled (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn reconciled_count(&self) -> usize {
+        self.reconciled.len()
     }
 }
 
@@ -158,10 +183,17 @@ fn nearest_scale(doc_relative: &str, index: &HashMap<String, Id>) -> Option<Id> 
 /// idempotent (re-running mints nothing new, since a minted doc becomes
 /// `source.paths`-covered), 1:1 verbatim body under the §2.1 hard body-hash
 /// gate, `part_of` its nearest **modeled** scale (slice, else arc, else left
-/// top-level — §2.7's optional containment).
+/// top-level — §2.7's optional containment). An already-covered doc whose
+/// body has since drifted from its current source is **re-snapshotted in
+/// place** instead of silently skipped — mint-or-reconcile, arc-migration-
+/// fidelity s15 F-4 (closes the `#509907700` gap: `mint_artifacts` used to
+/// only ever mint *uncovered* docs, so a drifted-but-already-minted artifact
+/// had no path back to fidelity).
 ///
-/// Reads a file, mints a node: no transformation, no synthesized heading
-/// (mirrors [`crate::selfhost::self_host`]'s own body-import discipline).
+/// Reads a file, mints or reconciles a node: no transformation, no
+/// synthesized heading (mirrors [`crate::selfhost::self_host`]'s own
+/// body-import discipline). A retired artifact is a historical record and is
+/// never reconciled, mirroring the work-tree family's principle.
 ///
 /// # Errors
 ///
@@ -177,25 +209,76 @@ pub fn mint_artifacts(
     let anchor = crate::fidelity::anchor_for(docs_root);
 
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
-    let already_covered: HashSet<String> = corpus
-        .iter()
-        .filter_map(|d| d.frontmatter().source())
-        .flat_map(|s| s.paths.iter().map(|p| crate::fidelity::relativize(&anchor, p)))
-        .collect();
+    let mut covered: HashMap<String, Document> = HashMap::new();
+    for document in &corpus {
+        let Some(source) = document.frontmatter().source() else { continue };
+        for path in &source.paths {
+            covered.insert(crate::fidelity::relativize(&anchor, path), document.clone());
+        }
+    }
     let scale_index = scale_index(&corpus, &anchor);
 
     let today = chrono::Utc::now().date_naive();
     let mut taken: BTreeSet<u32> = BTreeSet::new();
     let mut minted = Vec::new();
+    let mut reconciled = Vec::new();
 
     for doc in coverage::enumerate_docs(docs_root) {
         if !is_artifact_class(doc.class) {
             continue;
         }
+        // `enumerate_docs` is deliberately unfiltered (coverage wants every
+        // `.md` counted) — an `index.md` or a `templates/`-component path
+        // that isn't under `docs/design/` or `docs/dev/` classifies as
+        // `DocClass::Other` (artifact-family) rather than `Odd`/`Dev`, so it
+        // would otherwise be minted; [`legacy::is_excluded`] is the same
+        // never-a-node guard the coverage report and `mint_notes` already
+        // apply (arc-migration-fidelity s15 F-5).
+        if crate::legacy::is_excluded(&doc.path) {
+            continue;
+        }
         let absolute = docs_root.join(&doc.path);
         let relative = crate::fidelity::relativize(&anchor, &absolute);
-        if already_covered.contains(&relative) {
-            continue; // already minted (or otherwise covered) — idempotent
+
+        if let Some(existing) = covered.get(&relative) {
+            if existing.frontmatter().retired().is_some() {
+                continue; // a historical record — never reconciled
+            }
+            let body = std::fs::read_to_string(&absolute)
+                .map_err(|source| MigrateError::SourceRead { path: absolute.clone(), source })?;
+            if existing.body() == body {
+                continue; // already faithful — no-op (idempotent)
+            }
+
+            let fm = existing.frontmatter();
+            let (_, updated) = crate::fidelity::git_derived_dates(&anchor, &absolute, today);
+            let mut new_fm = fm.clone();
+            new_fm.set_updated(updated);
+            new_fm.stamp_schema();
+            let new_fm = new_fm.with_source(crate::fidelity::build_source(
+                vec![PathBuf::from(&relative)],
+                doc.class.as_str(),
+                today,
+            ));
+            let new_document = Document::new(new_fm, body.clone());
+            crate::fidelity::verify_body_hash(
+                &body,
+                new_document.body(),
+                format!("artifact {relative} reconcile"),
+            )?;
+
+            reconciled.push(ReconciledArtifact {
+                path: doc.path.clone(),
+                id: fm.id(),
+                number: fm.number(),
+                name: fm.name().to_string(),
+            });
+            if !mode.is_dry_run() {
+                store
+                    .persist(&new_document)
+                    .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+            }
+            continue;
         }
 
         let body = std::fs::read_to_string(&absolute)
@@ -240,7 +323,8 @@ pub fn mint_artifacts(
     }
 
     minted.sort_by_key(|m| m.path.clone());
-    Ok(ArtifactReport { minted, dry_run: mode.is_dry_run() })
+    reconciled.sort_by_key(|r| r.path.clone());
+    Ok(ArtifactReport { minted, reconciled, dry_run: mode.is_dry_run() })
 }
 
 #[cfg(test)]

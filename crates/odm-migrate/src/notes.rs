@@ -20,7 +20,7 @@
 //! under the dev root gets no tag. This preserves the one piece of
 //! structural metadata a flat mint would otherwise discard.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use odm_core::frontmatter::{Document, Frontmatter};
@@ -71,11 +71,31 @@ pub struct MintedNote {
     pub tag: Option<String>,
 }
 
-/// The outcome of a note mint-all run.
+/// One already-covered note whose body had drifted from its current source
+/// and was re-snapshotted in place (arc-migration-fidelity s15 F-4) —
+/// `id`/`number` preserved (a note is deliberately uncontained, so there is
+/// no `part_of` to preserve), only `body`/`source`/`updated` change.
+#[derive(Debug, Clone)]
+pub struct ReconciledNote {
+    /// The path, relative to `dev_root`.
+    pub path: PathBuf,
+    /// The node's identity (unchanged — a reconcile never re-mints).
+    pub id: Id,
+    /// The node's `number` handle (unchanged).
+    pub number: u32,
+    /// The node's name.
+    pub name: String,
+}
+
+/// The outcome of a note mint-or-reconcile run.
 #[derive(Debug, Clone)]
 pub struct NoteReport {
     /// Notes minted (or, under `--dry-run`, that would be minted).
     pub minted: Vec<MintedNote>,
+    /// Already-covered notes re-snapshotted because their body had drifted
+    /// from their current source (or, under `--dry-run`, that would be) —
+    /// s15 F-4.
+    pub reconciled: Vec<ReconciledNote>,
     /// Whether this was a dry run (nothing written).
     pub dry_run: bool,
 }
@@ -85,6 +105,12 @@ impl NoteReport {
     #[must_use]
     pub fn minted_count(&self) -> usize {
         self.minted.len()
+    }
+
+    /// The number of notes reconciled (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn reconciled_count(&self) -> usize {
+        self.reconciled.len()
     }
 }
 
@@ -118,9 +144,15 @@ fn enumerate_dev_docs(dev_root: &Path) -> Vec<(PathBuf, Option<String>)> {
 /// by an existing node's `source.paths` — mint-all (mirrors
 /// [`crate::artifact::mint_artifacts`]'s policy), idempotent, 1:1 verbatim
 /// body under the hard body-hash gate, deliberately **uncontained**
-/// (`part_of` is never set — see the module doc for why).
+/// (`part_of` is never set — see the module doc for why). An already-covered
+/// doc whose body has since drifted from its current source is
+/// **re-snapshotted in place** instead of silently skipped — mint-or-
+/// reconcile, arc-migration-fidelity s15 F-4, mirroring
+/// [`crate::artifact::mint_artifacts`]'s identical extension.
 ///
-/// Reads a file, mints a node: no transformation, no synthesized heading.
+/// Reads a file, mints or reconciles a node: no transformation, no
+/// synthesized heading. A retired note is a historical record and is never
+/// reconciled.
 ///
 /// # Errors
 ///
@@ -132,21 +164,62 @@ pub fn mint_notes(store: &Store, dev_root: &Path, mode: Mode) -> Result<NoteRepo
     let anchor = crate::fidelity::anchor_for(dev_root);
 
     let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
-    let already_covered: HashSet<String> = corpus
-        .iter()
-        .filter_map(|d| d.frontmatter().source())
-        .flat_map(|s| s.paths.iter().map(|p| crate::fidelity::relativize(&anchor, p)))
-        .collect();
+    let mut covered: HashMap<String, Document> = HashMap::new();
+    for document in &corpus {
+        let Some(source) = document.frontmatter().source() else { continue };
+        for path in &source.paths {
+            covered.insert(crate::fidelity::relativize(&anchor, path), document.clone());
+        }
+    }
 
     let today = chrono::Utc::now().date_naive();
     let mut taken: BTreeSet<u32> = BTreeSet::new();
     let mut minted = Vec::new();
+    let mut reconciled = Vec::new();
 
     for (relative_to_root, tag) in enumerate_dev_docs(dev_root) {
         let absolute = dev_root.join(&relative_to_root);
         let relative = crate::fidelity::relativize(&anchor, &absolute);
-        if already_covered.contains(&relative) {
-            continue; // already minted (or otherwise covered) — idempotent
+
+        if let Some(existing) = covered.get(&relative) {
+            if existing.frontmatter().retired().is_some() {
+                continue; // a historical record — never reconciled
+            }
+            let body = std::fs::read_to_string(&absolute)
+                .map_err(|source| MigrateError::SourceRead { path: absolute.clone(), source })?;
+            if existing.body() == body {
+                continue; // already faithful — no-op (idempotent)
+            }
+
+            let fm = existing.frontmatter();
+            let (_, updated) = crate::fidelity::git_derived_dates(&anchor, &absolute, today);
+            let mut new_fm = fm.clone();
+            new_fm.set_updated(updated);
+            new_fm.stamp_schema();
+            let new_fm = new_fm.with_source(crate::fidelity::build_source(
+                vec![PathBuf::from(&relative)],
+                "dev-doc",
+                today,
+            ));
+            let new_document = Document::new(new_fm, body.clone());
+            crate::fidelity::verify_body_hash(
+                &body,
+                new_document.body(),
+                format!("note {relative} reconcile"),
+            )?;
+
+            reconciled.push(ReconciledNote {
+                path: relative_to_root.clone(),
+                id: fm.id(),
+                number: fm.number(),
+                name: fm.name().to_string(),
+            });
+            if !mode.is_dry_run() {
+                store
+                    .persist(&new_document)
+                    .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+            }
+            continue;
         }
 
         let body = std::fs::read_to_string(&absolute)
@@ -192,7 +265,8 @@ pub fn mint_notes(store: &Store, dev_root: &Path, mode: Mode) -> Result<NoteRepo
     }
 
     minted.sort_by_key(|m| m.path.clone());
-    Ok(NoteReport { minted, dry_run: mode.is_dry_run() })
+    reconciled.sort_by_key(|r| r.path.clone());
+    Ok(NoteReport { minted, reconciled, dry_run: mode.is_dry_run() })
 }
 
 #[cfg(test)]
