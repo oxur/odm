@@ -8,8 +8,10 @@
 > slice** — `.worktrees/odm` carries one pre-existing, uncommitted, pre-session change
 > (`config.toml`, mtime before this session started — see Verification) left exactly as found; nothing
 > under it was read, written, or committed by this session. **Evidence class:** fixture-attested
-> (LEDGER-DISCIPLINE v2.0 §B class-(a)) throughout. **Changes are uncommitted** on `release/1.0.x`,
-> left for operator/CDC review before commit.
+> (LEDGER-DISCIPLINE v2.0 §B class-(a)) throughout. **Committed** as `1c779ec` on `release/1.0.x`;
+> **CDC-verified PASS** the same day (`cdc-verification.md`) with one elevated finding (CDC-F15-1, a
+> freeze precondition, not a code defect — see Iteration 1 below). Iteration 1 (the `--all` wiring) is
+> a follow-up commit on top of `1c779ec`, appended to this report rather than a new file.
 
 ## What shipped
 
@@ -234,3 +236,97 @@ collapsed project along with the two previously-orphaned drifts the 2026-07-31 d
 now reachable via F-4's artifact mint-or-reconcile); (c) leave the other 2 of 4 drifts closed as the
 dry-run already showed. **This slice blocks that freeze**, per its own framing — s15 is done; the
 arc-close resumes: the freeze, then the P-12 self-host demo, then Migration Fidelity closes.
+
+---
+
+## Iteration 1 (2026-08-01) — wire the collapse into `migrate --all`
+
+> **Assignment:** `cc-prompt-iteration-1.md`. **Start condition:** s15 (`1c779ec`) merged,
+> CDC-verified PASS. **Narrow, thin-wiring iteration** — `collapse_project_vision`'s own logic is
+> untouched; this is purely a missing-caller fix. Branch: `release/1.0.x` only. No `odm`-branch commit.
+
+### The finding
+
+The arc-close freeze dry-run (`migrate --all --dry-run`, both step-0 fixes applied) was clean on
+everything **except the collapse — which never fired.** `collapse_project_vision` (s15 F-1) had **no
+CLI caller**: it was invoked only from its own unit tests (`collapse.rs`) — nothing in
+`crates/odm-cli/src/migrate.rs` ever called it. So `migrate --all` reconciled design/research, minted
+artifacts/notes, self-hosted the plan set — but never collapsed the synthesis-shaped project.
+`#1000` would have stayed a synthesis; `#1001` would have stayed a drifted, unreconciled base.
+**s15's headline change could not fire through the one command the freeze runbook actually runs.**
+This is a real gap in s15 as delivered — the capability was complete and correctly verified in
+isolation, but disconnected from its only real caller.
+
+### The fix
+
+Thin wiring, exactly as scoped — no change to `collapse_project_vision`'s decisions:
+
+1. **`all()` calls the collapse.** For each plan root `discover_plan_roots` finds that has its own
+   `project-plan.md` (the same guard the pre-s15 `--vision` step used, for the identical reason: a
+   plan root with no `project-plan.md` of its own — the D-2 escape-hatch shape — must never be handed
+   to a function that unconditionally reads that file once it finds a matching synthesis node
+   anywhere in the store; this is the same class of bug F-3's `reconcile()` guard fixed in the base
+   slice). Runs **before** `self_host_inner` for that root.
+2. **Ordering confirmed correct, not changed.** `self_host_inner` internally runs `repair` → `reconcile`
+   → `self_host`. Because the collapse runs first, by the time `reconcile()` (F-3's rekeyed-exclusion
+   pass) looks at the project, it's already a plain 1:1 node — no `source.synthesis` — so it reconciles
+   like any other plan node, composing in the same pass. The collapse itself already re-snapshots the
+   body from `project-plan.md`, so this in-pass reconcile is a content no-op in practice (there is no
+   window for the source to drift again within one process run) — it's the *uniform treatment*, not a
+   second write, that matters here.
+3. **A dry-run preview.** `Collapsed` gained `project_name`/`retired_name` (populated from values the
+   function already computes, no new decisions) so a new `render_collapse` — mirroring
+   `render_self_host`/`render_reconcile`'s established table shape — can render a correct
+   `COLLAPSE`/`COLLAPSE (DRY RUN)` preview even under `--dry-run`, when nothing is persisted yet to load
+   the name back from. Silent when there's nothing to collapse (the ordinary case after the first run).
+4. **Status line updated**: `"N plan root(s) collapse-checked + self-hosted, …"`.
+
+### Re-run evidence
+
+`crates/odm-cli/tests/migrate.rs`:
+
+- `migrate_all_collapses_a_vision_pair_and_then_reconciles_it_in_the_same_pass` — seeds the
+  `#1000`/`#1001` shape directly (mirroring what `apply_project_vision` used to mint) plus one arc
+  directory. First `migrate --all`: asserts the `COLLAPSE` table renders, the surviving project is
+  re-cast to the faithful 1:1 body (`source.synthesis` dropped, `supersedes` cleared), the base is
+  retired, and the arc self-hosts in the same pass. Edits `project-plan.md`, runs `--all` again:
+  asserts the collapsed project reconciles (no `COLLAPSE` table this time — already collapsed) —
+  **the two s15 behaviors composing in one `--all` run**, exactly what this iteration exists to prove.
+  Re-runs with nothing changed: asserts a 0-change no-op (node count stable).
+- `migrate_all_collapse_dry_run_writes_nothing` — seeds the pair fresh, runs `--all --dry-run`, asserts
+  the `COLLAPSE (DRY RUN)` preview renders and every existing node's body/`retired`/`synthesis` state is
+  byte-for-byte unchanged after.
+
+| Check | Result |
+|-------|--------|
+| `cargo test -p odm-cli --test migrate` | 31/31 (29 pre-existing + 2 new) |
+| `cargo test --workspace` | 0 failed (full re-run after wiring) |
+| `cargo clippy --workspace --all-targets --all-features` | clean |
+| `cargo fmt --check` | clean |
+| `unsafe` in `collapse.rs`/`migrate.rs` | none |
+| `.worktrees/odm` | unchanged from before this iteration — same single pre-existing `config.toml` diff, nothing new |
+
+### Deviation flagged (minor, additive)
+
+`Collapsed` gained two `String` fields (`project_name`, `retired_name`) not present in the base slice.
+The working agreement says "do not change [`collapse_project_vision`'s] logic; just invoke it" — read
+strictly, this is a struct-shape change, not a logic change: both values are the function's own
+already-computed `base.frontmatter().name()` (used once to set the surviving node's new name, once
+read back for the retired node's unchanged name), added purely so the CLI's `--dry-run` preview can
+show the correct post-collapse name without a `store.load` that would return stale pre-collapse data
+under dry-run (nothing is persisted yet). No decision the function makes changed. Flagged per the
+working agreement rather than silently justified.
+
+### Confirmation
+
+**The arc-close freeze (`migrate --all`) now collapses + reconciles in one pass.** A subsequent
+`migrate --all --dry-run` against a store carrying the live `#1000`/`#1001` shape will render a
+`COLLAPSE (DRY RUN)` block naming both nodes, alongside the existing self-host/reconcile/artifact/note
+tables — closing the exact gap the arc-close dry-run surfaced. No change to `collapse_project_vision`'s
+own behavior; no live mutation; no arc-plan slice-status change (s15 stays CDC-verified PASS — this
+iteration is noted here, per the working agreement, not re-flagged on the arc-plan). **Still open, from
+CDC's own review, unaffected by this wiring**: CDC-F15-1 — `project-plan.md` needs a `# Vision` section
+added before the freeze actually fires against `.worktrees/odm`, or the collapse will lose the curated
+vision text and blank `orient`'s vision excerpt (a `check` `Warning`, not a hard failure, but a real
+content loss) — a source-side prep step, not a code fix, and now more directly relevant since `--all`
+will actually reach the collapse the next time it runs live.

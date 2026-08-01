@@ -241,22 +241,32 @@ fn reconcile_design_research(
 /// this only orchestrates and resolves roots the operator would otherwise
 /// have to type out:
 ///
-/// 1. self-host every plan-set directory found under `docs_root` (the
+/// 1. **collapse** the project-vision pair, per plan root that has its own
+///    `project-plan.md` (arc-migration-fidelity slice15 F-1/F-2 — un-wired
+///    until this iteration: `collapse_project_vision` had no CLI caller, so
+///    `--all` reconciled everything but never actually collapsed the
+///    synthesis-shaped project). Runs **before** self-host so a store that
+///    still carries the old synthesis/1:1-base pair collapses first, and the
+///    now-plain 1:1 project node reconciles like any other plan node in the
+///    very same pass (step 2's `self_host_inner` calls `reconcile()`
+///    internally) — a store that's already collapsed sees a 0-change no-op
+///    here and proceeds exactly as before.
+/// 2. self-host every plan-set directory found under `docs_root` (the
 ///    project included — arc-migration-fidelity slice15 F-3: it reconciles
 ///    like any other plan node, no separate vision step)
-/// 2. design/research reconcile over `docs_directory` **+ `"design"`**
+/// 3. design/research reconcile over `docs_directory` **+ `"design"`**
 ///    (s14 F-2 — the restored legacy append; *not* `docs_root` as-is, which
 ///    would apply the design/research frontmatter rules to the whole tree)
-/// 3. `--artifacts` mint-or-reconcile over `docs_root`
-/// 4. `--notes` mint-or-reconcile over the configured `dev_directory` —
+/// 4. `--artifacts` mint-or-reconcile over `docs_root`
+/// 5. `--notes` mint-or-reconcile over the configured `dev_directory` —
 ///    skipped, not errored, if unconfigured or the directory doesn't exist
-/// 5. the additional-paths sweep (s14 F-4/F-5/F-7): `additional_paths`
+/// 6. the additional-paths sweep (s14 F-4/F-5/F-7): `additional_paths`
 ///    (the just-passed positional) unioned with `[legacy].additional_paths`
 ///    (config), sorted + deduplicated and written back, then each path not
-///    already covered by steps 1–4's roots migrated as its own corpus
+///    already covered by steps 1–5's roots migrated as its own corpus
 ///    (plan-set escape hatch) or generic supporting docs (D-2)
 ///
-/// All five already honor `--dry-run` identically (including the config
+/// All six already honor `--dry-run` identically (including the config
 /// write-back); running it twice with nothing changed in between is a
 /// 0-change no-op on every step.
 #[allow(clippy::too_many_arguments)]
@@ -273,7 +283,24 @@ fn all(
         format!("discovering plan-set directories under {}", docs_root.display())
     })?;
 
+    let mode = Mode::from_dry_run(dry_run);
     for plan_root in &plan_roots {
+        // Guarded on the plan root actually having its own `project-plan.md`
+        // (mirrors the pre-s15 `--vision` step's identical guard): a plan
+        // root discovered only by its `arc*` children (no `project-plan.md`
+        // of its own — the D-2 escape-hatch shape) must never be handed to
+        // the collapse, which would otherwise try to read a nonexistent file
+        // the moment a genuine synthesis-shaped project exists anywhere in
+        // the store (the same class of bug s15 F-3 already found and fixed
+        // in `reconcile()`).
+        if plan_root.join("project-plan.md").is_file() {
+            let collapse_report =
+                odm_migrate::collapse::collapse_project_vision(store, plan_root, mode)
+                    .with_context(|| {
+                        format!("collapsing the project-vision pair at {}", plan_root.display())
+                    })?;
+            render_collapse(&collapse_report, out)?;
+        }
         self_host_inner(store, plan_root, dry_run, out, err)?;
     }
 
@@ -314,8 +341,8 @@ fn all(
 
     let verb = if dry_run { "migrate --all (dry-run)" } else { "migrate --all" };
     let status = format!(
-        "{verb}: {} plan root(s) self-hosted, design/research reconciled, artifacts + notes \
-         minted or reconciled, {} additional dir(s) swept{}",
+        "{verb}: {} plan root(s) collapse-checked + self-hosted, design/research reconciled, \
+         artifacts + notes minted or reconciled, {} additional dir(s) swept{}",
         plan_roots.len(),
         effective.len(),
         if dry_run { " — nothing written" } else { "" }
@@ -698,6 +725,45 @@ fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Res
         report.created_count(),
         if report.dry_run { "to create" } else { "created" },
         report.skipped_count()
+    ));
+    writeln!(out, "{}", table.render())?;
+    Ok(())
+}
+
+const COLLAPSE_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME", "ID"];
+
+/// Renders [`odm_migrate::collapse::collapse_project_vision`]'s pass
+/// (arc-migration-fidelity slice15 F-1/F-2, wired in iteration 1): a
+/// `re-cast` row for the synthesis node collapsed to a plain 1:1 project, and
+/// a `retire` row for the 1:1 base it superseded. Silent when there was
+/// nothing to collapse (already collapsed, or the project was never split) —
+/// the ordinary case on every run after the first.
+fn render_collapse(
+    report: &odm_migrate::collapse::CollapseReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let Some(collapsed) = &report.collapsed else {
+        return Ok(());
+    };
+    let recast_verb = if report.dry_run { "would re-cast" } else { "re-cast" };
+    let retire_verb = if report.dry_run { "would retire" } else { "retired" };
+    let title = if report.dry_run { "COLLAPSE (DRY RUN)" } else { "COLLAPSE" };
+    let mut table = Themed::new(title, &COLLAPSE_COLUMNS);
+    table.row([
+        recast_verb.to_string(),
+        collapsed.project_number.to_string(),
+        collapsed.project_name.clone(),
+        collapsed.project_id.to_string(),
+    ]);
+    table.row([
+        retire_verb.to_string(),
+        collapsed.retired_number.to_string(),
+        collapsed.retired_name.clone(),
+        collapsed.retired_id.to_string(),
+    ]);
+    table.summary(format!(
+        "Total: 1 project-vision pair {}",
+        if report.dry_run { "to collapse" } else { "collapsed" }
     ));
     writeln!(out, "{}", table.render())?;
     Ok(())

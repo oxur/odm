@@ -35,10 +35,16 @@ pub struct Collapsed {
     pub project_id: Id,
     /// The surviving project node's `number` (unchanged).
     pub project_number: u32,
+    /// The surviving project node's new name (the base's real project name,
+    /// not the synthesis's `"Vision"` label) — for a caller that renders a
+    /// preview under `--dry-run`, before anything is persisted to load back.
+    pub project_name: String,
     /// The retired 1:1 base node's identity (unchanged by retirement).
     pub retired_id: Id,
     /// The retired 1:1 base node's `number` (unchanged).
     pub retired_number: u32,
+    /// The retired 1:1 base node's name (unchanged by retirement).
+    pub retired_name: String,
 }
 
 /// The outcome of a [`collapse_project_vision`] run.
@@ -147,8 +153,9 @@ pub fn collapse_project_vision(
     let relative = crate::fidelity::relativize(&anchor, &source_path);
     let (_, updated) = crate::fidelity::git_derived_dates(&anchor, &source_path, today);
 
+    let project_name = base.frontmatter().name().to_string();
     let mut new_fm = synth_fm.clone();
-    new_fm.set_name(base.frontmatter().name().to_string());
+    new_fm.set_name(project_name.clone());
     new_fm.set_updated(updated);
     new_fm.stamp_schema();
     new_fm.edges_mut().supersedes.clear();
@@ -175,8 +182,10 @@ pub fn collapse_project_vision(
     let collapsed = Collapsed {
         project_id: synth_fm.id(),
         project_number: synth_fm.number(),
+        project_name,
         retired_id: base.frontmatter().id(),
         retired_number: base.frontmatter().number(),
+        retired_name: base.frontmatter().name().to_string(),
     };
 
     if !mode.is_dry_run() {
@@ -276,6 +285,8 @@ mod tests {
         let collapsed = report.collapsed.expect("a pair was collapsed");
         assert_eq!(collapsed.project_id, synth_id, "the synthesis id survives, re-cast in place");
         assert_eq!(collapsed.retired_id, base_id);
+        assert_eq!(collapsed.project_name, "odm", "report carries the restored name for preview");
+        assert_eq!(collapsed.retired_name, "odm", "report carries the retired node's own name");
 
         let nodes = store.load_all().unwrap();
         let project = nodes.iter().find(|d| d.frontmatter().id() == synth_id).unwrap();

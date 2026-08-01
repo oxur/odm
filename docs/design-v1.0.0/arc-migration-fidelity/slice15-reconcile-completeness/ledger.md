@@ -43,13 +43,65 @@
   entirely pattern-following, not novel design — the same shape the project/arc/slice family already
   proved out in s12.
 
+## Iteration 1 (2026-08-01) — wire the collapse into `migrate --all` (note under F-1)
+
+**Finding (CDC/arc-close dry-run, 2026-08-01):** `collapse_project_vision` had **no CLI caller** —
+`crates/odm-cli/src/migrate.rs`'s `all()` orchestration never invoked it, so `migrate --all`
+reconciled everything else but never actually collapsed a synthesis-shaped project. F-1's capability
+was complete and CDC-verified (`cdc-verification.md`, PASS) as a *library function*, but s15's headline
+behavior could not fire through the one command the freeze runbook actually runs
+(`odm migrate --all [--dry-run]`).
+
+**Fix (this iteration, thin wiring only — `collapse_project_vision`'s own logic untouched):**
+
+- `all()` now calls `collapse_project_vision(store, plan_root, mode)` once per discovered plan root
+  that has its own `project-plan.md` (guarded exactly like the pre-s15 `--vision` step was, and for the
+  identical reason: the D-2 escape-hatch shape has no `project-plan.md` of its own, and calling it there
+  would hit the same class of bug F-3's `reconcile()` guard already fixed) — **before** `self_host_inner`
+  for that root, so a just-collapsed 1:1 project reconciles like any other plan node in the same pass
+  (`self_host_inner` → `reconcile()` → F-3's rekeyed exclusion, no longer excluding it). Confirmed: this
+  ordering is correct and needs no change — the collapse re-snapshots the body itself, so the
+  in-pass reconcile that follows is a content no-op unless the source drifts again mid-run (never, in
+  one process).
+- `Collapsed` gained two additive fields, `project_name`/`retired_name` (populated from values the
+  function already computes — `base.frontmatter().name()` twice over — no new decision logic), so the
+  CLI can render a correct `--dry-run` preview without needing to load the store back (which would show
+  the *pre-collapse* name under dry-run, since nothing is persisted yet).
+- A new `render_collapse` (mirroring `render_self_host`/`render_reconcile`'s established shape) renders
+  a `COLLAPSE`/`COLLAPSE (DRY RUN)` table — a `re-cast` row for the surviving project, a `retire` row for
+  the base — silent when there was nothing to collapse (`collapsed: None`, the ordinary case after the
+  first run). The composed status line now reads "N plan root(s) **collapse-checked** + self-hosted, …".
+
+**Re-run evidence:** `crates/odm-cli/tests/migrate.rs` —
+`migrate_all_collapses_a_vision_pair_and_then_reconciles_it_in_the_same_pass` seeds the exact
+`#1000`/`#1001` shape directly into the store, runs `migrate --all` once (asserts the `COLLAPSE` table
+renders, `#1000` is re-cast to the faithful 1:1 body with no `source.synthesis`/`supersedes`, `#1001`
+is retired, and the arc self-hosts in the same pass), edits `project-plan.md` and runs `--all` again
+(asserts the collapsed project reconciles — the two s15 behaviors composing in one pass, no `COLLAPSE`
+table since it's already collapsed), then re-runs with nothing changed (asserts a 0-change no-op, node
+count stable). `migrate_all_collapse_dry_run_writes_nothing` seeds the same pair fresh, runs
+`--all --dry-run`, asserts the `COLLAPSE (DRY RUN)` preview renders and every existing node's
+body/`retired`/`synthesis` state is byte-for-byte unchanged after. All 31 `odm-cli` `tests/migrate.rs`
+tests pass (29 pre-existing + 2 new); full workspace suite green; clippy/fmt clean; no `unsafe`.
+
+**Confirmed: the arc-close freeze (`migrate --all`) now collapses + reconciles in one pass.** No change
+to `collapse_project_vision`'s own decisions, no live mutation (`.worktrees/odm` untouched by this
+iteration, same pre-existing `config.toml` state as before — see F-9), no arc-plan slice-status change
+(s15 stays **CDC-verified PASS**; this iteration is noted here per the working agreement). CDC-F15-1
+(`project-plan.md` needs a `# Vision` section before the freeze fires) is unaffected by this wiring —
+still an open, disclosed freeze precondition, now doubly relevant since `--all` will actually reach the
+collapse the moment it's next run against the live corpus.
+
 ## Closure
 
-Fixture-only — no store commit. Verified by: `CC` (self); CDC verification pending. Rows: 10. Done: 10.
-Deferred: 0. Not committed to `release/1.0.x` — left for the operator/CDC to review before commit. On
-close, bubble up to `../arc-plan.md`: s15 done (project collapsed to one 1:1 node; everything ingested
-reconciles); **the arc-close resumes** — the freeze collapses + closes all 4 drifts, then the P-12 demo,
-then Migration Fidelity closes. **Carry forward to the freeze**: F-9's flagged `no-vision` risk (verify
-`project-plan.md` states a vision heading, or accept/triage the resulting warning) and the open
-sub-decision of *how* the freeze invokes `collapse_project_vision` (no CLI flag was added this slice —
-library-only, called directly or via a small script at freeze time).
+Fixture-only — no store commit. Verified by: `CC` (self) → **CDC-verified PASS** (`cdc-verification.md`,
+2026-08-01); iteration 1 (the `--all` wiring, above) is CC-verified, not yet independently re-verified by
+CDC. Rows: 10. Done: 10. Deferred: 0. Not committed to `release/1.0.x` at the time CDC verified `1c779ec`;
+iteration 1's changes are a follow-up on top of that commit. On close, bubble up to `../arc-plan.md`: s15
+done (project collapsed to one 1:1 node; everything ingested reconciles; **and, as of iteration 1, actually
+reachable through `migrate --all`**); **the arc-close resumes** — the freeze collapses + closes all 4
+drifts, then the P-12 demo, then Migration Fidelity closes. **Carry forward to the freeze** (both from
+CDC's review): CDC-F15-1 (add a `# Vision` section to `project-plan.md` before firing, elevated to a
+freeze-runbook step-0 item — see `cdc-verification.md` §4) and the open sub-decision of exactly which
+`--all` invocation the freeze runbook uses (now moot in one sense — `--all`/`--all --dry-run` is the
+answer, per iteration 1 — but still worth the runbook naming it explicitly).

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use chrono::NaiveDate;
 use clap::Parser;
 use odm_cli::Cli;
-use odm_core::frontmatter::{Document, Frontmatter};
+use odm_core::frontmatter::{Document, Frontmatter, Source, SupersedeKind, Supersedes};
 use odm_core::{Id, NodeType, Origin};
 use odm_store::Store;
 use tempfile::TempDir;
@@ -503,6 +503,180 @@ fn migrate_all_dry_run_writes_nothing() {
     assert!(ok, "dispatches cleanly:\n{err}");
     assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
     assert!(!store_dir.path().join("nodes").exists(), "dry-run wrote nothing");
+}
+
+// ----- s15 iteration 1: `--all` wires the collapse in and composes it with -
+// ----- reconcile (F-1/F-2/F-3 in one pass) --------------------------------
+
+/// Seeds a synthesis-shaped project pair directly into `store`: `#1001` (the
+/// 1:1 `project-plan` base, real name/body) superseded by `#1000` (the
+/// editorial-merge "Vision" synthesis) — the exact shape
+/// `synthesis::apply_project_vision` used to mint, and the shape the arc-close
+/// freeze's live corpus is in until the collapse fires. Both carry
+/// `source.paths = ["project-plan.md"]`, matching what `self_host` derives
+/// for `plan_root` when `plan_root` is its own git anchor (a `.git` marker
+/// directly inside it — `write_vision_pair_plan_root`'s own setup), so a
+/// post-collapse `self_host` pass matches the surviving node by source
+/// instead of minting a duplicate.
+fn seed_vision_pair(store: &Store, project_name: &str, project_body: &str) -> (Id, Id) {
+    let today = NaiveDate::from_ymd_opt(2026, 8, 1).unwrap();
+
+    let base_id = Id::new();
+    let mut base_fm = Frontmatter::new(
+        base_id,
+        1001,
+        NodeType::Project,
+        project_name,
+        today,
+        today,
+        Origin::Planned,
+    );
+    base_fm.stamp_schema();
+    let base_fm = base_fm.with_source(Source {
+        paths: vec![PathBuf::from("project-plan.md")],
+        class: "project-plan".to_string(),
+        normalization: "trim+lf".to_string(),
+        migrated_by: "odm-migrate/test".to_string(),
+        migrated_on: today,
+        synthesis: None,
+        attestation: None,
+    });
+    store.persist(&Document::new(base_fm, project_body.to_string())).unwrap();
+
+    let synth_id = Id::new();
+    let mut synth_fm = Frontmatter::new(
+        synth_id,
+        1000,
+        NodeType::Project,
+        "Vision",
+        today,
+        today,
+        Origin::Planned,
+    );
+    synth_fm.stamp_schema();
+    synth_fm.edges_mut().supersedes =
+        vec![Supersedes { node: base_id, kind: SupersedeKind::Updates }];
+    let synth_fm = synth_fm.with_source(Source {
+        paths: vec![PathBuf::from("project-plan.md")],
+        class: "vision".to_string(),
+        normalization: "trim+lf".to_string(),
+        migrated_by: "odm-migrate/test".to_string(),
+        migrated_on: today,
+        synthesis: Some("editorial-merge".to_string()),
+        attestation: Some("operator: distills the source".to_string()),
+    });
+    store
+        .persist(&Document::new(synth_fm, "# Vision\n\nSynthesized, not the source.\n".to_string()))
+        .unwrap();
+
+    (synth_id, base_id)
+}
+
+/// A plan root with its own `.git` marker (so `self_host`'s anchor is the
+/// plan root itself, matching [`seed_vision_pair`]'s bare `"project-plan.md"`
+/// source paths) plus one arc, so the compose has ordinary self-hosting work
+/// to do alongside the collapse.
+fn write_vision_pair_plan_root(plan_root: &Path, project_body: &str) {
+    std::fs::write(plan_root.join(".git"), "gitdir: fake\n").unwrap();
+    std::fs::write(plan_root.join("project-plan.md"), project_body).unwrap();
+    let arc_dir = plan_root.join("arc01-alpha");
+    std::fs::create_dir_all(&arc_dir).unwrap();
+    std::fs::write(arc_dir.join("arc-plan.md"), "# Arc 01 — Alpha\n\nBody.\n").unwrap();
+}
+
+#[test]
+fn migrate_all_collapses_a_vision_pair_and_then_reconciles_it_in_the_same_pass() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    let original_body = "# Test Project\n\nOriginal content.\n";
+    write_vision_pair_plan_root(plan_root.path(), original_body);
+    set_docs_directory(store_dir.path(), plan_root.path());
+
+    let store = Store::open(store_dir.path());
+    let (synth_id, base_id) = seed_vision_pair(&store, "Test Project", original_body);
+
+    // First run: the collapse fires (F-1/F-2) and the arc self-hosts, in one pass.
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(out.contains("COLLAPSE"), "the collapse table renders:\n{out}");
+    assert!(
+        err.contains("collapse-checked"),
+        "the composed status names the collapse step:\n{err}"
+    );
+
+    let nodes = store.load_all().unwrap();
+    let project =
+        nodes.iter().find(|d| d.frontmatter().id() == synth_id).expect("the synthesis survives");
+    assert_eq!(project.body(), original_body, "re-cast to the faithful 1:1 body");
+    assert_eq!(project.frontmatter().number(), 1000, "number unchanged");
+    assert!(
+        project.frontmatter().source().unwrap().synthesis.is_none(),
+        "source.synthesis dropped"
+    );
+    assert!(project.frontmatter().edges().supersedes.is_empty(), "supersedes edge dropped");
+
+    let retired = nodes.iter().find(|d| d.frontmatter().id() == base_id).expect("base retained");
+    assert!(retired.frontmatter().retired().is_some(), "the base is retired, not deleted");
+
+    let arc = nodes
+        .iter()
+        .find(|d| d.frontmatter().node_type() == NodeType::Arc)
+        .expect("the arc self-hosted in the same pass");
+    assert!(arc.body().contains("Body."));
+
+    // Edit project-plan.md: the now-plain 1:1 project reconciles like any
+    // other plan node (s15 F-3), composing with the collapse that already ran.
+    let amended_body = "# Test Project\n\nAmended content.\n";
+    std::fs::write(plan_root.path().join("project-plan.md"), amended_body).unwrap();
+    let (ok, out2, err2) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "second run dispatches cleanly:\n{err2}");
+    assert!(!out2.contains("COLLAPSE"), "already collapsed — no COLLAPSE table:\n{out2}");
+    assert!(err2.contains("reconciled"), "the drifted project reconciles:\n{err2}");
+
+    let project2 = store
+        .load_all()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.frontmatter().id() == synth_id)
+        .expect("still present");
+    assert_eq!(project2.body(), amended_body, "the collapsed project reconciled on drift");
+
+    // Re-run with nothing changed: idempotent no-op on both the collapse
+    // (already collapsed) and the reconcile (already faithful) fronts.
+    let before_count = store.load_all().unwrap().len();
+    let (ok, out3, err3) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "third run dispatches cleanly:\n{err3}");
+    assert!(!out3.contains("COLLAPSE"), "still no COLLAPSE table on the no-op run:\n{out3}");
+    assert_eq!(store.load_all().unwrap().len(), before_count, "no duplicate nodes on re-run");
+}
+
+#[test]
+fn migrate_all_collapse_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    let plan_root = TempDir::new().unwrap();
+    let project_body = "# Test Project\n\nOriginal content.\n";
+    write_vision_pair_plan_root(plan_root.path(), project_body);
+    set_docs_directory(store_dir.path(), plan_root.path());
+
+    let store = Store::open(store_dir.path());
+    seed_vision_pair(&store, "Test Project", project_body);
+    let before: Vec<Document> = store.load_all().unwrap();
+
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--all", "--dry-run"]);
+    assert!(ok, "dispatches cleanly:\n{err}");
+    assert!(out.contains("COLLAPSE (DRY RUN)"), "the collapse preview renders:\n{out}");
+    assert!(err.contains("nothing written"), "status names dry-run:\n{err}");
+
+    let after: Vec<Document> = store.load_all().unwrap();
+    assert_eq!(before.len(), after.len(), "dry-run minted nothing");
+    for (b, a) in before.iter().zip(after.iter()) {
+        assert_eq!(b.body(), a.body(), "dry-run wrote nothing to any existing node's body");
+        assert_eq!(b.frontmatter().retired().is_some(), a.frontmatter().retired().is_some());
+        assert_eq!(
+            b.frontmatter().source().and_then(|s| s.synthesis.as_deref()),
+            a.frontmatter().source().and_then(|s| s.synthesis.as_deref()),
+        );
+    }
 }
 
 #[test]
