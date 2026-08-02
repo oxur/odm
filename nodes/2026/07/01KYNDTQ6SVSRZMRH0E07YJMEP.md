@@ -14,7 +14,7 @@ source:
   class: arc-plan
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-01
+  migrated_on: 2026-08-02
 edges:
   part_of: 01KWXMBBTJCJ30F3TE4BJJV2CB
 status:
@@ -46,13 +46,12 @@ decomposed:
   - 01KYNM102YEZS6SV6D8HRDQT76
   - 01KYP5FRXJBKY1GHW4QF9JQZD7
   - 01KYP5FRXJFZ3FSF123XS3FD9G
-  - 01KYP5FSQ6WW27HYA6AQ5H2470
   - 01KYSX4R1GDJQXPPGFWXP5ZZWK
   - 01KYSX4R1GPDKH7M5ANCTDND04
   - 01KYSX4R1GVV7BMQ6B853FAQ7T
   - 01KYZTRDEQ5KD76YCNNB7DHEG3
   - 01KYZTRDEQE5EMGN59BPH3ASYR
-  - 01KYZTRECSZRK6SRC3Q45ETQ48
+  - 01KZ1YCK41BNR96RQ537Y9KBZW
 ---
 # Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record
 
@@ -69,6 +68,16 @@ decomposed:
 > **Refs:** `reconciliation-audit-2026-07-27.md` (the discovery); ODD-0013/0020 (the node model
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
+>
+> **✅ CLOSED 2026-08-02 — Migration Fidelity complete; MF-9 fidelity achieved.** The arc-close freeze
+> fired (project-vision pair collapsed, **0 drift**, `check` 0 errors); s16 (the `orient` retired-filter)
+> closed and **CDC-verified PASS 2026-08-02** — the **P-12 `orient` demo** is clean, reproduced on the
+> real corpus (`.worktrees/odm`). **All slices s04–s16 CDC-verified PASS; composition CDC-confirmed**
+> (`closing-report.md`); MF-4 routed to L-8 (CDC-ARC-1). **Store-side transition landed 2026-08-02** —
+> the arc node `58837400` reached the `complete` gate and its decomposition was affirmed (17 children),
+> committed on the `odm` branch at `6225d1f` (`~1 arc`) and **CDC-reproduced by direct read**. Doc
+> plan-of-record and live store now agree; the `complete` gate is operator-`asserted` (the underlying
+> work is CDC-reproduced — bump to `reproduced`/add `verified` at will). **CI green on `release/1.0.x` (`e4e0a95`, 2026-08-02, operator-attested)** — the s16 + arc-close code (and the whole branch) is CI-reproduced; the arc's `attested → CI` evidence rows are now green. **Migration Fidelity is closed.**
 >
 > **Status:** s01–s14 **closed** (s14 2026-07-31); s04–s13 CDC-verified PASS (s13 2026-07-31), s14 CDC
 > verification pending. **s14 (fixture-only, this session)** made `migrate` config-driven ahead of the
@@ -197,6 +206,7 @@ runs the same capability.
 | **s13 — live reconcile + vision mint** ✅ CLOSED 2026-07-30 + CDC-verified PASS 2026-07-31 | Fired s12's capability on the **live** `.worktrees/odm` corpus behind the snapshot → dry-run → adjudicate → fire → verify protocol: 2 re-snapshotted (ODD-0013/0020, s10 legacy body drift) + 3 source-reconciled (ODD-0017/0018 moved+drifted, ODD-0025 drifted-only) + 2 source-reconciled (arc-plan.md, slice10's slice-doc — living-plan-node drift) + 3 ordinary self-host creates (slice11/12/13's own plan nodes). Fired the vision mint: `#1001` a faithful, hash-clean 1:1 `project-plan` node (verbatim, git-derived dates); `#1000` re-cast as the editorial-merge synthesis superseding it, attestation recorded, `supersedes` lineage clean. **Two real bugs caught pre-commit**: `vision()`'s first draft required a `source` field the project structurally never carries (fixed to read `project-plan.md` fresh); `build_synthesis` doesn't stamp schema, so the re-cast silently dropped `#1000`'s schema until an unrelated upgrade pass patched it back — caught by the pre-commit idempotence re-run, fixed, store reset to `2fc25f5` and re-fired clean. One commit `26bea1d` (`odm` branch) atop `2fc25f5`; four commits on `release/1.0.x` (wire + 2 fixes + coverage). **Disclosed deviation**: `check` is exit 1 (14 pre-existing `uncovered-doc` errors for s11/12/13's own artifact docs — confirmed identical at `2fc25f5` before this slice, not a regression; routed to the arc-close). **yes (live)** | s12 |
 | **s14 — config-driven migrate roots** ✅ CLOSED 2026-07-31 + CDC-verified PASS 2026-07-31 | **Inserted before the arc-close freeze** — the operator surfaced three defects in the shipped `migrate --all`. All three fixed, fixture-proven across all 10 ledger rows: (1) the required `<LEGACY_PATH>` positional dropped, replaced with an optional comma-separated `[ADDITIONAL_PATHS]`; every mode (`--coverage`/`--artifacts`/`--notes`/`--vision`/`--all`/bare/`--replan`) resolves roots from config. (2) The legacy `docs_directory` + `"design"` **append restored** (`commands::configured_design_directory`) — the core bug, since `all()`'s as-is read would have reconciled design/research over the whole `./docs` tree the moment the config moves to the canonical `docs_directory = "./docs"`. (3) `[legacy].additional_paths` — union, sort, dedup, write-back via `toml_edit` (format-preserving), re-read every run; set-subtracted against the design/dev/plan roots (both overlap directions) so nothing already owned is re-processed by the generic `--artifacts` sweep; a plan-set escape hatch for an additional that turns out to be its own arc. **Also fixed a second, architectural bug (F-6)**: `configured_directory`'s config-home resolution was already correct, but the operator's own `[legacy]` block (added to the code-branch `odm.toml` ahead of this slice, in preparation for it) sits in the *locator*, invisible the moment a store `config.toml` exists — proved via a fixture reproducing the real ODD-0022 §4.2 split; ODD-0022 amended to v1.1. **Two disclosed findings, not silently absorbed**: the plan-set escape hatch can't self-host a second *independent* project (`selfhost::PROJECT_NUMBER` is a store-wide constant, not per-plan-set — confirmed empirically); and `.worktrees/odm/config.toml`'s `docs_directory` (currently the narrow `"./docs/design"`) must move to the parent `"./docs"` before the arc-close's live fire, or the design/research step will silently reconcile 0 docs (the dry-run gate would catch it, not silent damage, but worth knowing ahead of time). **Capability/fixture only — `.worktrees/odm` untouched**, confirmed clean throughout. `release/1.0.x` — 1 code commit + ODD-0022 amendment + `slice14-migrate-config-roots/{ledger,closing-report}.md`. | no (fixture-only) | s13 |
 | **s15 — reconcile completeness + collapse the project-vision pair** ✅ CLOSED 2026-08-01 + CDC-verified PASS 2026-08-01 | **Inserted before the arc-close freeze.** The config-fixed final-reconcile dry-run reconciled 2 of 4 drifts and **structurally could not** close `#1001` (the 1:1 project base, orphaned by the blanket `node_type == Project` exclusion, selfhost.rs:578/757) or `#509907700` (the slice10 ledger artifact, skipped by mint-only `mint_artifacts`). Digging into `#1001` surfaced the deeper cause: the `#1000`(synthesis)/`#1001`(1:1-base) pair (ODD-0025 §2.3) is documentation over-engineering — **operator decision (2026-08-01): collapse it.** s15 (capability/fixture): (1) **collapse** `#1000` into the single faithful 1:1 project node (body ← `project-plan.md`, drop `source.synthesis` + `supersedes`; `id`/12 `part_of` children preserved), **retire `#1001`** (0 children), un-wire `apply_project_vision` from the migrate path (keep the synthesis *library* for future genuine syntheses), amend ODD-0025 §2.3; (2) key the reconcile-exclusion on **`source.synthesis`** not `node_type == Project`, so the project reconciles like any plan node; (3) **artifacts + notes mint-or-reconcile** (operator: "everything we ingest should reconcile"); (4) the `mint_artifacts` `is_excluded` guard (index/template never minted regardless of root). The vision becomes a **rendered view** — `orient`'s concise view is the LLM-command-surface arc's (punch-listed); interim `orient` verbosity disclosed & accepted. **Capability/fixture only — `.worktrees/odm` untouched**; the collapse + full reconcile fire live at the arc-close freeze. `slice15-reconcile-completeness/{slice-doc,ledger,cc-prompt}.md`. | no (fixture-only) | s13 |
+| **s16 — orient P-12 readiness** ✅ CLOSED 2026-08-02 (CC) + **CDC-verified PASS 2026-08-02** | **The arc-close freeze FIRED** (2026-08-01): the project-vision pair collapsed (`#1000` re-cast to the faithful 1:1, `#1001` retired), all drift reconciled, artifacts+notes minted-or-reconciled — **corpus byte-faithful, 0 drift, `check` 0 errors** (8 plan-hygiene warnings; **no `no-vision`** — the `# Vision` fix held). **MF-9 fidelity achieved.** But the P-12 demo hit one bug: `odm orient` printed "2 projects, none selected", listing the active `#1000` **and the retired `#1001`** — `orient.rs:63` enumerates `node_type() == Project` with no `retired()` guard (punch F-22, the retired-node leak). `orient` already auto-orients on a single project, so **one predicate** (`&& retired().is_none()`, + the READY set) closes it. s16 (orient-only, fixture): exclude retired from orient's project selection + READY, so a fresh session auto-orients to `#1000` and renders its `# Vision`. `next` + the rest of F-22 stay LLM-arc. `slice16-orient-p12-readiness/{slice-doc,ledger,cc-prompt}.md`. **Closed:** the literal `retired().is_none()` predicate silently did nothing — retirement isn't part of the `.odm/` index projection the index-reconstructed frontmatters carry (ODD-0014 §3.5), a gap `commands.rs`'s `check` L-3b rule had already hit and solved; the working fix is a targeted per-node `store.load()` (matching that precedent), applied to the project filter **and** BLOCKED (same leak as READY, found by the F-3 audit, not just READY alone). **Reproduced on the real corpus**: `./target/debug/odm orient` against `.worktrees/odm` (branch attached read-only for the check) auto-orients straight to `#1000`'s vision, `#1001` absent from the human view and `--json` alike — the literal P-12 symptom, now clean. `slice16-orient-p12-readiness/{ledger,closing-report}.md`. | no (fixture-only) | s15 |
 
 *Sizing note:* the heaviest are **s05**/**s06** (identity + live run) and **s07** (children-mint + check-wiring); the live-mutation slices are
 **s06**/**s07** — split at slice-activation if an open set won't fit
@@ -219,9 +229,75 @@ destructive op is fixture-proven before it fires.
 | MF-6 | Supporting-doc children minted; doc-coverage wired into `odm check` | `check` fails on a seeded uncovered doc | serious (loud-hole guard) | **done** — s09 built **mint-all** (`mint_artifacts`, ODD-0025 §2.6, no exemption incl. `coverage-report.md`) and the enforcing `check` rule; **s10 fired it live**: 254 `artifact` nodes minted (commit `355404a`), `[coverage] scan_root` active, `odm check` exit 0. Widened beyond the original criterion's `.md` scope by s10's operator-directed additions: `docs/dev/**` also covered via 31 minted `NodeType::Note` nodes, and `docs/design/index.md`/templates correctly excluded rather than counted as gaps (`slice10-coverage-live-run/closing-report.md`); reproduced by direct read of commit `355404a` |
 | MF-7 | Synthesis lands as supersede lineage; project vision re-cast; bidirectional guaranteed | inspect edges; seed + verify | correctness | **done** — s11 built the `Vec`-typed `supersedes` + bidirectional-lineage `check` rule + both synthesis regimes; s12 promoted the vision-apply mechanism to reusable library code. **s13 fired the vision mint live**: `#1001` a faithful, hash-clean 1:1 `project-plan` node (verbatim `project-plan.md`, 426/426 lines byte-identical); `#1000` re-cast in place as the editorial-merge synthesis superseding it, with a recorded attestation and a clean `supersedes` edge (`check`'s lineage rule green); reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
 | MF-8 | L-8b: ODD-0013/0017/0018 (+0019/0020) reconciled to authoritative states | inspect states | pre-ship gate | **done** — s11 corrected the doc-tree states (ODD-0013/0017/0018 → `Accepted`, `git mv`'d into `04-accepted/`). **s13 reconciled the corresponding node gate vectors live**: ODD-0013/0020 re-snapshotted, ODD-0017/0018 re-discovered by identity and their `source.paths` rewritten to the new `04-accepted/`-relative location (both resolve); reproduced by direct read of commit `26bea1d` (`slice13-live-reconcile/closing-report.md`) |
-| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **done** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain, the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent. **The disclosed doc-coverage gap is now closed too**: a new `migrate --all` (built the same day, prompted by the operator asking why nothing composes the five separate derivations into one idempotent pass) fired live — 2 nodes reconciled (this session's own in-flight edits to `arc-plan.md` and ODD-0020, both living-plan-node drift) + 14 artifact nodes minted (the s11/12/13 gap). `odm check`: **exit 0, 0 errors** (was 14); `388/388` docs covered (was 374/388). Re-run verified idempotent (0/0/0 every sub-step) before commit. **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now fully faithful and fully covered. Reproduced by direct read of commit `e06fffe` (`odm` branch). **Arc-close 2026-07-31 — composition CDC-confirmed** (`closing-report.md`): 8/9 rows done-reproduced; MF-4 capability-done + routed (CDC-ARC-1); **two runtime acts remain** — the final reconcile-and-freeze (closes CDC-F1's 2 living-plan-tail drifts) + the P-12 self-host demo (§7 runbook). **MF-9 met pending that freeze + demo** — after which P-12 is demonstrated against a faithful corpus, not a skeleton |
+| MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **done** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain, the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent. **The disclosed doc-coverage gap is now closed too**: a new `migrate --all` (built the same day, prompted by the operator asking why nothing composes the five separate derivations into one idempotent pass) fired live — 2 nodes reconciled (this session's own in-flight edits to `arc-plan.md` and ODD-0020, both living-plan-node drift) + 14 artifact nodes minted (the s11/12/13 gap). `odm check`: **exit 0, 0 errors** (was 14); `388/388` docs covered (was 374/388). Re-run verified idempotent (0/0/0 every sub-step) before commit. **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now fully faithful and fully covered. Reproduced by direct read of commit `e06fffe` (`odm` branch). **Arc-close 2026-07-31 — composition CDC-confirmed** (`closing-report.md`): 8/9 rows done-reproduced; MF-4 capability-done + routed (CDC-ARC-1); **two runtime acts remain** — the final reconcile-and-freeze (closes CDC-F1's 2 living-plan-tail drifts) + the P-12 self-host demo (§7 runbook). **MF-9 met pending that freeze + demo** — after which P-12 is demonstrated against a faithful corpus, not a skeleton. **Both fired 2026-08-01/02**: the freeze reconciled the pair-collapse (0 drift, `check` exit 0) and the P-12 `orient` demo runs clean on `.worktrees/odm` (reproduced, s16 CDC-verified PASS); the store is committed at `41ace1f`. **MF-9 fully done — the arc closes on it.** |
 
 ## Version History
+
+### v2.35 — 2026-08-02 — CI green on `release/1.0.x` (`e4e0a95`)
+
+The latest push to `release/1.0.x` is **CI-green at `e4e0a95`** (operator-attested), and it carries the s16 fix + the whole arc-close. The `attested → CI` evidence this arc had been carrying for s16's code (and the store-commit verb it leaned on) is now **CI-reproduced**. No status changes beyond evidence strength — the arc was already CLOSED on doc + store (v2.34); this records the CI confirmation.
+
+### v2.34 — 2026-08-02 — s16 CDC-verified PASS; **arc CLOSED** (doc plan-of-record)
+
+**s16 (`orient` P-12 readiness) → CDC-verified PASS** (`slice16-orient-p12-readiness/cdc-verification.md`).
+Reproduced by direct read on `release/1.0.x`: `is_retired(store, id)` (orient.rs:376) is the correct
+per-node `store.load()` check, applied at project selection (l.71), READY (l.109), and BLOCKED (l.110);
+three real-store fixtures (F-1/F-2/F-3) plus CC's binary run on the orphan branch demonstrate the clean
+P-12 orient (auto-orients to the single active `#1000`, retired `#1001` absent from human view **and**
+`--json`). **CDC owns the spec defect** the slice-doc/cc-prompt carried: the literal `retired().is_none()`
+on the index-projected frontmatter is a silent no-op (retirement isn't in the `.odm/` projection, ODD-0014
+§3.5) — caught by CC's fixture discipline, resolved via the `commands.rs` per-node-load precedent.
+
+**With s16 verified, the arc closes.** MF-9 composition CDC-confirmed (2026-07-31, `closing-report.md`);
+the arc-close freeze fired (0 drift, `check` exit 0); the P-12 `orient` demo is clean on the real corpus;
+all slices s04–s16 CDC-verified PASS; MF-4 → L-8 (CDC-ARC-1). **Status → CLOSED** (header + §2a of the
+project-plan). The store-side projection landed 2026-08-02 — the arc node `58837400`
+reached the `complete` gate + decomposition affirmed (17 children), committed at `odm@6225d1f` and
+CDC-reproduced by direct read. Doc and store agree; the arc is closed on both.
+
+### v2.33 — 2026-08-02 — s16 closed; P-12 demonstrated on the real corpus; arc-close is next
+
+**s16 (`orient` P-12 readiness) closed** — CC attested, CDC verification pending
+(`slice16-orient-p12-readiness/{ledger,closing-report}.md`). The predicate the slice-doc specified
+(`f.retired().is_none()` on the frontmatter `orient` already has in hand) turned out to be inert:
+retirement is not part of the `.odm/` index projection those frontmatters are reconstructed from
+(ODD-0014 §3.5) — a gap `commands.rs`'s `check` L-3b project-vision rule had already hit and solved with a
+targeted per-node `store.load()`. s16's fix follows that precedent, applied to the project-selection filter
+and, per the F-3 audit turning up a second instance of the identical leak, to BLOCKED alongside READY (not
+just READY as the slice-doc named). Diff stayed inside `orient.rs` — no `odm-core`/`odm-index` change.
+**Reproduced on the real frozen store**, not just the fixture: `git worktree add .worktrees/odm odm`
+attached the existing branch (read-only; gitignored, no commit), and `odm orient` auto-orients straight to
+`#1000`'s vision with no prompt and no mention of the retired `#1001`, in both the human view and `--json` —
+the literal P-12 symptom the arc-close freeze surfaced, now clean.
+
+**Next:** the arc-close itself — MF-9's remaining runtime acts (the two-line note in its own row already
+named them: the final reconcile-and-freeze, now confirmed fired at the freeze that inserted s16, and the
+P-12 demo, now clean per this entry) plus the composition check and independent gate review this
+version-history entry does not itself constitute. Not run in this session; a separate act.
+
+### v2.32 — 2026-08-02 — Arc PAUSED (operator) for the Store Lifecycle detour; resume at s16
+
+**Operator decision (2026-08-02): pause this arc + s16.** State at pause: the freeze fired, the corpus is
+byte-faithful (0 drift, `check` 0 errors), **MF-9 fidelity achieved**; s15/iteration-1 CDC-verified PASS.
+**Remaining to close:** s16 (`orient` excludes retired — drawn, not built), the P-12 `orient` demonstration,
+and the arc-close bubble-up (+ affirm `decomposed` on the arc node `#58837400`; commit the `odm` store
+freeze). We detour to do **just s01 of the Store Lifecycle arc** (`odm store commit`), pause that arc, then
+**resume here at s16** and close. Nothing lost — this is a sequencing hold, not a scope change.
+
+### v2.31 — 2026-08-01 — Arc-close freeze FIRED (MF-9 achieved); s16 inserted for the P-12 orient leak
+
+**The final reconcile-and-freeze fired live** (`odm migrate --all`, both step-0 fixes applied): the
+`#1000`/`#1001` project-vision pair **collapsed** to one faithful 1:1 project node (`#1000` re-cast, name
+restored, no `synthesis`, `# Vision` present; `#1001` retired), the arc-plan + ODD-0022/0025 + slice10
+ledger + checklist **reconciled**, the s14/s15 slice nodes created, 11 artifacts minted, notes clean.
+**Reproduced (CDC, direct read): 398 faithful / 0 drifted / 2 retired-excluded — the corpus is byte-faithful.
+`check`: 0 errors** (8 plan-hygiene warnings — undecomposed-parent / undeveloped-stub nits — and, notably,
+**no `no-vision`**: the `# Vision` fix held). **MF-9 fidelity is achieved.** The `odm` store freeze is in the
+working tree (commit it on the `odm` branch). **One P-12 blocker:** `odm orient` printed "2 projects, none
+selected" because `orient.rs:63` counts the retired `#1001` (punch **F-22**); `orient` already auto-orients
+on a single project, so s16 (`slice16-orient-p12-readiness/`) excludes retired from orient's project
+selection + READY — a one-predicate fix. **After s16:** commit the store freeze, `odm orient` demonstrates
+P-12 (single project + its vision), the arc-close bubble-up runs → Migration Fidelity closes.
 
 ### v2.30 — 2026-08-01 — s15 CDC-verified PASS (vision collapse + reconcile completeness)
 
