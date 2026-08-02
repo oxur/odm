@@ -78,6 +78,7 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
 | **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **CLOSED 2026-07-27** — `arc-store-home/closing-report.md`; **SH-1…SH-5 done + SH-6 (dogfood cutover) delivered by RH C-5** — odm now dogfoods its own store (60 nodes on the orphan `odm` branch); an independent fresh-context arc-gate returned PASS-WITH-NOTES |
 | **Migration Fidelity** | Faithful, verifiable, repeatable migration: 1:1 verbatim bodies (**hard body-hash gate**), a `provenance` sub-map on every node, frontmatter-fidelity via schema-mapping, and a **doc-coverage** check (no file left behind). Repairs odm's own self-hosted corpus from skeleton (44 stub bodies, 6/11 arcs, ~211 uncovered docs, 0 provenance) to **100%**; general per project. Synthesis split out as a separate supersede step. | A6·s04; **ODD-0024** (G-1 closed → minting unfrozen) | **CLOSED 2026-07-31 — composition CDC-confirmed** (`arc-migration-fidelity/closing-report.md`); 13 slices, s04–s13 CDC-verified PASS; **subsumes + clears L-8b**. **Two runtime acts pending** (Mac; closing-report §7): the final reconcile-and-freeze + the P-12 `odm orient` demo. **MF-4 version-fidelity on 14 RH-era design nodes → L-8** (CDC-ARC-1). |
+| **Store Lifecycle** | Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: **`store commit`** (persist the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent; `--dry-run`/`--json`), **`store status`** (pending node delta + ahead/behind), **`store sync`** (ff-only push/pull, divergence stops). Completes the ODD-0022 store-home promise. | arc-store-home; ODD-0022 | **shaped 2026-08-01, not started** — `arc-store-lifecycle/arc-plan.md`; surfaced by the Migration Fidelity freeze (no verb to commit the store); s01 (`store commit`) is the near-term need |
 
 **Sequencing (updated 2026-07-27):** Release Hardening **closed** → LLM command surface
 (**next**, and materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
@@ -249,6 +250,17 @@ context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, n
 unbounded grind.
 
 ## Version History
+
+### v1.15 — 2026-08-01 — Store Lifecycle arc shaped (store commit/status/sync)
+
+A named, number-deferred, **v1.0.x** arc — **Store Lifecycle** — added to §2a
+(`arc-store-lifecycle/arc-plan.md`). **Which surfaced it:** the Migration Fidelity arc-close freeze
+(`migrate --all`) mutates the store worktree but there is **no odm verb to persist it** — the operator must
+drop to raw `git -C .worktrees/odm`, which breaks the ODD-0022 store-home promise (*odm owns the orphan
+branch; you never touch it by hand*). Three slices complete the lifecycle: `store commit` (the near-term
+need), `store status`, `store sync` — each idempotent, `--dry-run`/`--json`-capable, honoring the
+orphan-branch / never-rewrite-history / divergence-stops discipline. Depends on arc-store-home; mostly CLI
+wiring over `odm-store`'s existing git plumbing.
 
 ### v1.14 — 2026-07-31 — Migration Fidelity arc closed (composition CDC-confirmed; freeze + P-12 pending)
 
