@@ -18,10 +18,11 @@
 > fired (project-vision pair collapsed, **0 drift**, `check` 0 errors); s16 (the `orient` retired-filter)
 > closed and **CDC-verified PASS 2026-08-02** — the **P-12 `orient` demo** is clean, reproduced on the
 > real corpus (`.worktrees/odm`). **All slices s04–s16 CDC-verified PASS; composition CDC-confirmed**
-> (`closing-report.md`); MF-4 routed to L-8 (CDC-ARC-1). **One runtime act remains for the operator** —
-> the store-side arc-node transition (`odm node status … complete` + `odm node decomposed 58837400`,
-> the arc `58837400` currently `in-progress` with 17 undecomposed children), then `odm store commit`.
-> The doc plan-of-record is closed here; the `odm`-branch node catches up on that commit.
+> (`closing-report.md`); MF-4 routed to L-8 (CDC-ARC-1). **Store-side transition landed 2026-08-02** —
+> the arc node `58837400` reached the `complete` gate and its decomposition was affirmed (17 children),
+> committed on the `odm` branch at `6225d1f` (`~1 arc`) and **CDC-reproduced by direct read**. Doc
+> plan-of-record and live store now agree; the `complete` gate is operator-`asserted` (the underlying
+> work is CDC-reproduced — bump to `reproduced`/add `verified` at will). **Migration Fidelity is closed.**
 >
 > **Status:** s01–s14 **closed** (s14 2026-07-31); s04–s13 CDC-verified PASS (s13 2026-07-31), s14 CDC
 > verification pending. **s14 (fixture-only, this session)** made `migrate` config-driven ahead of the
@@ -191,9 +192,9 @@ on the index-projected frontmatter is a silent no-op (retirement isn't in the `.
 **With s16 verified, the arc closes.** MF-9 composition CDC-confirmed (2026-07-31, `closing-report.md`);
 the arc-close freeze fired (0 drift, `check` exit 0); the P-12 `orient` demo is clean on the real corpus;
 all slices s04–s16 CDC-verified PASS; MF-4 → L-8 (CDC-ARC-1). **Status → CLOSED** (header + §2a of the
-project-plan). The one act left is a store-side runtime projection for the operator — transition the arc
-node `58837400` to `complete` + `odm node decomposed 58837400` (it carries 17 children), then
-`odm store commit`; the doc plan-of-record does not wait on it.
+project-plan). The store-side projection landed 2026-08-02 — the arc node `58837400`
+reached the `complete` gate + decomposition affirmed (17 children), committed at `odm@6225d1f` and
+CDC-reproduced by direct read. Doc and store agree; the arc is closed on both.
 
 ### v2.33 — 2026-08-02 — s16 closed; P-12 demonstrated on the real corpus; arc-close is next
 
