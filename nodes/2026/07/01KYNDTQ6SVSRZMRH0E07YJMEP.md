@@ -5,7 +5,7 @@ type: arc
 schema: arc/v1.1
 name: 'Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record'
 created: 2026-07-28
-updated: 2026-08-01
+updated: 2026-08-02
 origin: planned
 reserved: false
 source:
@@ -18,6 +18,11 @@ source:
 edges:
   part_of: 01KWXMBBTJCJ30F3TE4BJJV2CB
 status:
+  complete:
+    reached: 2026-08-02
+    evidence: asserted
+    evidence_dates:
+      asserted: 2026-08-02
   in-progress:
     reached: 2026-07-28
     evidence: asserted
@@ -28,6 +33,26 @@ status:
     evidence: asserted
     evidence_dates:
       asserted: 2026-07-28
+decomposed:
+  on: 2026-08-02
+  children:
+  - 01KYNDTQ6S0CAYR4Q2WJ2X4XAS
+  - 01KYNDTQ6S2CXBMG4KMCW702M1
+  - 01KYNDTQ6S6MH11W8QX4XWGQWB
+  - 01KYNDTQ6SABSXWZ58M8TQK3G3
+  - 01KYNDTQ6SEHW16DCQZB9ZSBQP
+  - 01KYNDTQ6SM22NCEXWSSF2D5E2
+  - 01KYNDTQ6SXTKPJ2GN9SXYEMMN
+  - 01KYNM102YEZS6SV6D8HRDQT76
+  - 01KYP5FRXJBKY1GHW4QF9JQZD7
+  - 01KYP5FRXJFZ3FSF123XS3FD9G
+  - 01KYP5FSQ6WW27HYA6AQ5H2470
+  - 01KYSX4R1GDJQXPPGFWXP5ZZWK
+  - 01KYSX4R1GPDKH7M5ANCTDND04
+  - 01KYSX4R1GVV7BMQ6B853FAQ7T
+  - 01KYZTRDEQ5KD76YCNNB7DHEG3
+  - 01KYZTRDEQE5EMGN59BPH3ASYR
+  - 01KYZTRECSZRK6SRC3Q45ETQ48
 ---
 # Arc — Migration Fidelity: faithful, verifiable, repeatable migration — plan-of-record
 
