@@ -1,18 +1,29 @@
 //! Deterministic decomposition auto-recompose after a `migrate` run
-//! (arc-store-as-source s05).
+//! (arc-store-as-source s05, extended by s06).
 //!
 //! `migrate` (mint/reconcile) can churn a parent-capable node's children.
-//! When it can *prove* the resulting work-child set is identical to what the
-//! parent already affirmed via `decomposed: complete` — every "removed"
-//! affirmed child maps, through an id remap the run itself performed this
-//! run, to an "added" current child (same logical node, new id) — this
-//! re-affirms automatically, closing the `init → mutate → manual
-//! re-decompose` chore. When it cannot prove that (a genuine membership
-//! change, or a removal/addition `id_remap` does not explain), the
-//! affirmation is left untouched: `check`'s [`odm_core::recompose::Issue::DecompositionDrift`]
-//! is the correct, honest signal, and this module must never silence it —
-//! the seam (F-5) is deliberate. `decomposed: complete` is a human
-//! completeness judgment; only the mechanical child-set half auto-heals.
+//! Two mechanical cases auto-heal an **already-affirmed** parent without a
+//! human `node decomposed`:
+//!
+//! - **Identity re-mint** (s05): every "removed" affirmed child maps, through
+//!   an id remap the run itself performed this run, to an "added" current
+//!   child (same logical node, new id) → [`Outcome::ReAffirmed`].
+//! - **Authored addition** (s06): the current work-children are a superset of
+//!   the affirmed work-children — no affirmed work-child is missing — because
+//!   in odm's model the plan tree declares scope, and this pass runs *inside*
+//!   `migrate --all`, after the store has just been reconciled to the plan
+//!   tree. This also drops any stale non-work ids a pre-s05 affirmation still
+//!   carries → [`Outcome::AutoExtended`].
+//!
+//! When neither explains the churn — a genuine work-child **removal** the
+//! addition-only and re-mint cases don't cover — the affirmation is left
+//! untouched: `check`'s
+//! [`odm_core::recompose::Issue::DecompositionDrift`] is the correct, honest
+//! signal, and this module must never silence it — the seam (F-5) is
+//! deliberate. A **never-affirmed** parent is never auto-affirmed either: the
+//! *first* affirmation is a human act; this pass only maintains an existing
+//! one. `decomposed: complete` is a human completeness judgment; only the
+//! mechanical child-set half auto-heals.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -36,12 +47,24 @@ pub enum Outcome {
         /// The new ids added in their place.
         added: Vec<Id>,
     },
-    /// A membership change `id_remap` cannot explain (a genuinely new or
-    /// removed child) — left untouched. `check` reports `DecompositionDrift`.
-    LeftAsDrift {
-        /// Children present now but not in the affirmed set.
+    /// The current work-children are a superset of the affirmed work-children
+    /// (additions only, no affirmed work-child missing) — the affirmation was
+    /// rewritten to the current work-child set (or, under [`Mode::DryRun`],
+    /// would be).
+    AutoExtended {
+        /// The new work-children the affirmation now includes.
         added: Vec<Id>,
-        /// Children in the affirmed set but absent now.
+        /// Stale non-work ids (e.g. artifacts) a pre-s05 affirmation carried,
+        /// dropped by the rewrite.
+        dropped_stale: Vec<Id>,
+    },
+    /// A membership change neither the addition-only nor the identity-remint
+    /// case explains (a work-child was genuinely removed) — left untouched.
+    /// `check` reports `DecompositionDrift`.
+    LeftAsDrift {
+        /// Children present now but not in the affirmed work-child set.
+        added: Vec<Id>,
+        /// Affirmed work-children absent now.
         removed: Vec<Id>,
     },
 }
@@ -76,6 +99,13 @@ impl RecomposeReport {
     #[must_use]
     pub fn reaffirmed_count(&self) -> usize {
         self.changed.iter().filter(|r| matches!(r.outcome, Outcome::ReAffirmed { .. })).count()
+    }
+
+    /// How many parents were auto-extended (an authored addition folded into
+    /// an already-affirmed decomposition, no manual `node decomposed`).
+    #[must_use]
+    pub fn auto_extended_count(&self) -> usize {
+        self.changed.iter().filter(|r| matches!(r.outcome, Outcome::AutoExtended { .. })).count()
     }
 
     /// How many parents were left as drift (a human `node decomposed` is
@@ -113,18 +143,37 @@ pub fn auto_recompose(
     let mut changed = Vec::new();
     for fm in &all {
         let Some(decomp) = fm.decomposed() else { continue };
-        let affirmed: BTreeSet<Id> = decomp.children.iter().copied().collect();
+        let affirmed_raw: BTreeSet<Id> = decomp.children.iter().copied().collect();
         let current: BTreeSet<Id> =
             decomposition_children(&recomp, &types, fm.id()).into_iter().collect();
 
-        if affirmed == current {
+        if affirmed_raw == current {
             continue; // up to date: nothing to report
         }
 
-        let removed: Vec<Id> = affirmed.difference(&current).copied().collect();
-        let added: Vec<Id> = current.difference(&affirmed).copied().collect();
+        // s06: filter the affirmation down to work-children before comparing.
+        // An affirmed id still present in the corpus but not work-typed (an
+        // artifact/note a pre-s05 affirmation carried) is stale and safe to
+        // drop. An affirmed id **absent from the corpus entirely** is kept —
+        // we cannot know it was non-work, and treating "vanished" as "was
+        // never work" would silently swallow a genuine removal (F-3).
+        let affirmed_work: BTreeSet<Id> = affirmed_raw
+            .iter()
+            .copied()
+            .filter(|id| types.get(id).is_none_or(|ty| ty.is_work()))
+            .collect();
 
-        if let Some(outcome) = provably_same_set(&removed, &added, id_remap) {
+        let removed: Vec<Id> = affirmed_work.difference(&current).copied().collect();
+        let added: Vec<Id> = current.difference(&affirmed_work).copied().collect();
+
+        let outcome = if removed.is_empty() {
+            let dropped_stale: Vec<Id> = affirmed_raw.difference(&affirmed_work).copied().collect();
+            Some(Outcome::AutoExtended { added: added.clone(), dropped_stale })
+        } else {
+            provably_same_set(&removed, &added, id_remap)
+        };
+
+        if let Some(outcome) = outcome {
             if mode.is_dry_run() {
                 changed.push(Recomposed {
                     id: fm.id(),
@@ -262,10 +311,10 @@ mod tests {
         assert_eq!(affirmed, &vec![x_old], "dry-run wrote nothing");
     }
 
-    // ----- F-5: the seam — a genuine new child is never auto-blessed -------
+    // ----- s06 F-1: an authored addition auto-extends -----------------------
 
     #[test]
-    fn genuinely_new_child_is_left_as_drift_not_auto_affirmed() {
+    fn authored_addition_auto_extends_an_affirmed_parent() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path());
 
@@ -279,27 +328,89 @@ mod tests {
         store
             .persist(&Document::new(node(x, 3, NodeType::Slice, "X", Some(parent_id)), "# X\n"))
             .unwrap();
-        // A genuinely new slice — no id_remap entry maps anything to it.
+        // A genuinely new slice, authored under the arc this same run — the
+        // plan tree just declared it as scope (s06's premise).
         store
             .persist(&Document::new(node(z, 4, NodeType::Slice, "Z", Some(parent_id)), "# Z\n"))
             .unwrap();
 
         let report = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
         assert_eq!(report.reaffirmed_count(), 0, "{:?}", report.changed);
-        assert_eq!(report.left_as_drift_count(), 1, "{:?}", report.changed);
+        assert_eq!(report.auto_extended_count(), 1, "{:?}", report.changed);
+        assert_eq!(report.left_as_drift_count(), 0, "{:?}", report.changed);
         assert!(
-            matches!(&report.changed[0].outcome, Outcome::LeftAsDrift { added, removed } if added == &[z] && removed.is_empty())
+            matches!(&report.changed[0].outcome, Outcome::AutoExtended { added, dropped_stale } if added == &[z] && dropped_stale.is_empty())
         );
 
-        // The affirmation was never touched — `check` still sees the drift.
+        // Auto-extended with no manual `node decomposed` — check clears too.
         let reloaded = store.load(parent_id).unwrap();
-        assert_eq!(reloaded.frontmatter().decomposed().unwrap().children, vec![x]);
+        let affirmed: BTreeSet<Id> =
+            reloaded.frontmatter().decomposed().unwrap().children.iter().copied().collect();
+        assert_eq!(affirmed, BTreeSet::from([x, z]));
+
+        let all: Vec<Frontmatter> =
+            store.load_all().unwrap().iter().map(|d| d.frontmatter().clone()).collect();
+        let findings = odm_core::recompose::integrity(&all, &odm_core::gates::GateSets::default());
+        assert!(
+            !findings
+                .iter()
+                .any(|f| matches!(f.issue, odm_core::recompose::Issue::DecompositionDrift { .. })),
+            "0 decomposition drift after auto-extend: {findings:?}"
+        );
     }
+
+    // ----- s06 F-2: the MF transitional shape auto-heals --------------------
+
+    #[test]
+    fn mf_transitional_shape_drops_stale_non_work_and_extends() {
+        // A pre-s05 affirmation carrying a stale artifact id, plus a
+        // genuinely new slice added this run — both anomalies clear in one
+        // automatic step (MF's real shape).
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path());
+
+        let parent_id = Id::new();
+        let x = Id::new();
+        let artifact = Id::new();
+        let z = Id::new();
+
+        let mut parent = node(parent_id, 2, NodeType::Arc, "Q", None);
+        parent.affirm_decomposed(vec![x, artifact], day());
+        store.persist(&Document::new(parent, "# Q\n")).unwrap();
+        store
+            .persist(&Document::new(node(x, 3, NodeType::Slice, "X", Some(parent_id)), "# X\n"))
+            .unwrap();
+        store
+            .persist(&Document::new(
+                node(artifact, 4, NodeType::Artifact, "A", Some(parent_id)),
+                "# A\n",
+            ))
+            .unwrap();
+        store
+            .persist(&Document::new(node(z, 5, NodeType::Slice, "Z", Some(parent_id)), "# Z\n"))
+            .unwrap();
+
+        let report = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
+        assert_eq!(report.auto_extended_count(), 1, "{:?}", report.changed);
+        assert_eq!(report.left_as_drift_count(), 0, "{:?}", report.changed);
+        assert!(
+            matches!(&report.changed[0].outcome, Outcome::AutoExtended { added, dropped_stale } if added == &[z] && dropped_stale == &[artifact])
+        );
+
+        let reloaded = store.load(parent_id).unwrap();
+        let affirmed: BTreeSet<Id> =
+            reloaded.frontmatter().decomposed().unwrap().children.iter().copied().collect();
+        assert_eq!(affirmed, BTreeSet::from([x, z]), "stale artifact dropped, new slice included");
+    }
+
+    // ----- s06 F-3: a genuine work-child removal is still drift ------------
 
     #[test]
     fn a_removal_with_no_remap_entry_is_left_as_drift() {
         // X disappears (no re-mint mapping for it) and nothing replaces it —
-        // must not be silently dropped from the affirmation.
+        // must not be silently dropped from the affirmation, and must not be
+        // conflated with a stale non-work id (F-3, distinct from the
+        // additions-only case F-1/F-2 auto-heal).
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path());
 
@@ -311,9 +422,59 @@ mod tests {
         // X's file is never persisted — it is simply gone from the corpus.
 
         let report = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
+        assert_eq!(report.auto_extended_count(), 0, "{:?}", report.changed);
         assert_eq!(report.left_as_drift_count(), 1, "{:?}", report.changed);
         let reloaded = store.load(parent_id).unwrap();
         assert_eq!(reloaded.frontmatter().decomposed().unwrap().children, vec![x], "untouched");
+    }
+
+    // ----- s06 F-4: a never-affirmed parent is never auto-affirmed ---------
+
+    #[test]
+    fn a_never_affirmed_parent_is_untouched() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path());
+
+        let parent_id = Id::new();
+        let x = Id::new();
+        let parent = node(parent_id, 2, NodeType::Arc, "Q", None); // no affirm_decomposed
+        store.persist(&Document::new(parent, "# Q\n")).unwrap();
+        store
+            .persist(&Document::new(node(x, 3, NodeType::Slice, "X", Some(parent_id)), "# X\n"))
+            .unwrap();
+
+        let report = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
+        assert!(report.changed.is_empty(), "{:?}", report.changed);
+
+        let reloaded = store.load(parent_id).unwrap();
+        assert!(reloaded.frontmatter().decomposed().is_none(), "still undecomposed");
+    }
+
+    // ----- s06 F-5: idempotent -----------------------------------------------
+
+    #[test]
+    fn a_second_run_after_auto_extend_reports_nothing_new() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path());
+
+        let parent_id = Id::new();
+        let x = Id::new();
+        let z = Id::new();
+        let mut parent = node(parent_id, 2, NodeType::Arc, "Q", None);
+        parent.affirm_decomposed(vec![x], day());
+        store.persist(&Document::new(parent, "# Q\n")).unwrap();
+        store
+            .persist(&Document::new(node(x, 3, NodeType::Slice, "X", Some(parent_id)), "# X\n"))
+            .unwrap();
+        store
+            .persist(&Document::new(node(z, 4, NodeType::Slice, "Z", Some(parent_id)), "# Z\n"))
+            .unwrap();
+
+        let first = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
+        assert_eq!(first.auto_extended_count(), 1, "{:?}", first.changed);
+
+        let second = auto_recompose(&store, &HashMap::new(), day(), Mode::Commit).unwrap();
+        assert!(second.changed.is_empty(), "second run is a no-op: {:?}", second.changed);
     }
 
     // ----- up to date / non-work children ----------------------------------

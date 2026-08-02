@@ -341,15 +341,19 @@ fn all(
         migrate_additional(store, extra, dry_run, out, err)?;
     }
 
-    // s05 (arc-store-as-source): after every mint/reconcile step above,
-    // recompute each affirmed parent's work-children and auto-re-affirm any
-    // churn that's provably an identity re-mint — never a genuine membership
-    // change (the seam, F-5). `id_remap` is empty: none of the passes above
-    // currently re-mint a matched node under a new id (`self_host` and
-    // `reconcile_source` both match-or-create and update in place — see
-    // their own doc comments, "a reconcile never re-mints"), so this pass is
+    // s05/s06 (arc-store-as-source): after every mint/reconcile step above,
+    // recompute each affirmed parent's work-children. Two cases auto-heal:
+    // churn that's provably an identity re-mint (s05), and an already-
+    // affirmed parent whose current work-children are a superset of its
+    // affirmed set — an authored addition the plan tree just declared (s06).
+    // A genuine work-child removal is never auto-healed (the seam, F-3).
+    // `id_remap` is empty: none of the passes above currently re-mint a
+    // matched node under a new id (`self_host` and `reconcile_source` both
+    // match-or-create and update in place — see their own doc comments, "a
+    // reconcile never re-mints"), so the re-mint half of this pass is
     // today's safety net for a case that doesn't yet occur, kept ready for
-    // when it does (flagged in the slice's closing report).
+    // when it does (flagged in slice 05's closing report); the s06
+    // auto-extend half is exercised on every run that authors additions.
     let recompose_report =
         odm_migrate::decompose::auto_recompose(store, &HashMap::new(), today(), mode)
             .context("auto-recomposing decomposition bookkeeping")?;
@@ -807,10 +811,12 @@ fn today() -> NaiveDate {
 }
 
 /// Renders [`odm_migrate::decompose::auto_recompose`]'s pass (arc-store-as-
-/// source s05): a `re-affirm` row per parent whose child churn was provably
-/// an identity re-mint, a `drift` row per parent left for a human
-/// `odm node decomposed` (a genuine membership change). Silent when nothing
-/// changed — the ordinary case once every affirmed parent is caught up.
+/// source s05, extended by s06): a `re-affirm` row per parent whose child
+/// churn was provably an identity re-mint, an `auto-extend` row per parent
+/// whose already-affirmed decomposition picked up an authored addition
+/// (s06), and a `drift` row per parent left for a human `odm node
+/// decomposed` (a genuine work-child removal). Silent when nothing changed
+/// — the ordinary case once every affirmed parent is caught up.
 fn render_recompose(
     report: &odm_migrate::decompose::RecomposeReport,
     out: &mut dyn Write,
@@ -826,13 +832,16 @@ fn render_recompose(
         let outcome = match r.outcome {
             Outcome::ReAffirmed { .. } if report.dry_run => "would re-affirm",
             Outcome::ReAffirmed { .. } => "re-affirmed",
+            Outcome::AutoExtended { .. } if report.dry_run => "would auto-extend",
+            Outcome::AutoExtended { .. } => "auto-extended",
             Outcome::LeftAsDrift { .. } => "drift (needs `node decomposed`)",
         };
         table.row([outcome.to_string(), r.number.to_string(), r.name.clone()]);
     }
     table.summary(format!(
-        "Total: {} re-affirmed, {} left as drift",
+        "Total: {} re-affirmed, {} auto-extended, {} left as drift",
         report.reaffirmed_count(),
+        report.auto_extended_count(),
         report.left_as_drift_count()
     ));
     writeln!(out)?;

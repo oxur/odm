@@ -103,7 +103,13 @@ caveats: the code + the MF affirmation are **uncommitted** (attested → CI), an
 `odm` store worktree needs a deliberate reconcile before proceeding (**SS5-2**). See
 `slice05-decomposition-bookkeeping/cdc-verification.md`.
 
-**Slice 06 is drawn** (open set written 2026-08-02): `slice06-auto-extend-decomposition/{slice-doc,ledger,cc-prompt}.md` — CC-ready. It resolves SS5-1 and makes the re-migrate hands-off.
+**Slice 06: CC-closed — 2026-08-02.** `AutoExtended` outcome added to `odm_migrate::decompose::auto_recompose`;
+an already-affirmed parent whose current work-children are a superset of its affirmed work-children
+(additions only) is rewritten to the current set, dropping any stale non-work ids in the same step (the
+MF-transitional-shape auto-heal). 6 of 7 ledger rows done (module fixtures + real `odm-cli` `migrate --all`
+CLI-pipeline tests); F-2's real-store leg (MF `#58837400` at 0 drift) deferred to CDC — see
+`slice06-auto-extend-decomposition/closing-report.md`. Full workspace `make check` green. It resolves SS5-1
+and makes the re-migrate hands-off, pending CDC's independent reproduction + the real-store confirmation.
 
 **Sizing:** 01 is a design slice (its diff is ODD-0026). 02 and 03 are medium
 (distinct subsystems: the check/migrate/reconcile contract vs. the CLI authoring
@@ -128,7 +134,7 @@ class-(c) bubble-up rows accrue as slices close.
 | **SS-6** | **DoD — reproduced at arc scale:** a fresh context authors a new arc + slice end-to-end using only `./bin/odm`, with no `./docs` planning tree and no hand-edited store files | demonstration transcript | **serious** | open |
 | **SS-7** | With the `./docs` planning subtree deleted, `check` / `orient` / `list` / `rollup` are green and unchanged; end-user `./docs` is untouched | delete on a branch, `check` exit 0 | serious | open |
 | **SS-8** | Decomposition bookkeeping is deterministic: (a) `node decomposed` and `check` use **one** child-set definition — a parent whose current children set-equal its affirmed set reports **0** drift (MF `#58837400` clears); (b) `migrate` auto-recomposes provably-identity child churn with no manual re-affirm | fixture: the MF artifact-child case → 0 drift after affirm; a re-mint `migrate` leaves `check` green with no manual step | serious | (a) **done** — slice 05 CDC-verified; (b) delivered, inert (SS5-1) |
-| **SS-9** | `migrate --all` is **hands-off** for authored additions: an already-affirmed parent gaining a plan-tree-declared work-child is **auto-extended** (no manual `node decomposed`), while a work-child *removal* and a *never-affirmed* parent still behave conservatively | fixture set + real: reset → `migrate --all` → MF 0 drift with no manual step | serious | open (slice 06; from SS5-1) |
+| **SS-9** | `migrate --all` is **hands-off** for authored additions: an already-affirmed parent gaining a plan-tree-declared work-child is **auto-extended** (no manual `node decomposed`), while a work-child *removal* and a *never-affirmed* parent still behave conservatively | fixture set + real: reset → `migrate --all` → MF 0 drift with no manual step | serious | fixture set **delivered, attested** (slice 06 closed by CC); real-store leg (MF 0 drift) **deferred to CDC** — no `.worktrees/odm` access from the implementation worktree |
 
 **SS-6 is the arc's reason to exist** and, like every DoD row, is closed by a
 fresh/independent context, not by the implementer.
@@ -160,6 +166,29 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.5 — 2026-08-02 (slice 06 CC-closed: hands-off migrate implemented)
+
+CC implemented slice 06: `Outcome::AutoExtended` on `odm_migrate::decompose::auto_recompose`, additions-only
+against the affirmed **work-children** set (reusing slice 05's `decomposition_children`, not modifying it),
+rewriting the affirmation to the current work-child set when nothing affirmed is missing — which auto-heals
+the MF transitional shape (stale non-work ids drop out of the comparison) in the same step as folding in a
+genuine addition. **Attested (module fixtures + real `odm-cli` `migrate --all` CLI-pipeline tests):** F-1
+(auto-extend on a clean addition), F-3 (a genuine work-child removal — surfaced via `odm node unlink … part_of
+…`, since `migrate` never deletes nodes — still drifts), F-4 (a never-affirmed parent untouched), F-5
+(idempotent), F-6 (`RECOMPOSE` output + summary distinguish auto-extended; no `--json` surface exists yet for
+`migrate --all` to extend), F-7 (no regression; full workspace `make check` green). **F-2 split**: its fixture
+half (the MF transitional shape) is attested; its real-store half (reset → `migrate --all` on the actual `odm`
+corpus → 0 drift) is **deferred to CDC** — the `.worktrees/odm` orphan-branch checkout is not present in the
+implementation worktree, so this is the still-open acceptance-anchor leg. One finding worth folding into
+**ODD-0026**: the affirmed-side work-child filter has a sharp edge — an id still present in the corpus but
+non-work-typed is safe to drop as stale, but an id **absent from the corpus entirely** must not be filtered the
+same way, or a genuine removal reads as stale cruft (caught by re-running slice 05's own removal fixture before
+trusting the change, not by external review). The pre-existing slice-05 integration test
+(`migrate_all_leaves_a_genuinely_new_slice_as_drift_not_auto_affirmed`) tested exactly the scenario slice 06
+flips; renamed to `migrate_all_auto_extends_an_affirmed_parent_for_an_authored_addition` and its assertions
+updated to the new contract rather than left stale. See
+`slice06-auto-extend-decomposition/closing-report.md` for the full walk. Surfaced by: CC (this session).
 
 ### v1.4 — 2026-08-02 (slice 06 added + drawn: hands-off migrate)
 

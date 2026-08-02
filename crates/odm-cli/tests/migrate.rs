@@ -494,11 +494,11 @@ fn migrate_all_is_idempotent() {
     assert_eq!(before, after, "a second run creates nothing new");
 }
 
-// ----- s05 (arc-store-as-source): decomposition auto-recompose wired into
-// ----- `migrate --all`, end to end through the real CLI pipeline -----------
+// ----- s05/s06 (arc-store-as-source): decomposition auto-recompose wired
+// ----- into `migrate --all`, end to end through the real CLI pipeline -----
 
 #[test]
-fn migrate_all_leaves_a_genuinely_new_slice_as_drift_not_auto_affirmed() {
+fn migrate_all_auto_extends_an_affirmed_parent_for_an_authored_addition() {
     let store_dir = TempDir::new().unwrap();
     write_all_fixture(store_dir.path());
 
@@ -512,21 +512,68 @@ fn migrate_all_leaves_a_genuinely_new_slice_as_drift_not_auto_affirmed() {
     let (ok, checked, _err) = run(store_dir.path(), &["check"]);
     assert!(ok, "clean right after affirming: {checked}");
 
-    // A genuinely new slice appears under the arc — nothing `migrate --all`
-    // could have re-minted from a prior node (there was no prior slice).
+    // A genuinely new slice appears under the arc — the plan tree declares
+    // it as scope (s06's premise): nothing `migrate --all` could have
+    // re-minted from a prior node (there was no prior slice), yet it should
+    // still fold into the already-affirmed decomposition automatically.
     let slice_dir = store_dir.path().join("docs/design-v1.0.0/arc01-alpha/slice01-beta");
     std::fs::create_dir_all(&slice_dir).unwrap();
     std::fs::write(slice_dir.join("slice-doc.md"), "# Slice 01 — Beta\n\nBody.\n").unwrap();
 
     let (ok, out, err) = run(store_dir.path(), &["migrate", "--all"]);
     assert!(ok, "{err}");
-    // The seam holds end to end: no id_remap exists to explain the addition,
-    // so `migrate --all` reports it as drift, not an auto-re-affirm.
+    // s06 end to end: the plan tree declared the addition (it was authored
+    // and self-hosted this same run), so `migrate --all` folds it into the
+    // affirmation automatically — no manual `node decomposed`.
     assert!(out.contains("RECOMPOSE"), "the recompose table rendered:\n{out}");
-    assert!(out.contains("drift"), "reported as drift, not silently blessed:\n{out}");
+    assert!(out.contains("auto-extended"), "reported as auto-extended:\n{out}");
     assert!(
-        out.contains("Total: 0 re-affirmed, 1 left as drift"),
-        "never auto-affirms a genuine new child:\n{out}"
+        out.contains("Total: 0 re-affirmed, 1 auto-extended, 0 left as drift"),
+        "authored addition auto-extends, no manual step:\n{out}"
+    );
+
+    let (ok, checked, _err) = run(store_dir.path(), &["check"]);
+    assert!(
+        ok && !checked.contains("decomposition-drift"),
+        "`check` is clean — no manual `node decomposed` was needed:\n{checked}"
+    );
+}
+
+#[test]
+fn migrate_all_leaves_a_removed_work_child_as_drift_not_auto_healed() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+
+    // Author + self-host a slice, then affirm the arc's decomposition with
+    // it included.
+    let slice_dir = store_dir.path().join("docs/design-v1.0.0/arc01-alpha/slice01-beta");
+    std::fs::create_dir_all(&slice_dir).unwrap();
+    std::fs::write(slice_dir.join("slice-doc.md"), "# Slice 01 — Beta\n\nBody.\n").unwrap();
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+    let (ok, _out, err) = run(store_dir.path(), &["node", "decomposed", "Arc 01"]);
+    assert!(ok && err.contains("affirmed decomposition"), "{err}");
+    let (ok, checked, _err) = run(store_dir.path(), &["check"]);
+    assert!(ok, "clean right after affirming: {checked}");
+
+    // The slice is detached from the arc (retire/reparent shape) — `migrate`
+    // never deletes nodes (its `nodes/` writes are never-delete), so this is
+    // how a work-child genuinely leaves a parent's containment set. No
+    // id_remap explains it: F-3, still surfaced as drift, never auto-healed.
+    let (ok, _out, err) =
+        run(store_dir.path(), &["node", "unlink", "Slice 01", "part_of", "Arc 01"]);
+    assert!(ok, "{err}");
+
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+    assert!(out.contains("RECOMPOSE"), "the recompose table rendered:\n{out}");
+    assert!(out.contains("drift"), "reported as drift, not silently healed:\n{out}");
+    assert!(
+        out.contains("Total: 0 re-affirmed, 0 auto-extended, 1 left as drift"),
+        "a work-child removal is never auto-healed:\n{out}"
     );
 
     let (_ok, checked, _err) = run(store_dir.path(), &["check"]);
