@@ -494,6 +494,48 @@ fn migrate_all_is_idempotent() {
     assert_eq!(before, after, "a second run creates nothing new");
 }
 
+// ----- s05 (arc-store-as-source): decomposition auto-recompose wired into
+// ----- `migrate --all`, end to end through the real CLI pipeline -----------
+
+#[test]
+fn migrate_all_leaves_a_genuinely_new_slice_as_drift_not_auto_affirmed() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+
+    // First pass: self-hosts the project + arc01-alpha (no slices yet).
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+
+    // Affirm the arc's (currently empty) decomposition.
+    let (ok, _out, err) = run(store_dir.path(), &["node", "decomposed", "Arc 01"]);
+    assert!(ok && err.contains("affirmed decomposition"), "{err}");
+    let (ok, checked, _err) = run(store_dir.path(), &["check"]);
+    assert!(ok, "clean right after affirming: {checked}");
+
+    // A genuinely new slice appears under the arc — nothing `migrate --all`
+    // could have re-minted from a prior node (there was no prior slice).
+    let slice_dir = store_dir.path().join("docs/design-v1.0.0/arc01-alpha/slice01-beta");
+    std::fs::create_dir_all(&slice_dir).unwrap();
+    std::fs::write(slice_dir.join("slice-doc.md"), "# Slice 01 — Beta\n\nBody.\n").unwrap();
+
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+    // The seam holds end to end: no id_remap exists to explain the addition,
+    // so `migrate --all` reports it as drift, not an auto-re-affirm.
+    assert!(out.contains("RECOMPOSE"), "the recompose table rendered:\n{out}");
+    assert!(out.contains("drift"), "reported as drift, not silently blessed:\n{out}");
+    assert!(
+        out.contains("Total: 0 re-affirmed, 1 left as drift"),
+        "never auto-affirms a genuine new child:\n{out}"
+    );
+
+    let (_ok, checked, _err) = run(store_dir.path(), &["check"]);
+    assert!(
+        checked.contains("decomposition-drift"),
+        "`check` still sees it — a human `node decomposed` is still needed:\n{checked}"
+    );
+}
+
 #[test]
 fn migrate_all_dry_run_writes_nothing() {
     let store_dir = TempDir::new().unwrap();

@@ -92,7 +92,14 @@ odm's own *identity ≠ order* principle, dogfooded: the first slice we run is #
 04 is the point of no return (though git-recoverable) and does not run without a
 green final migrate and your explicit go.
 
-**Slice 05 is drawn** (open set written 2026-08-02): `slice05-decomposition-bookkeeping/{slice-doc,ledger,cc-prompt}.md` — CC-ready.
+**Slice 05: CDC-verified PASS (with notes) — 2026-08-02.** Consistency fix (a)
+**reproduced** — MF `#58837400` drift cleared (affirmation now the 16 work slices,
+0 drift); the seam (F-5) is correctly implemented. Auto-recompose (b) is delivered
+and correct-by-design but **inert on real data** — migrate preserves ids, so the
+identity-churn trigger never fires (**SS5-1**, elevated to slice 01 / ODD-0026). Two
+caveats: the code + the MF affirmation are **uncommitted** (attested → CI), and the
+`odm` store worktree needs a deliberate reconcile before proceeding (**SS5-2**). See
+`slice05-decomposition-bookkeeping/cdc-verification.md`.
 
 **Sizing:** 01 is a design slice (its diff is ODD-0026). 02 and 03 are medium
 (distinct subsystems: the check/migrate/reconcile contract vs. the CLI authoring
@@ -147,6 +154,24 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.3 — 2026-08-02 (slice 05 CDC-verified PASS with notes)
+
+CC implemented slice 05; CDC-verified PASS (with notes) — `cdc-verification.md`.
+**Reproduced:** F-1 (one shared `decomposition_children` helper, both call sites) and
+F-2 (MF affirmation = the 16 work slices, 0 drift). **Attested → CI:** F-3/F-5/F-6
+(tests present incl. the seam test `migrate_all_leaves_a_genuinely_new_slice_as_drift_not_auto_affirmed`;
+`make check` green; no toolchain in the CDC sandbox). Two findings carried:
+**SS5-1** — auto-recompose (b) is correct but **inert** (migrate preserves ids,
+confirmed by the store's same-ULID churn); and the operator's real friction is the
+*genuine-addition* case, which the seam correctly leaves to a human affirm — elevated
+to **slice 01 / ODD-0026** as a model question (does authoring-in-scope make additions
+auto-affirmable without crossing the seam?). **SS5-2** — the `odm` store worktree is
+in a large uncommitted, internally-inconsistent state (13 staged-deleted-but-present
+`2026/08/` nodes, 9 modified nodes, config, untracked mints) accreted from this
+session's migrate runs; it needs a deliberate reconcile-and-commit (or reset +
+one clean `migrate --all`) **before** more commits/migrates. Surfaced by: CC (both
+findings, honestly bubbled) + CDC reproduction.
 
 ### v1.2 — 2026-08-02 (slice 05 resequenced first + drawn)
 

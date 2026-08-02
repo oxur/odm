@@ -1230,14 +1230,16 @@ pub fn decomposed(
     }
 
     // Resolve the child set: the explicit `--children`, or X's current
-    // containment children (derived reverse `part_of`) when none are given.
+    // **work-typed** containment children (reverse `part_of`) when none are
+    // given — the same `decomposition_children` definition `check`'s drift
+    // detection uses (s05), so affirming here and checking there can never
+    // permanently disagree over a non-work (artifact/note) child.
     let child_ids: Vec<Id> = if children.is_empty() {
-        store
-            .load_all()?
-            .iter()
-            .filter(|d| d.frontmatter().edges().part_of == Some(id))
-            .map(|d| d.frontmatter().id())
-            .collect()
+        let docs = store.load_all()?;
+        let all: Vec<Frontmatter> = docs.iter().map(|d| d.frontmatter().clone()).collect();
+        let recomp = recompose::Recomposition::build(&all);
+        let types: HashMap<Id, NodeType> = all.iter().map(|f| (f.id(), f.node_type())).collect();
+        recompose::decomposition_children(&recomp, &types, id)
     } else {
         let mut ids = Vec::new();
         for c in children {

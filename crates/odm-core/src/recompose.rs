@@ -193,19 +193,44 @@ fn check_orphan(fm: &Frontmatter, recomp: &Recomposition, findings: &mut Vec<Fin
     }
 }
 
-/// The undeveloped-stub, advance-without-decomposition, and drift checks, all of
-/// which apply only to **parent-capable** nodes (those whose type admits
-/// children — `project`/`arc`).
+/// A parent's **decomposition children**: its current containment children
+/// (reverse `part_of`), filtered to [`NodeType::is_work`] (`arc`/`slice`) —
+/// the single definition `check`'s drift detection and `node decomposed`'s
+/// affirmation must agree on.
 ///
 /// **Work children only** (arc-migration-fidelity s10, surfaced live): a
 /// document-family node (`artifact`/`note`/…) can be `part_of` an arc too
 /// (ODD-0025 §2.5's containment), for an entirely different reason —
 /// attaching a supporting doc to its scope, not decomposing the *work*.
 /// "Decomposition" (ODD-0013 §4.5) is specifically the project→arc→slice work
-/// breakdown, so every check here — stub, undecomposed-parent, and drift —
-/// counts only `kids` whose type is [`NodeType::is_work`]; a mint that adds
-/// artifact/note children to an already-`decomposed`-affirmed arc must not
-/// read as drift.
+/// breakdown, so a mint that adds artifact/note children to an
+/// already-`decomposed`-affirmed arc must not read as drift, and affirming a
+/// parent must not require naming its output documents as if they were scope.
+///
+/// **s05: previously two divergent, ad hoc filters** — `check_decomposition`
+/// filtered to work-typed children; `odm-cli`'s `node decomposed` (no
+/// `--children`) affirmed *every* reverse-`part_of` child, unfiltered. A
+/// parent with even one non-work child (an artifact, a closing-report)
+/// therefore accumulated a `DecompositionDrift` that no re-affirm could ever
+/// clear — the affirmed set always carried the artifact `check` would never
+/// count. One shared definition, called from both, is the fix.
+#[must_use]
+pub fn decomposition_children(
+    recomp: &Recomposition,
+    types: &HashMap<Id, NodeType>,
+    parent: Id,
+) -> Vec<Id> {
+    recomp
+        .children(parent)
+        .iter()
+        .copied()
+        .filter(|id| types.get(id).is_some_and(|ty| ty.is_work()))
+        .collect()
+}
+
+/// The undeveloped-stub, advance-without-decomposition, and drift checks, all of
+/// which apply only to **parent-capable** nodes (those whose type admits
+/// children — `project`/`arc`).
 fn check_decomposition(
     fm: &Frontmatter,
     recomp: &Recomposition,
@@ -217,12 +242,7 @@ fn check_decomposition(
         return; // not parent-capable (slice / document): nothing to decompose
     }
 
-    let kids: Vec<Id> = recomp
-        .children(fm.id())
-        .iter()
-        .copied()
-        .filter(|id| types.get(id).is_some_and(|ty| ty.is_work()))
-        .collect();
+    let kids = decomposition_children(recomp, types, fm.id());
     let kids = kids.as_slice();
 
     // Advancement is only judgeable with a configured gate-set.

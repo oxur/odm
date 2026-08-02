@@ -1,12 +1,12 @@
 //! Tests for decomposition/recomposition integrity (`odm_core::recompose`).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::str::FromStr;
 
 use chrono::NaiveDate;
 use odm_core::frontmatter::Frontmatter;
 use odm_core::gates::GateSets;
-use odm_core::recompose::{Issue, Recomposition, integrity};
+use odm_core::recompose::{Issue, Recomposition, decomposition_children, integrity};
 use odm_core::status::Evidence;
 use odm_core::{Id, NodeType, Origin};
 
@@ -404,5 +404,33 @@ fn a_mismatched_decomposition_still_drifts_not_merely_undecomposed() {
     assert!(
         !findings.iter().any(|f| matches!(f.issue, Issue::UndecomposedParent { .. })),
         "and it is not also reported as unaffirmed: {findings:?}"
+    );
+}
+
+// ----- s05 F-1: one shared "decomposition children" definition --------------
+
+#[test]
+fn decomposition_children_is_the_single_work_typed_definition() {
+    // Arc Q has a mixed child set: two slices (work) plus an artifact and a
+    // note (document family). `decomposition_children` is the one place both
+    // `check_decomposition` and `odm-cli`'s `node decomposed` now compute this
+    // from — previously they diverged (the CLI affirmed unfiltered), which
+    // produced permanent phantom drift for any parent with a non-work child.
+    let q = node('Q', 1, NodeType::Arc);
+    let x = child('X', 2, NodeType::Slice, 'Q');
+    let y = child('Y', 3, NodeType::Slice, 'Q');
+    let artifact = child('A', 4, NodeType::Artifact, 'Q');
+    let note = child('N', 5, NodeType::Note, 'Q');
+
+    let nodes = [q, x, y, artifact, note];
+    let recomp = Recomposition::build(&nodes);
+    let types: HashMap<Id, NodeType> = nodes.iter().map(|f| (f.id(), f.node_type())).collect();
+
+    let mut kids = decomposition_children(&recomp, &types, id('Q'));
+    kids.sort_unstable();
+    assert_eq!(
+        kids,
+        vec![id('X'), id('Y')],
+        "only the work-typed children — the artifact and note are outputs, not scope"
     );
 }

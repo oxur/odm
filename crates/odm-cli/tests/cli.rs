@@ -1491,6 +1491,33 @@ fn decomposed_cli() {
     assert!(!bad.ok && bad.err.contains("only a project or arc"));
 }
 
+// ----- s05 F-2/F-3: decomposition bookkeeping consistency -------------------
+
+#[test]
+fn decomposed_with_no_children_affirms_only_work_typed_children() {
+    let dir = TempDir::new().unwrap();
+    // project P(1) <- arc Q(2) <- slice S(3), artifact A(4), note N(5).
+    run(dir.path(), &["node", "new", "project", "P"]);
+    run(dir.path(), &["node", "new", "arc", "Q", "--parent", "1"]);
+    run(dir.path(), &["node", "new", "slice", "S", "--parent", "2"]);
+    run(dir.path(), &["node", "new", "artifact", "A", "--parent", "2"]);
+    run(dir.path(), &["node", "new", "note", "N", "--parent", "2"]);
+
+    // No `--children`: affirms only the work-typed child (the slice), not the
+    // artifact/note that are also `part_of` Q.
+    let r = run(dir.path(), &["node", "decomposed", "2"]);
+    assert!(r.ok && r.err.contains("1 child(ren)"), "err: {}", r.err);
+    let q = file_for(dir.path(), 2);
+    assert!(q.contains(&id_of(dir.path(), 3)), "the slice is affirmed:\n{q}");
+    assert!(!q.contains(&id_of(dir.path(), 4)), "the artifact is not:\n{q}");
+    assert!(!q.contains(&id_of(dir.path(), 5)), "the note is not:\n{q}");
+
+    // `check` reports no DecompositionDrift for Q: the affirmed set and
+    // `check`'s own work-typed current set now agree by construction (s05).
+    let checked = run(dir.path(), &["check"]);
+    assert!(!checked.out.contains("decomposition-drift"), "clean: {}", checked.out);
+}
+
 // ----- M-9: --dry-run writes nothing; --yes runs ----------------------------
 
 #[test]

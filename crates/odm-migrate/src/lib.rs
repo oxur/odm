@@ -53,6 +53,7 @@
 pub mod artifact;
 pub mod collapse;
 pub mod coverage;
+pub mod decompose;
 pub mod fidelity;
 pub mod legacy;
 pub mod mapping;
