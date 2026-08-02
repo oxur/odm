@@ -49,7 +49,7 @@ raw-git footnote.
 
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
-| SL-1 | `store commit` persists the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent no-op when clean; `--dry-run`/`--json` | run it after a `migrate`; the orphan branch gains one commit with the right message; a second run is a no-op | serious (the gap this arc opens for) | planned |
+| SL-1 | `store commit` persists the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent no-op when clean; `--dry-run`/`--json` | run it after a `migrate`; the orphan branch gains one commit with the right message; a second run is a no-op | serious (the gap this arc opens for) | **done — CDC-verified PASS 2026-08-02** (`slice01-store-commit/cdc-verification.md`); + a real ODD-0022 fix (`.odm/` caches now excluded from the orphan branch, `write_tree` gix-exclude-aware) |
 | SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | planned |
 | SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | planned |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
@@ -84,6 +84,17 @@ for CDC to confirm). Carried forward as a note for s02/s03: any future store-wor
 same filesystem-walking git plumbing inherits the fix automatically; verify rather than assume when s02
 (`store status`) is implemented. Per the scoped-run note above, the arc stays **paused** — s02/s03 not
 started; this entry only closes s01.
+
+### v1.1 — 2026-08-02 — s01 (`store commit`) CDC-verified PASS; arc ⏸ PAUSED per the scoped run
+
+**SL-1 done.** `odm store commit` lands: persists the store worktree's pending node changes on the orphan
+branch, odm-aware auto-summary (`-m` overrides), idempotent no-op, `--dry-run`/`--json`; git ops in
+`odm-store` (`tree_delta` + a reusable `delta` module for s02). **CC caught + fixed a real ODD-0022 defect**
+— `commit_all` walked the filesystem without honoring the store's `.gitignore`, so the `.odm/index`/`.odm/drift`
+derived caches would have baked permanently into the orphan branch; `write_tree` is now gix-exclude-aware,
+with a negation-honoring regression test. Reproduced clean by CDC; `odm@e06fffe` untouched. **Per the
+scoped-run note the arc now ⏸ PAUSES** (s02 `store status` / s03 `store sync` not started); **Migration
+Fidelity/s16 resumes next.**
 
 ### v1.0 — 2026-08-01 — arc shaped
 
