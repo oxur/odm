@@ -81,16 +81,18 @@ any change to end-user-doc *content*.
 | **03 · native authoring commands** | `odm node new` gains a body path (`--from-file <md>` and/or `--body`, and/or `$EDITOR`); `odm node edit <ref>` opens the store node for editing; child/slice minting is a clean one-command operation (closing the `undeveloped-stub` gap). "Edit the store file + `odm check`" remains the always-works fallback. | code |
 | **04 · cutover** | After a final safety `migrate --all` + green `check`: delete the `./docs` planning subtree (git-recoverable), keep `./docs` for end-user docs, and update project memory, `CLAUDE.md`, and CC's settings to the odm-native authoring workflow. Gated on 01–03 and an explicit operator go. | code + docs |
 | **05 · decomposition bookkeeping: consistency fix + deterministic auto-recompose** | Two coupled defects the 2026-08-02 store surfaced. **(a) Consistency bug:** `node decomposed` affirms *all* reverse-`part_of` children (incl. artifact/note nodes) but `check`'s decomposition-drift computes a *different* current-child set (excludes them) — so an affirmed parent reports a permanent phantom "removed N" that re-affirming cannot clear (MF `#58837400`: the 2 non-slice children `536513400`/`560811200`). Pick **one** child-set definition and use it in both `node decomposed` and `check`. **(b) Auto-recompose:** when `migrate` churns children deterministically and the resulting set is *provably the same* as the prior affirmed set (re-mint / re-read, no membership change), it re-affirms automatically — the deterministic bookkeeping odm exists to kill, not to nag the user with. A *genuine* membership change (a real new/removed child) still surfaces for the human scope-completeness judgment (the mechanical half auto-heals; the judgment half does not). | code |
+| **06 · auto-extend affirmed decomposition on authored additions** | Resolves **SS5-1** — the follow-up to slice 05. In odm's model **the plan tree declares scope**, so an *already-affirmed* parent that gains a plan-tree-declared slice should have its decomposition **auto-extended** by `migrate --all` — no manual `node decomposed`. Rule (extends slice 05's `decompose` pass): current work-children ⊇ affirmed (additions only) → auto-extend (also auto-heals the MF transitional case); a work-child **removed** → still `LeftAsDrift`; a **never-affirmed** parent is never auto-affirmed (first affirm stays a human act). Uses the model-independent additions-only signal so it lands before ODD-0026. | code |
 
-**Sequencing (updated — operator priority 2026-08-02): `05 → 01 → 02 → 03 → 04`.**
-Slice **05 runs first** — it is independent of the store-as-source model, it clears
-the live MF decomposition-drift error, and the operator wants it landed and
-exercised in the imminent `migrate --all` cycle. The rest keep their order
-(`01 → 02 → 03 → 04`), each load-bearing for the next. (05's number is higher than
-all of them by the append convention, but its order is set here, not by the number —
-odm's own *identity ≠ order* principle, dogfooded: the first slice we run is #05.)
-04 is the point of no return (though git-recoverable) and does not run without a
-green final migrate and your explicit go.
+**Sequencing (updated — operator priority 2026-08-02): `05 → 06 → 01 → 02 → 03 → 04`.**
+Slice **05 ran first** (independent of the model; cleared the consistency bug).
+**06 runs next** — before the store is re-migrated + committed — so `migrate --all`
+becomes hands-off (no manual `node decomposed` for authored additions), which is the
+whole point of the re-migrate. The rest keep their order (`01 → 02 → 03 → 04`), each
+load-bearing for the next. (05/06's numbers are higher than all of them by the
+append convention, but their order is set here, not by the number — odm's own
+*identity ≠ order* principle, dogfooded: the first two slices we run are #05 then
+#06.) 04 is the point of no return (though git-recoverable) and does not run without
+a green final migrate and your explicit go.
 
 **Slice 05: CDC-verified PASS (with notes) — 2026-08-02.** Consistency fix (a)
 **reproduced** — MF `#58837400` drift cleared (affirmation now the 16 work slices,
@@ -101,11 +103,14 @@ caveats: the code + the MF affirmation are **uncommitted** (attested → CI), an
 `odm` store worktree needs a deliberate reconcile before proceeding (**SS5-2**). See
 `slice05-decomposition-bookkeeping/cdc-verification.md`.
 
+**Slice 06 is drawn** (open set written 2026-08-02): `slice06-auto-extend-decomposition/{slice-doc,ledger,cc-prompt}.md` — CC-ready. It resolves SS5-1 and makes the re-migrate hands-off.
+
 **Sizing:** 01 is a design slice (its diff is ODD-0026). 02 and 03 are medium
 (distinct subsystems: the check/migrate/reconcile contract vs. the CLI authoring
 surface). 04 is small-but-careful (a deletion + config, with a full verify). 05 is
 medium — the consistency fix is small once the one child-set definition is chosen;
-the auto-recompose (with the provably-same-set guard) is the substance.
+the auto-recompose (with the provably-same-set guard) is the substance. 06 is small —
+one new outcome on slice 05's existing pass.
 
 ## Arc ledger (opening / composition rows)
 
@@ -122,7 +127,8 @@ class-(c) bubble-up rows accrue as slices close.
 | **SS-5** | The body-hash fidelity gate **still applies to genuinely-migrated content** (end-user/legacy docs with an external source) — no regression | fixture: a migrated node with a corrupted body still fails `check` | correctness | open |
 | **SS-6** | **DoD — reproduced at arc scale:** a fresh context authors a new arc + slice end-to-end using only `./bin/odm`, with no `./docs` planning tree and no hand-edited store files | demonstration transcript | **serious** | open |
 | **SS-7** | With the `./docs` planning subtree deleted, `check` / `orient` / `list` / `rollup` are green and unchanged; end-user `./docs` is untouched | delete on a branch, `check` exit 0 | serious | open |
-| **SS-8** | Decomposition bookkeeping is deterministic: (a) `node decomposed` and `check` use **one** child-set definition — a parent whose current children set-equal its affirmed set reports **0** drift (MF `#58837400` clears); (b) `migrate` auto-recomposes provably-identity child churn with no manual re-affirm | fixture: the MF artifact-child case → 0 drift after affirm; a re-mint `migrate` leaves `check` green with no manual step | serious | open (from the 2026-08-02 MF decomposition-drift bug) |
+| **SS-8** | Decomposition bookkeeping is deterministic: (a) `node decomposed` and `check` use **one** child-set definition — a parent whose current children set-equal its affirmed set reports **0** drift (MF `#58837400` clears); (b) `migrate` auto-recomposes provably-identity child churn with no manual re-affirm | fixture: the MF artifact-child case → 0 drift after affirm; a re-mint `migrate` leaves `check` green with no manual step | serious | (a) **done** — slice 05 CDC-verified; (b) delivered, inert (SS5-1) |
+| **SS-9** | `migrate --all` is **hands-off** for authored additions: an already-affirmed parent gaining a plan-tree-declared work-child is **auto-extended** (no manual `node decomposed`), while a work-child *removal* and a *never-affirmed* parent still behave conservatively | fixture set + real: reset → `migrate --all` → MF 0 drift with no manual step | serious | open (slice 06; from SS5-1) |
 
 **SS-6 is the arc's reason to exist** and, like every DoD row, is closed by a
 fresh/independent context, not by the implementer.
@@ -154,6 +160,23 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.4 — 2026-08-02 (slice 06 added + drawn: hands-off migrate)
+
+Added **slice 06** (auto-extend affirmed decomposition on authored additions) and
+ledger row **SS-9**, resolving **SS5-1**. Slice 05's seam correctly refused to invent
+a completeness judgment, but the operator's real friction is the genuine-addition
+case, and a manual `node decomposed` after every `migrate` is the micromanagement odm
+exists to kill. Slice 06 implements the resolution: in odm's model the plan tree
+declares scope, so an *already-affirmed* parent auto-extends to include plan-tree-declared
+additions (also auto-healing the MF transitional affirmation), while a work-child
+*removal* and a *never-affirmed* parent stay conservative. Model-independent
+additions-only signal so it lands **before** ODD-0026; the "authoring declares scope"
+principle it embodies is folded into slice 01's ODD. Resequenced `05 → 06 → 01 → …`:
+06 lands before the store is re-migrated + committed, so the re-migrate is hands-off.
+CDC owns a share of SS5-1's origin — the gap was flagged in slice 05's verification but
+parked as an ODD question instead of fixed; the operator called it, and it's now a
+slice. Surfaced by: operator (from the live manual-affirm friction) + SS5-1.
 
 ### v1.3 — 2026-08-02 (slice 05 CDC-verified PASS with notes)
 

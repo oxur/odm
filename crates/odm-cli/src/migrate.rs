@@ -564,7 +564,9 @@ fn render_repair(
         report.repaired_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" }
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -610,7 +612,9 @@ fn render_backfill(
         report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" },
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -648,7 +652,9 @@ fn render_reconcile_source(
         report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" },
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -686,7 +692,9 @@ fn render_reconcile(
         report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" },
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -709,7 +717,9 @@ fn render_canonicalize(report: &CanonicalizeReport, out: &mut dyn Write) -> anyh
         report.rewritten_count(),
         if report.dry_run { "to canonicalize" } else { "canonicalized" }
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -742,7 +752,9 @@ fn render_self_host(report: &SelfHostReport, out: &mut dyn Write) -> anyhow::Res
         if report.dry_run { "to create" } else { "created" },
         report.skipped_count()
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -781,7 +793,9 @@ fn render_collapse(
         "Total: 1 project-vision pair {}",
         if report.dry_run { "to collapse" } else { "collapsed" }
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -821,7 +835,9 @@ fn render_recompose(
         report.reaffirmed_count(),
         report.left_as_drift_count()
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -994,7 +1010,9 @@ fn render_artifacts(
         report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" }
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -1072,7 +1090,9 @@ fn render_notes(
         report.reconciled_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" }
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
 
@@ -1124,10 +1144,12 @@ fn render(report: &MigrationReport, out: &mut dyn Write) -> anyhow::Result<()> {
         if report.dry_run { "to upgrade" } else { "upgraded" },
         report.skipped_count()
     ));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
 
     if !report.warnings.is_empty() {
-        writeln!(out, "\nwarnings:")?;
+        writeln!(out, "warnings:")?;
         for w in &report.warnings {
             writeln!(out, "  - {w}")?;
         }
@@ -1212,6 +1234,8 @@ fn render_replan(
         table.row([change.number.to_string(), name, created, notes.join(", ")]);
     }
     table.summary(format!("Total: {} node(s) re-derived", changes.len()));
+    writeln!(out)?;
     writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
     Ok(())
 }
