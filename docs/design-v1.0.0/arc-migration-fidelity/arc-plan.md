@@ -14,6 +14,11 @@
 > the fidelity checks amend); **ODD-0025** (the fidelity model, Accepted — s02's deliverable);
 > `arc-migration-fidelity/design-notes.md` (the decision log this plan draws on).
 >
+> **⏸ PAUSED 2026-08-02 (operator).** The arc-close freeze fired and **MF-9 fidelity is achieved** (0
+> drift, `check` 0 errors); what remains is **s16** (the `orient` retired-filter), the **P-12 `orient`
+> demo**, and the **arc-close bubble-up**. Paused for a short **Store Lifecycle** detour to land
+> `odm store commit` (`../arc-store-lifecycle/`); **resume at s16 to close this arc.**
+>
 > **Status:** s01–s14 **closed** (s14 2026-07-31); s04–s13 CDC-verified PASS (s13 2026-07-31), s14 CDC
 > verification pending. **s14 (fixture-only, this session)** made `migrate` config-driven ahead of the
 > arc-close freeze — dropped the `<LEGACY_PATH>` positional, restored the `docs_directory`+`"design"`
@@ -167,6 +172,15 @@ destructive op is fixture-proven before it fires.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **done** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain, the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent. **The disclosed doc-coverage gap is now closed too**: a new `migrate --all` (built the same day, prompted by the operator asking why nothing composes the five separate derivations into one idempotent pass) fired live — 2 nodes reconciled (this session's own in-flight edits to `arc-plan.md` and ODD-0020, both living-plan-node drift) + 14 artifact nodes minted (the s11/12/13 gap). `odm check`: **exit 0, 0 errors** (was 14); `388/388` docs covered (was 374/388). Re-run verified idempotent (0/0/0 every sub-step) before commit. **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now fully faithful and fully covered. Reproduced by direct read of commit `e06fffe` (`odm` branch). **Arc-close 2026-07-31 — composition CDC-confirmed** (`closing-report.md`): 8/9 rows done-reproduced; MF-4 capability-done + routed (CDC-ARC-1); **two runtime acts remain** — the final reconcile-and-freeze (closes CDC-F1's 2 living-plan-tail drifts) + the P-12 self-host demo (§7 runbook). **MF-9 met pending that freeze + demo** — after which P-12 is demonstrated against a faithful corpus, not a skeleton |
 
 ## Version History
+
+### v2.32 — 2026-08-02 — Arc PAUSED (operator) for the Store Lifecycle detour; resume at s16
+
+**Operator decision (2026-08-02): pause this arc + s16.** State at pause: the freeze fired, the corpus is
+byte-faithful (0 drift, `check` 0 errors), **MF-9 fidelity achieved**; s15/iteration-1 CDC-verified PASS.
+**Remaining to close:** s16 (`orient` excludes retired — drawn, not built), the P-12 `orient` demonstration,
+and the arc-close bubble-up (+ affirm `decomposed` on the arc node `#58837400`; commit the `odm` store
+freeze). We detour to do **just s01 of the Store Lifecycle arc** (`odm store commit`), pause that arc, then
+**resume here at s16** and close. Nothing lost — this is a sequencing hold, not a scope change.
 
 ### v2.31 — 2026-08-01 — Arc-close freeze FIRED (MF-9 achieved); s16 inserted for the P-12 orient leak
 
