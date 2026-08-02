@@ -1,10 +1,17 @@
 //! Git integration via [`gix`] — pure-Rust, no shelling out (ODD-0013 Q-2).
 //!
 //! The store commits node files by building a tree directly from the working
-//! directory and writing a commit object; it never goes through the on-disk
-//! index. "Status" is therefore expressed as a comparison between the current
+//! directory and writing a commit object — it never *reads* the on-disk
+//! index to decide what to commit. "Status" (odm's own — [`Repo::is_clean`],
+//! [`Repo::tree_delta`]) is expressed as a comparison between the current
 //! worktree tree and `HEAD`'s tree (equal ⇒ clean), which is race-free and
-//! needs no index file.
+//! needs no index file; that stays true after arc-store-lifecycle s04.
+//!
+//! s04 added one thing on the *write* side: after a commit, [`Repo::commit_all`]
+//! rewrites the on-disk index to match the new `HEAD` tree, purely so a plain
+//! `git status` — standard git tooling, not odm's own status path — reads
+//! clean immediately afterward instead of misreporting the just-committed
+//! files as staged-deletions plus untracked.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -82,12 +89,17 @@ impl Repo {
     ///
     /// Builds a tree from every file under the work directory (excluding
     /// `.git`), writes it, and creates a commit whose parent is the previous
-    /// `HEAD` (if any). Returns the new commit id as a hex string.
+    /// `HEAD` (if any). Then syncs the on-disk git index to that same tree
+    /// (arc-store-lifecycle s04), so a plain `git status` on the store
+    /// worktree reads clean immediately afterward — without this, the index
+    /// is left at its pre-commit state and misreports the just-committed
+    /// files as staged-deletions plus untracked, even though `HEAD` already
+    /// has the full tree. Returns the new commit id as a hex string.
     ///
     /// # Errors
     ///
-    /// Returns [`StoreError::Git`] / [`StoreError::Io`] if reading the worktree
-    /// or writing git objects fails.
+    /// Returns [`StoreError::Git`] / [`StoreError::Io`] if reading the worktree,
+    /// writing git objects, or syncing the index fails.
     pub fn commit_all(&self, message: &str) -> Result<String> {
         let work_dir =
             self.repo.work_dir().ok_or_else(|| StoreError::Git("bare repository".into()))?;
@@ -102,7 +114,30 @@ impl Repo {
         };
 
         let id = self.repo.commit_as(sig, sig, "HEAD", message, tree, parents).map_err(git_err)?;
+        self.sync_index_to_tree(tree)?;
         Ok(id.detach().to_string())
+    }
+
+    /// Rewrites the on-disk git index to match `tree` exactly, so a plain
+    /// `git status` on the store worktree reads clean against the commit
+    /// that tree belongs to.
+    ///
+    /// [`Self::commit_all`] never reads or updates the index while building a
+    /// commit — it walks the filesystem directly (see the module doc) — so
+    /// without this the index silently drifts from `HEAD` on every commit.
+    /// This is purely a compatibility sync for standard git tooling: it does
+    /// not feed odm's own status ([`Self::tree_delta`], [`Self::is_clean`]),
+    /// which stays a race-free worktree-tree-vs-`HEAD` comparison and never
+    /// reads the index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Git`] if the index cannot be built from `tree` or
+    /// written to disk.
+    fn sync_index_to_tree(&self, tree: ObjectId) -> Result<()> {
+        let mut index = self.repo.index_from_tree(&tree).map_err(git_err)?;
+        index.write(gix::index::write::Options::default()).map_err(git_err)?;
+        Ok(())
     }
 
     /// Returns `true` if the working directory matches `HEAD`'s tree exactly.

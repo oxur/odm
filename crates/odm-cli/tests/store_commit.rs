@@ -73,6 +73,27 @@ fn commit_count(dir: &Path) -> usize {
     String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0)
 }
 
+/// A plain `git status --porcelain` in `dir` — the standard-git-tooling view
+/// arc-store-lifecycle s04 keeps honest after `store commit`, as opposed to
+/// odm's own race-free tree-comparison status.
+fn git_status_porcelain(dir: &Path) -> String {
+    let out = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(dir)
+        .output()
+        .expect("git status");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// The paths git's **index** currently tracks in `dir` (`git ls-files` reads
+/// the index, not the worktree or `HEAD` directly) — used to prove a
+/// gitignored derived cache never gets staged by the s04 index sync.
+fn indexed_paths(dir: &Path) -> String {
+    let out =
+        Command::new("git").args(["ls-files"]).current_dir(dir).output().expect("git ls-files");
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
 // ----- F-1 / F-6: exists, persists, on the orphan branch, code branch untouched
 
 #[test]
@@ -248,6 +269,68 @@ fn a_later_commit_captures_modifications_and_removals_by_type() {
     assert_eq!(v["delta"]["created"], 0, "{v}");
     assert_eq!(v["delta"]["modified"], 1, "{v}");
     assert_eq!(v["delta"]["removed"], 1, "{v}");
+}
+
+// ----- s04 F-1: `git status` is clean immediately after `store commit` -------
+// Ledger: docs/design-v1.0.0/arc-store-lifecycle/slice04-commit-index-consistency/ledger.md
+
+#[test]
+fn commit_leaves_a_raw_git_status_clean() {
+    let dir = bootstrapped_store();
+    let store = dir.path().join(".worktrees").join("odm");
+    seed(dir.path());
+
+    let r = run(dir.path(), &["store", "commit"]);
+    assert_eq!(r.code, Some(0), "{}", r.err);
+
+    let status = git_status_porcelain(&store);
+    assert!(status.is_empty(), "git status is clean right after commit:\n{status}");
+}
+
+// ----- s04 F-3: `.odm/` stays out of the index too, not just the commit ------
+
+#[test]
+fn a_gitignored_odm_cache_never_lands_in_the_index() {
+    let dir = bootstrapped_store();
+    let store = dir.path().join(".worktrees").join("odm");
+    seed(dir.path());
+
+    // A derived cache under `.odm/` — real bootstrap already scaffolds a
+    // `.gitignore` excluding `/.odm/*` (ODD-0022); simulate a cache file
+    // showing up there before the commit, the same shape `odm check`/`list`
+    // would leave behind.
+    std::fs::create_dir_all(store.join(".odm")).unwrap();
+    std::fs::write(store.join(".odm").join("index"), b"derived, regenerable").unwrap();
+
+    let r = run(dir.path(), &["store", "commit"]);
+    assert_eq!(r.code, Some(0), "{}", r.err);
+
+    let indexed = indexed_paths(&store);
+    assert!(!indexed.contains(".odm/index"), "the cache never entered the index:\n{indexed}");
+
+    let status = git_status_porcelain(&store);
+    assert!(
+        status.is_empty(),
+        "still clean — the ignored cache doesn't show as untracked either:\n{status}"
+    );
+}
+
+// ----- s04 F-4: a second (no-op) commit leaves the index clean too -----------
+
+#[test]
+fn a_second_no_op_commit_leaves_the_index_clean() {
+    let dir = bootstrapped_store();
+    let store = dir.path().join(".worktrees").join("odm");
+    seed(dir.path());
+    assert_eq!(run(dir.path(), &["store", "commit"]).code, Some(0));
+    assert!(git_status_porcelain(&store).is_empty(), "clean after the first commit");
+
+    let r = run(dir.path(), &["store", "commit"]);
+    assert_eq!(r.code, Some(0), "{}", r.err);
+    assert!(r.err.contains("nothing to commit"), "{}", r.err);
+
+    let status = git_status_porcelain(&store);
+    assert!(status.is_empty(), "still clean after the no-op second commit:\n{status}");
 }
 
 // ----- Guard: no `[store]` section means no orphan branch to commit to -------
