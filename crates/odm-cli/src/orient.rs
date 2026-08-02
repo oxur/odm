@@ -59,8 +59,17 @@ pub fn orient(
         commands::index_frontmatters(store, &gates).context("reconciling the index to orient")?;
 
     let ctx = Context::load(store)?;
-    let projects: Vec<&Frontmatter> =
-        frontmatters.iter().filter(|f| f.node_type() == NodeType::Project).collect();
+    // A retired project is a tombstone (supersede-don't-delete, ODD-0025) — it
+    // is never counted, listed, or offered for selection (s16 F-1). `retired`
+    // is not part of the index projection (ODD-0014 §3.5) — `Frontmatter`s
+    // reconstructed from the index (`frontmatters`, above) never carry it, only
+    // `list`'s raw `IndexRecord.retired` flag does — so this is a targeted
+    // per-candidate load, the same pattern `check`'s L-3b project-vision rule
+    // already established in `commands.rs` for exactly this gap.
+    let projects: Vec<&Frontmatter> = frontmatters
+        .iter()
+        .filter(|f| f.node_type() == NodeType::Project && !is_retired(store, f.id()))
+        .collect();
 
     // Resolve the current project id, or emit a never-bare-error fallback (valid
     // JSON or the human affordance, per `json`).
@@ -88,9 +97,17 @@ pub fn orient(
     // on-demand store-read reconcile (the shared projector `rollup` also uses —
     // S-5/S-6/D-3), since the index carries no `desired_facts`.
     let (drift, deferred) = crate::reconcile::reconcile_views(store)?;
-    let model = Rollup::assemble(&frontmatters, &gates, threshold)
+    let mut model = Rollup::assemble(&frontmatters, &gates, threshold)
         .with_drift(drift)
         .with_deferred(deferred);
+    // Same "orient never surfaces a retired node" rule as the project list
+    // above, applied to the ready/blocked sets `Rollup::assemble` computes
+    // purely from gate status — it has no notion of retirement, so a retired
+    // node whose last-reached gate is non-terminal would otherwise still show
+    // up as ready or blocked (s16 F-2/F-3). Filtered here, once, so both the
+    // human view and `--json` (which read the same `model`) stay consistent.
+    model.ready.retain(|r| !is_retired(store, r.node.id));
+    model.blocked.retain(|b| !is_retired(store, b.node.id));
     let findings = commands::integrity_findings(store, root, &frontmatters)?;
 
     if json {
@@ -345,6 +362,19 @@ fn block_reason_line(reason: &odm_core::rollup::BlockReason) -> String {
         ),
         ExternallyBlocked { by } => format!("blocked-by: {}", dep_label(by)),
     }
+}
+
+/// Whether `id` names a retired node — the single predicate behind orient's
+/// "never surfaces a retired node" rule (s16).
+///
+/// A targeted per-node load, not an index-frontmatter field check: retirement
+/// is not part of the index projection (ODD-0014 §3.5), so `Frontmatter`s
+/// reconstructed from the index never carry it (`commands.rs`'s `check` L-3b
+/// rule hit the same gap for the project-vision check and established this
+/// pattern). A node that fails to load is treated as not-retired — a load
+/// failure is an integrity problem, not orient's to diagnose here.
+fn is_retired(store: &Store, id: Id) -> bool {
+    store.load(id).is_ok_and(|d| d.frontmatter().retired().is_some())
 }
 
 /// Finds a node by id anywhere in the way-finding forest.

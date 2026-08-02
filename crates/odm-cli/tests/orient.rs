@@ -421,3 +421,127 @@ fn brief_aliases_orient() {
     assert!(orient.ok && brief.ok);
     assert_eq!(orient.out, brief.out, "brief output is byte-identical to orient");
 }
+
+// ----- s16 F-1: a retired project is never counted, listed, or offered ------
+
+#[test]
+fn orient_excludes_retired_project_from_selection() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(
+        root,
+        Document::new(fm('P', 1, NodeType::Project, "Active", Origin::Planned), VISION_BODY),
+    );
+    let mut retired = fm('R', 2, NodeType::Project, "Retired", Origin::Planned);
+    retired.retire("superseded", day());
+    persist(root, Document::new(retired, "# r\n"));
+
+    // No `use project` — the whole point is that a single *active* remainder
+    // auto-orients, the P-12 path, even though two projects exist on disk.
+    let r = run(root, &["orient"]);
+    assert!(r.ok && r.code == Some(0));
+    assert!(
+        r.out.contains("VISION  #1 Active"),
+        "auto-orients to the sole active project:\n{}",
+        r.out
+    );
+    assert!(!r.out.contains("none selected"), "never asks to choose:\n{}", r.out);
+    assert!(!r.out.contains("Retired"), "the tombstone is not listed:\n{}", r.out);
+
+    let json = run(root, &["orient", "--json"]);
+    assert!(json.ok);
+    let v: serde_json::Value = serde_json::from_str(&json.out).expect("valid JSON");
+    assert_eq!(v["project"]["number"], 1, "{v}");
+}
+
+#[test]
+fn orient_still_lists_multiple_active_projects() {
+    // The retired-exclusion must not swallow a genuine multi-project prompt —
+    // two *active* projects still ask.
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(root, Document::new(fm('A', 1, NodeType::Project, "Alpha", Origin::Planned), "# a\n"));
+    persist(root, Document::new(fm('B', 2, NodeType::Project, "Beta", Origin::Planned), "# b\n"));
+
+    let r = run(root, &["orient"]);
+    assert!(r.ok && r.code == Some(0));
+    assert!(r.out.contains("none selected"), "still prompts:\n{}", r.out);
+    assert!(r.out.contains("Alpha") && r.out.contains("Beta"), "{}", r.out);
+}
+
+// ----- s16 F-2/F-3: a retired node never appears in READY or BLOCKED --------
+
+#[test]
+fn orient_excludes_retired_node_from_ready() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(
+        root,
+        Document::new(fm('P', 1, NodeType::Project, "Proj", Origin::Planned), VISION_BODY),
+    );
+
+    // A leaf slice with no unmet dependencies would normally be ready.
+    let mut retired = fm('R', 2, NodeType::Slice, "Retired slice", Origin::Planned);
+    retired.edges_mut().part_of = Some(id('P'));
+    retired.retire("superseded", day());
+    persist(root, Document::new(retired, "# r\n"));
+
+    // A live sibling proves READY isn't just empty by construction.
+    let mut live = fm('V', 3, NodeType::Slice, "Live slice", Origin::Planned);
+    live.edges_mut().part_of = Some(id('P'));
+    persist(root, Document::new(live, "# l\n"));
+
+    let r = run(root, &["orient"]);
+    assert!(r.ok);
+    let ready = r.out.split("BLOCKED").next().unwrap();
+    assert!(ready.contains("Live slice"), "the live node is ready:\n{}", r.out);
+    assert!(!ready.contains("Retired slice"), "the retired node is not:\n{}", r.out);
+
+    let json = run(root, &["orient", "--json"]);
+    assert!(json.ok);
+    let v: serde_json::Value = serde_json::from_str(&json.out).expect("valid JSON");
+    let ready_names: Vec<&str> = v["ready"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["node"]["name"].as_str().unwrap())
+        .collect();
+    assert!(ready_names.contains(&"Live slice"), "{v}");
+    assert!(!ready_names.contains(&"Retired slice"), "{v}");
+}
+
+#[test]
+fn orient_excludes_retired_node_from_blocked() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    write_config(root);
+    persist(
+        root,
+        Document::new(fm('P', 1, NodeType::Project, "Proj", Origin::Planned), VISION_BODY),
+    );
+
+    // An unsatisfied dependency so the dependent would normally show BLOCKED.
+    let mut dep = fm('D', 2, NodeType::Slice, "Dep", Origin::Planned);
+    dep.edges_mut().part_of = Some(id('P'));
+    persist(root, Document::new(dep, "# d\n"));
+
+    let mut retired = fm('R', 3, NodeType::Slice, "Retired blocked", Origin::Planned);
+    retired.edges_mut().part_of = Some(id('P'));
+    retired.edges_mut().depends_on.push(Dependency::Bare(id('D')));
+    retired.retire("superseded", day());
+    persist(root, Document::new(retired, "# r\n"));
+
+    let mut live = fm('V', 4, NodeType::Slice, "Live blocked", Origin::Planned);
+    live.edges_mut().part_of = Some(id('P'));
+    live.edges_mut().depends_on.push(Dependency::Bare(id('D')));
+    persist(root, Document::new(live, "# l\n"));
+
+    let r = run(root, &["orient"]);
+    assert!(r.ok);
+    let blocked = r.out.split("INTEGRITY").next().unwrap();
+    assert!(blocked.contains("Live blocked"), "the live node is blocked:\n{}", r.out);
+    assert!(!blocked.contains("Retired blocked"), "the retired node is not:\n{}", r.out);
+}
