@@ -5,7 +5,7 @@ type: design
 schema: design/v1.1
 name: Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity
 created: 2026-07-27
-updated: 2026-07-29
+updated: 2026-08-01
 tags:
 - migration
 - source
@@ -26,7 +26,7 @@ source:
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-30
+  migrated_on: 2026-08-01
 status:
   accepted:
     reached: 2026-07-27
@@ -159,6 +159,22 @@ migration).
 
 The synthesized node's `source` records `synthesis: <type>` and the multi-element `paths`.
 
+**Amended v1.3 (arc-migration-fidelity s15, 2026-08-01 — the project vision is reversed out of this
+mechanism):** s12/s13 applied synthesis to **the project specifically** — an editorial-merge node
+(a curated `# Vision` body) superseding a separately-minted 1:1 `project-plan` node. s15 reverses
+that one application: the operator judged the two-node split documentation over-engineering — it
+was also the direct source of a reconcile gap (the 1:1 base was structurally unreachable by
+reconcile, `#1001` in the live corpus) and a fragile "already a synthesis" idempotency check. **The
+project is now always exactly one node**: a faithful 1:1 migration of `project-plan.md`, reconciled
+like any other plan node (§2.9). The vision is a **rendered view** of that one node (`orient`
+excerpts a heading/lead section from its body), never a stored synthesis body. The general
+mechanism above is **not retracted** — `concatenation`/`editorial-merge`/`other`, the
+`supersedes`-list model, and the bidirectional-lineage guarantee all remain available for a
+**future, genuine** synthesis (several distinct sources merged into one new node); the project
+vision was simply never a good fit for it once a single-source, in-place re-cast is what's wanted.
+The collapse itself is `id`/`number`-preserving (the surviving node is the former synthesis, re-cast
+in place, not re-minted) and retires the node it superseded rather than deleting it.
+
 ### 2.4 Frontmatter fidelity — a schema-mapping check over originally-present fields (F5)
 
 A migration-time, versioned mapping-equivalence check over **only the fields the source had**:
@@ -238,9 +254,17 @@ verification first surfaced it) reconciles the **same way** as any other drifted
 **no special exclusion**. Two things make this safe rather than a moving target: (1) the gate is
 migration-time-only, so inter-reconcile drift is *by design* invisible to `check` — there is no
 continuously-enforced "must match" that a living document could ever violate; and (2) at arc-close the
-source has stabilized, so the final reconcile pass leaves the node genuinely faithful. The project
-**synthesis** node is the one exception, and it already has one: it stays excluded from 1:1 entirely
-(§2.3) — its own re-cast is the separate vision-apply mechanism, not a reconcile target.
+source has stabilized, so the final reconcile pass leaves the node genuinely faithful.
+
+**The reconcile exclusion (amended v1.3, s15 F-3):** the **sole** exclusion is a node carrying
+`source.synthesis` — ODD-0020 v1.4's key, reused here rather than a second, node-type-based rule.
+Before s15 this was expressed as "the project is excluded" (a `node_type == Project` check), because
+the project was, at the time, always synthesis-shaped. Now that the project is collapsed to a plain
+1:1 node by default (§2.3), that blanket exclusion would wrongly leave a faithful project
+unreconciled forever — so the check is keyed on the actual reason a node must never be forced through
+the 1:1 gate (it is a **merge**, not a migration), which generalizes correctly: a plain 1:1 project
+reconciles like any other plan node; a node that genuinely does carry `source.synthesis` (project or
+otherwise) still stays excluded, exactly as before.
 
 Moved-source re-discovery is reconcile's other half: a node whose stored `source.paths` no longer
 resolves, because its source file relocated (the concrete case: arc-migration-fidelity s11's L-8b
@@ -323,6 +347,34 @@ the arc's composition check (MF-9) passes against a corpus with real bodies, ful
   §2/§4 (amended); ODD-0002 §2.2 (the git-derived-author intent); ODD-0024 (ULID retained).
 
 ## Version History
+
+### v1.3 — 2026-08-01 — Accepted
+
+**§2.3 reversed for the project specifically (arc-migration-fidelity s15, operator decision
+2026-08-01):** the project vision is no longer a synthesis-node instance. s12/s13's editorial-merge
+split (a curated `# Vision` node superseding a separately-minted 1:1 `project-plan` node) is
+collapsed back to **one faithful 1:1 project node** — the operator judged the split documentation
+over-engineering, and it was also the direct cause of two defects this slice closes: (1) the 1:1 base
+was structurally unreachable by reconcile (the live corpus's `#1001`, orphaned by the blanket
+`node_type == Project` exclusion), and (2) the "already a synthesis" idempotency check was fragile.
+The collapse is `id`/`number`-preserving — the surviving node is the former synthesis, re-cast in
+place (never re-minted), so every `part_of` child (each arc) resolves unchanged — and retires the
+node it superseded (supersede-don't-delete) rather than deleting it. The general synthesis mechanism
+itself (§2.3's `concatenation`/`editorial-merge`/`other` regimes, the `supersedes`-list model, the
+bidirectional-lineage guarantee) is **not retracted** — it remains available for a future, genuine
+multi-source synthesis; only the project's own application of it is reversed. The vision becomes a
+**rendered view** of the one node (`orient`), never a stored synthesis body — until a concise
+vision-view lands (LLM-command-surface arc), `orient` renders the project's full body, an accepted
+interim verbosity.
+
+**§2.9's reconcile exclusion re-keyed on `source.synthesis` (s15 F-3):** replacing the blanket
+`node_type == Project` check (three sites in `selfhost.rs`) with "excluded iff the node carries
+`source.synthesis`" (reusing ODD-0020 v1.4's key) — post-collapse the project carries none, so it
+reconciles like any other plan node; a node that genuinely is a synthesis (project or otherwise)
+stays excluded exactly as before. Extends the same "everything ingested should reconcile" principle
+to the artifact and note families (`mint_artifacts`/`mint_notes` become mint-or-reconcile, s15 F-4),
+closing the parallel gap where a drifted-but-already-minted supporting doc had no path back to
+fidelity.
 
 ### v1.2 — 2026-07-29 — Accepted
 

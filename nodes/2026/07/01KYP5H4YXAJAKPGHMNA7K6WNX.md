@@ -5,7 +5,7 @@ type: design
 schema: design/v1.1
 name: The odm store home — a dedicated orphan branch in a git worktree
 created: 2026-07-26
-updated: 2026-07-26
+updated: 2026-07-31
 tags:
 - change-me
 component: All
@@ -19,7 +19,7 @@ source:
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-29
+  migrated_on: 2026-08-01
 status:
   accepted:
     reached: 2026-07-26
@@ -109,6 +109,24 @@ Commands resolve the store root to `<repo>/<worktree_base>/<worktree_name>` (def
 existing cwd → repo-root → user-config search still finds `odm.toml`; the new `[store]` pointer
 then redirects the *store root* to the worktree. **Two configs (resolved).** The code-branch **`odm.toml`** is the *locator* — committed, minimal, just `[store]` (where the home is). The *operational* config — gate-sets, display, `docs_directory`, author — lives **inside the store** as **`config.toml`** (not another `odm.toml`: redundant given the branch), so it is **versioned and shared with the data it governs** and cannot drift from it. Load is two-stage: find `odm.toml` -> `[store]` -> resolve `.worktrees/odm` -> load that store's `config.toml`.
 
+**The `[legacy]` sub-table (v1.1, arc-migration-fidelity s13/s14).** A pre-split (odm 0.3.x)
+`odm.toml` carries `docs_directory`/`dev_directory` (and a few settings the v1.0 crates don't yet
+consume) inline, with no `[store]` section at all. `odm store init`'s bootstrap arm ports those
+keys forward into the fresh store's `config.toml`, under `[legacy]`, as a preserved historical
+record — never acted on directly, just carried so a later migration pass has it rather than losing
+or re-deriving it. `migrate` reads `docs_directory`/`dev_directory` from the **top-level** key
+first, falling back to the same key under `[legacy]` — so a store whose only source for either is
+the ported-forward block still resolves correctly without the operator re-typing the modern key.
+`[legacy].additional_paths` is a distinct, **live** key (not a ported-forward record): the operator
+names extra un-typed legacy directories (research notes, brainstorm sessions, chat logs) on
+`migrate --all`'s command line, and they are unioned in, sorted, deduplicated, and written back
+here so a forgotten re-pass still covers them. **This lives in the operational config the code
+actually reads** (`config.toml` inside the store, once one exists — `StoreHome::resolve`'s
+`operational_path`) — a `[legacy]` block sitting only in the code-branch `odm.toml` (the locator)
+is invisible to `migrate` the moment a store `config.toml` exists, since the locator stops being
+the operational file at that point. A v1.0+ config that wants `additional_paths` re-runs to stay
+idempotent must carry `[legacy]` in the file the code resolves, not the locator.
+
 ### 4.3 `odm init`
 
 `odm init` — **three modes, chosen by detection:** **bootstrap** (no `odm` branch anywhere → create the orphan, below), **attach** (a remote `odm` branch exists → check it out into the worktree, *do not* re-orphan — see §6 sharing), and **sync** (a store already exists **locally** → `fetch` + `merge --ff-only` from `origin/odm`: a clean fast-forward freshens the store; a **divergence** (unpushed local commits + advanced upstream) or a missing upstream **warns and stops**, leaving merge-vs-rebase to the operator — never auto-rebasing a shared branch; `--force`/`--overwrite` deferred, §6). The **bootstrap** steps:
@@ -173,6 +191,20 @@ today odm only uses tree comparison). Options, to resolve early:
 - `init` scaffolds; it does not import — importing is `migrate`/`self-host` (§4.4).
 
 ## 8. Version history
+
+### v1.1 — 2026-07-31
+§4.2: documents the `[legacy]` sub-table `odm store init` began writing in
+arc-migration-fidelity s13 (docs_directory/dev_directory ported forward from
+a pre-split odm.toml, never previously recorded here) and the new
+`[legacy].additional_paths` key `migrate --all` reads/writes (s14) — the
+persistent sweep-and-remember list for un-typed legacy directories beyond
+docs_directory/dev_directory. Also records the resolution to a real defect
+s14 found and fixed: a `[legacy]` block the operator had added to the
+code-branch `odm.toml` (the locator) was invisible to `migrate`, since a
+store `config.toml` — the actual file `StoreHome::resolve` treats as
+operational once it exists — takes precedence over the locator entirely.
+Surfaced by: arc-migration-fidelity s14 (operator-surfaced defects against
+`migrate --all`).
 
 ### v0.7 — 2026-07-26
 §4.3/§6 idempotence refined: `init` on an existing local store does a **fast-forward-only sync** (`pull --ff-only` from `origin/odm`) instead of a bare no-op — a useful re-init that cannot corrupt the shared DB. **No auto-rebase/auto-merge** on the shared `odm` branch (rewriting or merging published history breaks teammates' clones); a divergence or missing upstream warns and stops, resolution left to the operator. `--force`/`--overwrite`/repair still deferred. Surfaced by: operator sync-on-init idea + shared-branch safety analysis.

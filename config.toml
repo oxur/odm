@@ -3,13 +3,6 @@
 # This file lives *in* the store, so it is versioned with the data it governs
 # and cannot drift from it. The code branch's `odm.toml` only says where the
 # store is.
-#
-# Populated at the RH C-5 cutover from the pre-split `odm.toml`, which carried
-# both halves. Every operational key that file held is below — the split moves
-# settings, it does not drop them.
-
-# Where design documents live, for `odm migrate`.
-docs_directory = "./docs/design"
 
 # Doc-coverage enforcement (arc-migration-fidelity s09/s10, ODD-0025 §5).
 # `odm check` fails with an Error on any `.md` under `scan_root` with no
@@ -49,11 +42,12 @@ sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
 [display]
 max_width = 64
 
-# Carried over from the pre-split `odm.toml`, unread by the v1.0 crates: these
-# three are odm 0.3.x settings that only `legacy/oxur-odm` consumes. They are
-# kept here rather than deleted because the cutover's job is to relocate the
-# operational half intact, not to decide what the rebuild will re-adopt. The
-# arc that re-implements dustbin/auto-stage behaviour owns that decision.
-dev_directory = "./docs/dev"
+[legacy]
+# Read live by v1.0 `migrate` (root resolution):
+docs_directory = "./docs"
+dev_directory  = "./docs/dev"
+
+# Truly inert — odm 0.3.x settings only legacy/oxur-odm consumes, kept as a
+# preserved record until the arc that re-adopts dustbin/auto-stage owns them:
 preserve_dustbin_structure = true
-auto_stage_git = true
+auto_stage_git             = true

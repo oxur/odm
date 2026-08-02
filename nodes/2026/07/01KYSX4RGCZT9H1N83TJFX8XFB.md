@@ -8,6 +8,9 @@ created: 2026-06-26
 updated: 2026-07-27
 origin: planned
 reserved: false
+retired:
+  reason: collapsed into the faithful 1:1 project node (arc-migration-fidelity s15, ODD-0025 §2.3 reversal — operator decision 2026-08-01)
+  on: 2026-08-01
 source:
   paths:
   - docs/design-v1.0.0/project-plan.md
