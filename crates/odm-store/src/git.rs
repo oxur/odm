@@ -6,6 +6,7 @@
 //! worktree tree and `HEAD`'s tree (equal ⇒ clean), which is race-free and
 //! needs no index file.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -15,6 +16,32 @@ use gix::objs::Tree;
 use gix::objs::tree::{Entry, EntryKind};
 
 use crate::error::{Result, StoreError};
+
+/// How a single file under a watched directory (e.g. `nodes/`) differs
+/// between `HEAD`'s tree and the current worktree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeKind {
+    /// Present in the worktree, absent from `HEAD`.
+    Created,
+    /// Present in both, with a different blob id.
+    Modified,
+    /// Present in `HEAD`, absent from the worktree.
+    Removed,
+}
+
+/// One file's change, as found by [`Repo::tree_delta`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileChange {
+    /// The path, relative to the work directory, `/`-separated (e.g.
+    /// `nodes/2026/07/01J....md`).
+    pub path: String,
+    /// What happened to it.
+    pub kind: ChangeKind,
+    /// The file's content **as it was in `HEAD`** — only present for
+    /// [`ChangeKind::Removed`], since that content no longer exists on disk
+    /// for a caller to read directly.
+    pub removed_content: Option<Vec<u8>>,
+}
 
 /// A handle to a git repository.
 #[derive(Debug)]
@@ -107,10 +134,148 @@ impl Repo {
         commit.tree_id().ok().map(|id| id.detach())
     }
 
+    /// The files under `dir` (relative to the work directory, e.g. `"nodes"`)
+    /// that differ between `HEAD`'s tree and the current worktree.
+    ///
+    /// Restricted to `dir` rather than diffing the whole worktree, because
+    /// callers want a delta over one subtree (the node files), not every file
+    /// a commit would carry (e.g. `config.toml`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Git`] / [`StoreError::Io`] if reading the tree or
+    /// the worktree fails.
+    pub fn tree_delta(&self, dir: &str) -> Result<Vec<FileChange>> {
+        let work_dir =
+            self.repo.work_dir().ok_or_else(|| StoreError::Git("bare repository".into()))?;
+
+        let mut before: BTreeMap<String, ObjectId> = BTreeMap::new();
+        if let Some(head_tree_id) = self.head_tree_id() {
+            let tree = self.repo.find_tree(head_tree_id).map_err(git_err)?;
+            let decoded = tree.decode().map_err(git_err)?;
+            if let Some(entry) = decoded.entries.iter().find(|e| e.filename == dir)
+                && entry.mode.is_tree()
+            {
+                self.collect_tree_blobs(entry.oid.to_owned(), dir, &mut before)?;
+            }
+        }
+
+        let mut after: BTreeMap<String, ObjectId> = BTreeMap::new();
+        let dir_path = work_dir.join(dir);
+        if dir_path.is_dir() {
+            self.collect_fs_blobs(&dir_path, dir, &mut after)?;
+        }
+
+        let mut changes: Vec<FileChange> = after
+            .iter()
+            .filter_map(|(path, id)| match before.get(path) {
+                None => Some(FileChange {
+                    path: path.clone(),
+                    kind: ChangeKind::Created,
+                    removed_content: None,
+                }),
+                Some(old_id) if old_id != id => Some(FileChange {
+                    path: path.clone(),
+                    kind: ChangeKind::Modified,
+                    removed_content: None,
+                }),
+                Some(_) => None,
+            })
+            .collect();
+
+        for (path, id) in &before {
+            if after.contains_key(path) {
+                continue;
+            }
+            let content = self.repo.find_blob(*id).map_err(git_err)?.data.clone();
+            changes.push(FileChange {
+                path: path.clone(),
+                kind: ChangeKind::Removed,
+                removed_content: Some(content),
+            });
+        }
+
+        changes.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(changes)
+    }
+
+    /// Recursively collects blob paths (relative to the work dir, `/`-joined)
+    /// and their object ids from an existing git tree.
+    fn collect_tree_blobs(
+        &self,
+        tree_id: ObjectId,
+        prefix: &str,
+        out: &mut BTreeMap<String, ObjectId>,
+    ) -> Result<()> {
+        let tree = self.repo.find_tree(tree_id).map_err(git_err)?;
+        let decoded = tree.decode().map_err(git_err)?;
+        for entry in &decoded.entries {
+            let full = format!("{prefix}/{}", entry.filename);
+            if entry.mode.is_tree() {
+                self.collect_tree_blobs(entry.oid.to_owned(), &full, out)?;
+            } else {
+                out.insert(full, entry.oid.to_owned());
+            }
+        }
+        Ok(())
+    }
+
+    /// Recursively collects blob paths (relative to the work dir, `/`-joined)
+    /// and their content-addressed ids from the filesystem, writing each file
+    /// as a blob (content-addressed and idempotent, matching [`Self::write_tree`]).
+    fn collect_fs_blobs(
+        &self,
+        dir: &Path,
+        prefix: &str,
+        out: &mut BTreeMap<String, ObjectId>,
+    ) -> Result<()> {
+        for dirent in fs::read_dir(dir).map_err(|e| StoreError::io(dir, e))? {
+            let dirent = dirent.map_err(|e| StoreError::io(dir, e))?;
+            let name = dirent.file_name();
+            let path = dirent.path();
+            let file_type = dirent.file_type().map_err(|e| StoreError::io(&path, e))?;
+            let full = format!("{prefix}/{}", name.to_string_lossy());
+            if file_type.is_dir() {
+                self.collect_fs_blobs(&path, &full, out)?;
+            } else if file_type.is_file() {
+                let bytes = fs::read(&path).map_err(|e| StoreError::io(&path, e))?;
+                let blob = self.repo.write_blob(&bytes).map_err(git_err)?.detach();
+                out.insert(full, blob);
+            }
+        }
+        Ok(())
+    }
+
     /// Recursively writes `dir` as a git tree, returning the tree's id. Files
-    /// become blobs; subdirectories become subtrees; `.git` and empty
-    /// directories are skipped (git does not track empty directories).
+    /// become blobs; subdirectories become subtrees; `.git`, empty
+    /// directories, and anything the worktree's own `.gitignore` excludes are
+    /// skipped.
+    ///
+    /// The exclude check matters as much as the `.git` skip: `commit_all`
+    /// walks the filesystem directly rather than staging through git's index,
+    /// so without it a gitignored, derived cache (odm's own `.odm/index` and
+    /// `.odm/drift` — ODD-0022's own `.gitignore` marks them expendable)
+    /// would get baked permanently into the orphan branch's history the
+    /// moment it exists on disk, the first time anything commits.
     fn write_tree(&self, dir: &Path) -> Result<ObjectId> {
+        let work_dir =
+            self.repo.work_dir().ok_or_else(|| StoreError::Git("bare repository".into()))?;
+        let index = gix::index::State::new(self.repo.object_hash());
+        let mut excludes = self
+            .repo
+            .excludes(&index, None, gix::worktree::stack::state::ignore::Source::default())
+            .map_err(git_err)?;
+        self.write_tree_excluding(dir, work_dir, &mut excludes)
+    }
+
+    /// [`Self::write_tree`]'s recursion, carrying the exclude stack down so
+    /// it is built once per commit rather than once per directory.
+    fn write_tree_excluding(
+        &self,
+        dir: &Path,
+        work_dir: &Path,
+        excludes: &mut gix::AttributeStack<'_>,
+    ) -> Result<ObjectId> {
         let mut entries: Vec<Entry> = Vec::new();
         for dirent in fs::read_dir(dir).map_err(|e| StoreError::io(dir, e))? {
             let dirent = dirent.map_err(|e| StoreError::io(dir, e))?;
@@ -120,10 +285,23 @@ impl Repo {
             }
             let path = dirent.path();
             let file_type = dirent.file_type().map_err(|e| StoreError::io(&path, e))?;
+            let relative = path.strip_prefix(work_dir).unwrap_or(&path);
+            let mode = Some(if file_type.is_dir() {
+                gix::index::entry::Mode::DIR
+            } else {
+                gix::index::entry::Mode::FILE
+            });
+            let excluded = excludes
+                .at_path(relative, mode)
+                .map_err(|e| StoreError::io(&path, e))?
+                .is_excluded();
+            if excluded {
+                continue;
+            }
             let filename = BString::from(name.to_string_lossy().as_bytes());
 
             if file_type.is_dir() {
-                let sub = self.write_tree(&path)?;
+                let sub = self.write_tree_excluding(&path, work_dir, excludes)?;
                 // Skip empty subtrees (git has no concept of an empty directory).
                 if sub != self.repo.empty_tree().id().detach() {
                     entries.push(Entry { mode: EntryKind::Tree.into(), filename, oid: sub });

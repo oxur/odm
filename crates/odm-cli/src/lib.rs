@@ -264,6 +264,25 @@ enum StoreCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Persist the store worktree's pending node changes as a commit on the
+    /// orphan branch.
+    ///
+    /// The verb that closes the `init → mutate → ???` gap: `migrate`/`node`
+    /// write files into the worktree but never commit them, so without this
+    /// the only way to persist the store was raw `git`. The default message
+    /// is a node delta (created/modified/removed, by type); `-m` overrides
+    /// it. A clean worktree is a no-op — exit `0`, no empty commit.
+    Commit {
+        /// Override the auto-generated node-delta summary.
+        #[arg(short = 'm', long, value_name = "MSG")]
+        message: Option<String>,
+        /// Report the delta and message; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit JSON describing the commit (or the no-op / dry-run outcome).
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// The `odm node …` operations — node entity management (ODD-0023 §4).
@@ -815,6 +834,9 @@ pub fn dispatch(
                         out,
                         err,
                     )?;
+                }
+                StoreCommand::Commit { message, dry_run, json } => {
+                    store_cmd::commit(root, message.as_deref(), dry_run, json, out, err)?;
                 }
             },
         },

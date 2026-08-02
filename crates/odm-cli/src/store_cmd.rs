@@ -10,9 +10,10 @@
 use std::io::Write;
 use std::path::Path;
 
+use anyhow::Context;
 use odm_store::init::{self, Mode, SyncAction};
 use odm_store::rename::Decision;
-use odm_store::{InitPlan, RenamePlan, StoreHome};
+use odm_store::{InitPlan, NodeDelta, RenamePlan, Repo, StoreHome};
 use serde::Serialize;
 
 use crate::term;
@@ -411,4 +412,114 @@ fn describe(done: &odm_store::Renamed) -> String {
         parts.push(format!("branch {:?} → {:?}", done.old_branch, done.new_branch));
     }
     parts.join(", ")
+}
+
+/// The `--json` shape for a `store commit` (F-5): a real commit, a dry-run
+/// preview, or a clean no-op all use the same shape, distinguished by
+/// `committed`.
+#[derive(Serialize)]
+struct CommitJson {
+    /// Whether a commit was actually written.
+    committed: bool,
+    /// The new commit's id, when one was written.
+    sha: Option<String>,
+    /// The orphan branch the commit landed on (or would).
+    branch: String,
+    /// The message used (auto-generated or `-m`-supplied).
+    message: String,
+    /// The node-file delta the message was derived from.
+    delta: NodeDelta,
+}
+
+/// The auto-summary message (D-1): the node-delta summary when there is one,
+/// else a generic fallback for a dirty worktree whose changes are all
+/// non-node files (e.g. `config.toml`).
+fn auto_message(delta: &NodeDelta) -> String {
+    if delta.is_empty() { "store: config/settings update".to_string() } else { delta.summary() }
+}
+
+/// Runs `odm store commit`: persists the store worktree's pending node
+/// changes as a commit on the orphan branch (arc-store-lifecycle s01).
+///
+/// Idempotent (F-3): a clean worktree exits `0` with "nothing to commit" and
+/// writes no empty commit. The default message is the node delta (F-2);
+/// `-m` overrides it. `--dry-run` (F-4) reports the delta and message and
+/// writes nothing — the orphan branch's `HEAD` is untouched.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if there is no store worktree to commit
+/// to, or a git operation fails.
+pub(crate) fn commit(
+    root: &Path,
+    message: Option<&str>,
+    dry_run: bool,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let Some(location) = home.location.clone() else {
+        anyhow::bail!(
+            "no `[store]` in {} — there is no store worktree to commit; the store is the repo \
+             root. Run `odm store init` first.",
+            home.repo_root.join("odm.toml").display()
+        )
+    };
+    let branch = location.branch_name.clone();
+    let store_root = home.store_root.clone();
+
+    let repo = Repo::open(&store_root).with_context(|| {
+        format!(
+            "opening the store worktree at {} — has `odm store init` run?",
+            store_root.display()
+        )
+    })?;
+
+    let delta = odm_store::delta::compute(&repo, &store_root)?;
+    let clean = repo.is_clean()?;
+
+    if clean {
+        if json {
+            let view = CommitJson {
+                committed: false,
+                sha: None,
+                branch,
+                message: "nothing to commit".to_string(),
+                delta,
+            };
+            writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+            return Ok(());
+        }
+        term::success(err, "store commit: nothing to commit — the store worktree is clean")?;
+        return Ok(());
+    }
+
+    let message = message.map(str::to_string).unwrap_or_else(|| auto_message(&delta));
+
+    if dry_run {
+        if json {
+            let view = CommitJson { committed: false, sha: None, branch, message, delta };
+            writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+            return Ok(());
+        }
+        term::info(
+            err,
+            &format!(
+                "store commit (dry-run): would commit on {branch:?} — {message:?} — nothing \
+                 written"
+            ),
+        )?;
+        return Ok(());
+    }
+
+    let sha = repo.commit_all(&message)?;
+
+    if json {
+        let view = CommitJson { committed: true, sha: Some(sha.clone()), branch, message, delta };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+    term::success(err, &format!("store commit: {sha} on {branch:?} — {message:?}"))?;
+    Ok(())
 }

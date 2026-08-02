@@ -108,6 +108,33 @@ fn commit_skips_empty_subdirectories() {
     assert!(repo.is_clean().unwrap());
 }
 
+#[test]
+fn commit_all_honours_the_worktrees_own_gitignore() {
+    // `commit_all` walks the filesystem directly rather than staging through
+    // git's index, so without exclude-awareness a gitignored, derived cache —
+    // exactly the shape of odm's own `.odm/index` (ODD-0022) — would get
+    // baked permanently into history the moment it exists on disk.
+    let dir = TempDir::new().unwrap();
+    let repo = Repo::init(dir.path()).unwrap();
+    fs::write(dir.path().join(".gitignore"), "/cache/*\n!/cache/keep.txt\n").unwrap();
+    fs::create_dir(dir.path().join("cache")).unwrap();
+    fs::write(dir.path().join("cache").join("derived.bin"), b"regenerable").unwrap();
+    fs::write(dir.path().join("cache").join("keep.txt"), b"re-admitted").unwrap();
+    fs::write(dir.path().join("tracked.md"), b"real content").unwrap();
+
+    repo.commit_all("initial").expect("commit");
+
+    let head = std::process::Command::new("git")
+        .args(["show", "--stat", "--format=", "HEAD"])
+        .current_dir(dir.path())
+        .output()
+        .expect("git show");
+    let stat = String::from_utf8_lossy(&head.stdout);
+    assert!(stat.contains("tracked.md"), "real content is committed:\n{stat}");
+    assert!(stat.contains("cache/keep.txt"), "the negated re-admission is committed:\n{stat}");
+    assert!(!stat.contains("derived.bin"), "the gitignored cache file is not committed:\n{stat}");
+}
+
 // ----- atomic write: rename-failure cleanup ---------------------------------
 
 #[test]

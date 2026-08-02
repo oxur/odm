@@ -70,6 +70,21 @@ do worktree/branch/commit ops for `init`) — the capability is largely *exposin
 
 ## Version History
 
+### 2026-08-02 — s01 (`store commit`) closed; bubble-up
+
+`slice01-store-commit` closed (CC attested; CDC reproduction pending) — see its `ledger.md` and
+`closing-report.md`. SL-1's criteria (F-1…F-8) all `done`. The slice's real-orphan-branch fixture discipline
+surfaced and fixed a genuine ODD-0022 gap beyond the command surface itself: `odm-store`'s `write_tree` (the
+filesystem-walking tree builder `is_clean`/`commit_all` share) never consulted the store's own `.gitignore`,
+so any command that populated `.odm/index`/`.odm/drift` before a commit would have baked those derived
+caches permanently into the orphan branch. Fixed in `git.rs` (now `gix`-exclude-aware); regression-fixtured
+in `odm-store`. No ODD-0022 amendment judged necessary — the fix brings behavior into line with what the
+store's own scaffolded `.gitignore` already promised, rather than changing the model (flagged in the ledger
+for CDC to confirm). Carried forward as a note for s02/s03: any future store-worktree verb going through the
+same filesystem-walking git plumbing inherits the fix automatically; verify rather than assume when s02
+(`store status`) is implemented. Per the scoped-run note above, the arc stays **paused** — s02/s03 not
+started; this entry only closes s01.
+
 ### v1.0 — 2026-08-01 — arc shaped
 
 Shaped from the arc-migration-fidelity freeze, which had no odm verb to commit the store worktree. Three

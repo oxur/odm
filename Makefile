@@ -170,7 +170,7 @@ build-release: clean $(BIN_DIR)
 clean:
 	@echo "$(BLUE)Cleaning bin directory...$(RESET)"
 	@rm -rf $(BIN_DIR)
-	@-rm -f .git/index.lock .git/worktrees/*/index.lock
+	@-rm -f .git/index.lock .git/worktrees/1.0.x/index.lock
 	@echo "$(GREEN)✓ Clean complete$(RESET)"
 
 .PHONY: clean-all

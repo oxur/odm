@@ -26,6 +26,7 @@
 #![deny(missing_docs)]
 
 pub mod atomic;
+pub mod delta;
 pub mod git;
 pub mod layout;
 
@@ -39,6 +40,7 @@ mod error;
 mod store;
 
 pub use config::StoreConfig;
+pub use delta::NodeDelta;
 pub use error::{Result, StoreError};
 pub use git::Repo;
 pub use home::{StoreHome, StoreLocation};
