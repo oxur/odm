@@ -87,7 +87,7 @@ started; this entry only closes s01.
 
 ### v1.1 — 2026-08-02 — s01 (`store commit`) CDC-verified PASS; arc ⏸ PAUSED per the scoped run
 
-**SL-1 done.** `odm store commit` lands: persists the store worktree's pending node changes on the orphan
+**SL-1 done — CI green on `release/1.0.x` (`e4e0a95`, 2026-08-02, operator-attested).** `odm store commit` lands: persists the store worktree's pending node changes on the orphan
 branch, odm-aware auto-summary (`-m` overrides), idempotent no-op, `--dry-run`/`--json`; git ops in
 `odm-store` (`tree_delta` + a reusable `delta` module for s02). **CC caught + fixed a real ODD-0022 defect**
 — `commit_all` walked the filesystem without honoring the store's `.gitignore`, so the `.odm/index`/`.odm/drift`

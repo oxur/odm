@@ -22,7 +22,7 @@
 > the arc node `58837400` reached the `complete` gate and its decomposition was affirmed (17 children),
 > committed on the `odm` branch at `6225d1f` (`~1 arc`) and **CDC-reproduced by direct read**. Doc
 > plan-of-record and live store now agree; the `complete` gate is operator-`asserted` (the underlying
-> work is CDC-reproduced — bump to `reproduced`/add `verified` at will). **Migration Fidelity is closed.**
+> work is CDC-reproduced — bump to `reproduced`/add `verified` at will). **CI green on `release/1.0.x` (`e4e0a95`, 2026-08-02, operator-attested)** — the s16 + arc-close code (and the whole branch) is CI-reproduced; the arc's `attested → CI` evidence rows are now green. **Migration Fidelity is closed.**
 >
 > **Status:** s01–s14 **closed** (s14 2026-07-31); s04–s13 CDC-verified PASS (s13 2026-07-31), s14 CDC
 > verification pending. **s14 (fixture-only, this session)** made `migrate` config-driven ahead of the
@@ -177,6 +177,10 @@ destructive op is fixture-proven before it fires.
 | MF-9 | **Compose:** odm self-hosts *faithfully* — `check`/`orient`/`rollup` green on a corpus with real bodies, full coverage, source records | project-scale reproduce at arc close | serious (P-12) | **done** — s13 fired the reconcile + vision mint live: 0 drifted nodes remain, the vision is live, `orient`/`rollup` byte-stable, fully re-run-idempotent. **The disclosed doc-coverage gap is now closed too**: a new `migrate --all` (built the same day, prompted by the operator asking why nothing composes the five separate derivations into one idempotent pass) fired live — 2 nodes reconciled (this session's own in-flight edits to `arc-plan.md` and ODD-0020, both living-plan-node drift) + 14 artifact nodes minted (the s11/12/13 gap). `odm check`: **exit 0, 0 errors** (was 14); `388/388` docs covered (was 374/388). Re-run verified idempotent (0/0/0 every sub-step) before commit. **Composition + the P-12 acceptance demonstration are the arc-close's job** — the corpus they'll demonstrate against is now fully faithful and fully covered. Reproduced by direct read of commit `e06fffe` (`odm` branch). **Arc-close 2026-07-31 — composition CDC-confirmed** (`closing-report.md`): 8/9 rows done-reproduced; MF-4 capability-done + routed (CDC-ARC-1); **two runtime acts remain** — the final reconcile-and-freeze (closes CDC-F1's 2 living-plan-tail drifts) + the P-12 self-host demo (§7 runbook). **MF-9 met pending that freeze + demo** — after which P-12 is demonstrated against a faithful corpus, not a skeleton. **Both fired 2026-08-01/02**: the freeze reconciled the pair-collapse (0 drift, `check` exit 0) and the P-12 `orient` demo runs clean on `.worktrees/odm` (reproduced, s16 CDC-verified PASS); the store is committed at `41ace1f`. **MF-9 fully done — the arc closes on it.** |
 
 ## Version History
+
+### v2.35 — 2026-08-02 — CI green on `release/1.0.x` (`e4e0a95`)
+
+The latest push to `release/1.0.x` is **CI-green at `e4e0a95`** (operator-attested), and it carries the s16 fix + the whole arc-close. The `attested → CI` evidence this arc had been carrying for s16's code (and the store-commit verb it leaned on) is now **CI-reproduced**. No status changes beyond evidence strength — the arc was already CLOSED on doc + store (v2.34); this records the CI confirmation.
 
 ### v2.34 — 2026-08-02 — s16 CDC-verified PASS; **arc CLOSED** (doc plan-of-record)
 
