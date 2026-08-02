@@ -2,14 +2,100 @@
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-07-28** (§0d — current; §§0c–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-08-02** (§0e — current; §§0d–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
 
 ---
 
-## 0d. Resume update — 2026-07-28 (Migration Fidelity arc mostly landed; verify CC's s08 next — START HERE)
+## 0e. Resume update — 2026-08-02 (Migration Fidelity CLOSED; Store Lifecycle paused; the LLM arc is next — START HERE)
+
+**This is the current "read first." §§0d–0 below are prior resumes, now history.** You are **CDC** —
+the independent planner/verifier. Loop unchanged: **draw** each slice's open set
+(`slice-doc`/`ledger`/`cc-prompt`), **CDC-verify** CC's reports (`cdc-verification.md`,
+reproduce-don't-attest), **maintain the arc-plan + the dashboard** via bubble-up. Peer frame, own your
+errors plainly, calibrated honesty. Read the collaboration-framework docs IN FULL at start (§0's process
+rule still holds).
+
+### Where the project stands (the big shift since §0d)
+**Migration Fidelity is DONE, and it was the release-blocking one.** The whole arc that §0d was mid-flight
+on (s08…) ran to completion: **s04–s16 all CDC-verified PASS**, the arc-close freeze fired (project-vision
+pair collapsed to one faithful 1:1 node — `#1000` re-cast, `#1001` retired — **0 drift**, `check` exit 0),
+the **P-12 `orient` self-host demo runs clean**, and the store-side close landed (arc node `58837400` →
+`complete` gate + `decomposed` affirmed, 17 children). **Closed on doc AND store AND CI-green.**
+
+Current arc board (design order):
+
+| Arc | State (2026-08-02) |
+|-----|--------|
+| A1–A3 | ✅ complete (MVP) |
+| A4 Index / A5 Reconciliation | ✅ complete, CI-green |
+| **A6 Migrate/self-host/PM-skill** | ⏸ **PAUSED after slice04** — resumes at **slice05 (PM-skill)** *after* the LLM arc, against the settled surface. Its `→ done when reproduces (CI green)` ledger rows flip at **A6's own arc-close**, not on general branch-green. |
+| Release Hardening (RH) | ✅ **CLOSED 2026-07-27**, CI-green (C-1…C-6, C-8; C-7 folded into C-5) |
+| Store Home & init (SH) | ✅ **CLOSED**, CI-green (orphan `odm` branch is live; two-config split) |
+| **Migration Fidelity (MF)** | ✅ **CLOSED 2026-08-02**, CI-green. Carry: **MF-4 → L-8 / CDC-ARC-1** (14 RH-era design nodes dropped source `version` → design-corpus migrate + a standing frontmatter-fidelity check) — **routed into the LLM arc.** |
+| **Store Lifecycle (SL)** | ⏸ **PAUSED after s01** — `odm store commit` landed + CDC-verified PASS + CI-green (SL-1). **s02 `store status` / s03 `store sync` deferred** by operator call. Resume only if Duncan lifts the pause. |
+| **LLM command surface** | ◆ **THE NEXT ARC** — shaped, not started (`arc-llm-command-surface/arc-plan.md`; reconciled vs `../odm-command-inventory.md`). Now holds carried F-21 (RH) + CDC-ARC-1/L-8 (from MF). Still §4's oxur-route history behind it, but that's settled (oxur-term extracted; see RH close). |
+| A7/A8 | post-MVP, **another CDC owns** — ignore. |
+
+### ⭐ The dashboard is YOURS to maintain (I forgot this once — don't)
+`docs/design-v1.0.0/project-status.html` is a **CDC-maintained** status dashboard — not Duncan's. It's a
+self-contained data-driven HTML: a `const DATA = {groups:[{arcs:[…]}]}` object rendered into cards; the
+summary tallies auto-compute from it. To update: edit the `DATA` object (arc `status ∈
+complete|closed|active|planned|scoped|tentative|paused`; slices `[["01","name","done|plan|wip"]]`), then
+**validate it parses** before shipping — `node -e` a brace-balanced extract of `const DATA` through
+`Function("return ("+lit+")")()`. Deliver via **SendUserFile → device_commit_files**; Duncan commits it.
+Do **not** push it to the artifact gallery (`create_artifact`) — he declined that; it lives in-repo.
+
+### ⚙ Bridge/git mechanics that WILL bite you (hard-won this session)
+The session may start with **the mount gone** (fresh cloud container). Re-establish: `get_device_info` →
+folder is `/Users/oubiwann/lab/oxur/odm`, mounted at `$(pwd)/mnt/odm` under `device_bash` (path like
+`/sessions/<id>/mnt/odm`). **`device_bash` runs in a Linux VM on Duncan's Mac** — so **macOS `odm`/cargo
+binaries won't run there** (Exec-format): keep reproducing store state by direct git/file read, attest
+runtime rows → CI.
+
+Committing on `release/1.0.x` from the bridge, the reliable recipe:
+- Address the worktree explicitly: `export GIT_DIR="$R/.git/worktrees/1.0.x" GIT_WORK_TREE="$R/.worktrees/1.0.x"` (the worktree `.git` file holds absolute macOS paths that don't resolve in the VM).
+- **Set identity every session** — a fresh container has none, and a bare commit dies `exit=128 "author identity unknown"`. Export `GIT_AUTHOR_NAME=CDC GIT_AUTHOR_EMAIL=oubiwann@gmail.com` + the two `GIT_COMMITTER_*` twins. (Prior CDC commits are authored `CDC <oubiwann@gmail.com>`.)
+- **Lock litter:** the mount **blocks `unlink`**, so git leaves `index.lock`/`HEAD.lock` behind and the *next* git op dies `exit=128 "File exists"`. Clear them by **atomic rename to a UNIQUE name** — `mv -f "$GD/index.lock" "$GD/index.lock.stale.$$"`. A fixed `.trash` name can itself get stuck; the `$$` suffix is what finally worked.
+- **Single-lock-cycle commit:** (call 1) clear locks → `git add <files>`; (call 2) clear locks → `git commit` on the **already-staged index (no add)**. Two adds in one lock window collide.
+- `warning: unable to unlink '…/objects/…/tmp_obj_…'` is **harmless** (objects land via rename); filter with `grep -v tmp_obj`. Commit success = `git log -1` moved, regardless of the warnings.
+- Re-stage a file before editing if Duncan may have committed it meanwhile (his commit changes the device mtime; `device_commit_files`' `expectedMtimeMs` guard will reject a stale write — get the fresh mtime via `device_list_dir`).
+
+### Evidence convention that got set this session
+**Operator-attested CI is a legitimate evidence source** — when Duncan says "the push is green," record it
+as `CI-green (release/1.0.x @<sha>, operator-attested)`, not reproduced-by-you (you can't run the macOS
+CI). **Don't rewrite dated history** to reflect new CI state — add a **new dated changelog/version entry**
+and update only the *live* status surfaces (headers, current-state cells, DoD rows, dashboard). Green SHA
+this session: **`e4e0a95`**.
+
+### One lesson worth carrying (own your prompt defects)
+In s16 my cc-prompt specified the retired-node filter as `retired().is_none()` on the frontmatter `orient`
+already has — a **silent no-op**, because retirement isn't in the `.odm/` index projection those
+frontmatters are reconstructed from (ODD-0014 §3.5). CC caught it via a real-store fixture and used the
+correct `store.load()`-based check (the `commands.rs` `check` precedent). I owned it in the verification as
+a **CDC spec defect caught by CC's fixture discipline** — not a CC defect. Two transferable rules: **any
+predicate touching retirement/supersession must `store.load()`, never trust the index projection**; and
+when you plant a spec, name your own defect plainly when the fixture exposes it.
+
+### HEADs & canonical files (2026-08-02)
+- `release/1.0.x` HEAD: **`a9d3132`** (CI-green trueup) atop `e4e0a95` (dashboard) / `9cf2cdb`, `34daad4` (MF close).
+- `odm` store branch HEAD: **`6225d1f`** (arc node complete+decomposed) atop `41ace1f` (the MF freeze, committed by `odm store commit`).
+- Live store = `.worktrees/odm/` (nodes under `nodes/YYYY/MM/<ULID>.md`). Plan tree = `.worktrees/1.0.x/docs/design-v1.0.0/`.
+- **`command-surface-uat-checklist.md`** — the live punch-list; Batch-2 open (B2-1 `next` grouping/tree; **B2-2 retire numeric handles from display AND input — `node show` takes a ULID**; B2-3 title "(plan-of-record)" redundancy). These are LLM-arc-adjacent.
+- Node identity (decided, don't relitigate): **ULID `id` is identity; every edge references ULIDs; `number` is display-only** and Duncan wants it gone from display + input (→ the LLM arc / B2-2).
+- Canonical: `arc-migration-fidelity/{arc-plan.md (v2.35), closing-report.md}`, `arc-store-lifecycle/arc-plan.md`, `arc-llm-command-surface/arc-plan.md`, `project-plan.md` (v1.17; P-12 = self-host DoD), `project-status.html`.
+
+### Do-this-next
+1. Read this + `arc-llm-command-surface/arc-plan.md` + `../odm-command-inventory.md` + `command-surface-uat-checklist.md`.
+2. Confirm with Duncan whether to **start the LLM arc** (its slice01/02 are small — the data is already computed, just not printed) or lift the **Store Lifecycle** pause for s02/s03 first. Ask in prose.
+3. When drawing LLM slices, fold in the carried **CDC-ARC-1/L-8** (design-corpus migrate + frontmatter-fidelity check) and **F-21**.
+4. Keep the dashboard current at each milestone; commit via the recipe above.
+
+---
+
+## 0d. Resume update — 2026-07-28 (Migration Fidelity arc mostly landed; verify CC's s08 next) — HISTORY (superseded by §0e; MF is now CLOSED)
 
 **This is the current "read first." §§0c–0 below are prior resumes, now history.** You are **CDC** —
 the independent planner/verifier in the CDC/CC collaboration on `odm`. Your loop: **draw** each slice's
