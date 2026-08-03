@@ -2,7 +2,7 @@
 
 <!-- Name/title carries no document-role metadata, per ODD-0013 §2.1. -->
 
-**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 (self-sourced nodes) CC-closed (2026-08-03); slice 03 (native authoring commands) next ·
+**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 CDC-verified PASS (2026-08-03); slice 03 (native authoring commands) next ·
 **Unnumbered**, per the `arc-release-hardening` / `arc-migration-fidelity` /
 `arc-llm-command-surface` precedent (the numbering scheme is under review in RH).
 
@@ -161,6 +161,10 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.10 -- 2026-08-03 (slice 02 CDC-verified PASS; ODD amendments folded in)
+
+CDC-verified slice 02 PASS (`slice02-self-sourced-nodes/cdc-verification.md`) -- structural rows reproduced by code read at `803c738`; the F-7 no-regression test read in full (a drifted migrated node still hard-fails alongside an untouched authored sibling); the `InconsistentAuthoredSource` consistency check confirmed wired into the CLI (`commands.rs:1760`). Two things stronger than the ledger asked: the check is bidirectional (not a suppression), and CC surfaced + disclosed the `--to-authored`-vs-`--all` workflow hazard (converting a node freezes its `./docs` edits). **F-8/F-9 folded in (now done):** the ODD-0013 amendment landed in `docs/design/04-accepted/0013-odm-architecture-design.md` (now **v2.6**: `origin: authored`, the authored `source` shape, the author-vs-odm field boundary) and the ODD-0025 amendment in `0025-migration-fidelity-model.md` (now **v1.4**: §2.0 authored point, §2.1 gate-scope-narrowed, §2.2 authored source). Still open: the `--to-authored`/`--all` separation is model-adjacent and lives only in code + slice docs (recommend a note in ODD-0026 when convenient); and F-6/SS-3's real-corpus leg (operator runs `migrate --to-authored --dry-run` -> real -> `migrate --all` -> `check` on the live store). Surfaced by: slice 02 CDC verification + amendment fold-in. **Next:** slice 03 (native authoring commands, SS-4).
 
 ### v1.9 -- 2026-08-03 (slice 02 CC-closed: self-sourced planning nodes implemented)
 

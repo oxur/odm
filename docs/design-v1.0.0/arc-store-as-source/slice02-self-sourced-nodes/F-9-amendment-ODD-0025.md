@@ -3,7 +3,7 @@
 > **Draft the amendment before the cc-prompt closes** (slice-doc §Scope-in item 6). This stub
 > specifies the exact changes to fold into `docs/design/04-accepted/0025-migration-fidelity-model.md`,
 > plus the version-history entry to add. **Surfaced by:** ODD-0026 §2.2 (fork B) and §3 (the
-> accepted design basis). **Status:** proposed — implemented in code (the body-hash gate
+> accepted design basis). **Status:** APPLIED 2026-08-03 -- folded into the accepted ODD (v1.4); originally proposed — implemented in code (the body-hash gate
 > [`odm_migrate::fidelity::verify_body_hash`] is called only from the migration/reconcile paths,
 > which now skip an `origin: authored` node by construction — see `selfhost::self_host`/`repair`/
 > `reconcile`'s authored guards); this stub is the model-doc half.

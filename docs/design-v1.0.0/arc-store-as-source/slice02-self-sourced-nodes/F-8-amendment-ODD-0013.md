@@ -3,7 +3,7 @@
 > **Draft the amendment before the cc-prompt closes** (slice-doc §Scope-in item 6). This stub
 > specifies the exact changes to fold into `docs/design/04-accepted/0013-odm-architecture-design.md`,
 > plus the version-history entry to add. **Surfaced by:** ODD-0026 §3 (the accepted design basis).
-> **Status:** proposed — implemented in code (`odm-core::Origin::Authored`,
+> **Status:** APPLIED 2026-08-03 -- folded into the accepted ODD (v2.6); originally proposed — implemented in code (`odm-core::Origin::Authored`,
 > `odm-core::frontmatter::Source::authored`, `check::Violation::InconsistentAuthoredSource`); this
 > stub is the schema-doc half.
 
