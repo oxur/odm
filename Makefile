@@ -36,6 +36,7 @@ help:
 	@echo "  $(YELLOW)make build$(RESET)            - Build all binaries ($(BINARIES))"
 	@echo "  $(YELLOW)make build-release$(RESET)    - Build optimized release binaries"
 	@echo "  $(YELLOW)make build MODE=release$(RESET) - Build with custom mode"
+	@echo "  $(YELLOW)make build-linux$(RESET)      - Cross-compile a static Linux binary (x86_64-musl, via cargo-zigbuild)"
 	@echo ""
 	@echo "$(GREEN)Testing & Quality:$(RESET)"
 	@echo "  $(YELLOW)make test$(RESET)             - Run all tests"
@@ -164,6 +165,22 @@ build-release: clean $(BIN_DIR)
 	done
 	@echo "$(GREEN)✓ Release build complete$(RESET)"
 	@echo "$(CYAN)→ Optimized binaries in $(BIN_DIR)/$(RESET)"
+
+# Cross-compilation: static Linux binary for environments without a Rust
+# toolchain (e.g. CDC's cloud container). Requires cargo-zigbuild + zig +
+# the x86_64-unknown-linux-musl rustup target.
+LINUX_TARGET := x86_64-unknown-linux-musl
+LINUX_BIN := $(BIN_DIR)/odm-linux-x86_64-musl
+
+.PHONY: build-linux
+build-linux: $(BIN_DIR)
+	@echo "$(BLUE)Cross-compiling $(PROJECT_NAME) for $(LINUX_TARGET)...$(RESET)"
+	@command -v cargo-zigbuild >/dev/null 2>&1 || { echo "$(RED)✗ cargo-zigbuild not found (cargo install cargo-zigbuild)$(RESET)"; exit 1; }
+	@rustup target list --installed | grep -q '^$(LINUX_TARGET)$$' || { echo "$(RED)✗ target $(LINUX_TARGET) not installed (rustup target add $(LINUX_TARGET))$(RESET)"; exit 1; }
+	@cargo zigbuild --release --target $(LINUX_TARGET) -p oxur-odm
+	@cp ./target/$(LINUX_TARGET)/release/odm $(LINUX_BIN)
+	@echo "$(GREEN)✓$(RESET) $(LINUX_BIN) (size: $$(du -h $(LINUX_BIN) | cut -f1))"
+	@echo "$(CYAN)→ Static Linux binary at $(LINUX_BIN)$(RESET)"
 
 # Cleaning targets
 .PHONY: clean

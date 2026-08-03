@@ -71,7 +71,7 @@ raw-git footnote.
 | SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | planned |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
-| SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | planned — inserted v1.2 |
+| SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | **done — CDC-reproduced (F-1/F-2, `cdc-verification.md`) + CC (F-3/F-4/F-5, `closing-report.md`) PASS 2026-08-03** |
 | SL-6 | After `store commit`, the git **index** matches the new HEAD — a raw `git status` is **clean** (no stale-index staged-deletions), without changing the commit content, the `.odm/` exclusion, or the odm-aware delta | fixture: `store commit` → `git status --porcelain` empty; SL-1 tests still green | serious (SL-1 remediation; underpins SL-4) | **done — CDC-verified PASS 2026-08-02** (`slice04-commit-index-consistency/cdc-verification.md`, code `e8e69de`); real leg = operator's next `store commit` on the rebuilt binary |
 
 ## Exit criteria (arc acceptance)
@@ -88,6 +88,17 @@ s02/s03 follow. Mostly CLI wiring over `odm-store`'s existing git plumbing (`git
 do worktree/branch/commit ops for `init`) — the capability is largely *exposing* what init already uses.
 
 ## Version History
+
+### 2026-08-03 — s05 (CDC binary access) closed; bubble-up
+
+`slice05-cdc-binary-access` closed — F-1/F-2 CDC-reproduced in the actual Cowork cloud container
+(`cdc-verification.md`: static ELF x86_64 binary, full command surface — `--help`/`--version`/`check`/
+`orient`/`validate`/`node show`/`store --help` — all exit 0, `orient --json`'s `drift.tracked:true`
+proving live store connection), F-3/F-4/F-5 closed by CC (`closing-report.md`): added `make build-linux`
+(reproducible cross-compile target, doesn't disturb the native `bin/odm`), documented the binary's
+location + staging + an explicit x86_64-only architecture caveat in `CLAUDE.md`, and confirmed `make
+test`/`make lint` stay green with zero Rust source changes. SL-7 done. **This unblocks CDC's
+participation in verifying s02/s03**, the arc's next (and now immediate-priority) slices.
 
 ### v1.2 — 2026-08-03 — s05 (CDC binary access) inserted; arc RESUMED
 

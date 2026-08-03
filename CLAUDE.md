@@ -88,6 +88,40 @@ make format         # apply rustfmt
 make check          # build + lint + test
 ```
 
+## CDC binary access (cross-compiled Linux binary)
+
+CDC (Cowork cloud-container sessions) generally cannot build `odm` from source
+— no reliable Rust toolchain in the container. The operator's local build
+cross-compiles a **fully static Linux binary** so CDC can run `odm` directly,
+no build required:
+
+- **Build it:** `make build-linux` — requires `cargo-zigbuild`, the `zig`
+  toolchain, and the `x86_64-unknown-linux-musl` rustup target (all installed
+  on the operator's machine already; `cargo install cargo-zigbuild` + `brew
+  install zig` + `rustup target add x86_64-unknown-linux-musl` if starting
+  fresh elsewhere). Runs `cargo zigbuild --release --target
+  x86_64-unknown-linux-musl -p oxur-odm`; does **not** touch or delete the
+  native macOS binary at `bin/odm`.
+- **Where it lands:** `bin/odm-linux-x86_64-musl` — a build artifact
+  (`bin/` is gitignored, not committed; rebuild it after pulling new commits).
+  `file bin/odm-linux-x86_64-musl` should report "ELF 64-bit LSB executable,
+  x86-64, ..., statically linked".
+- **Staging into a Cowork session:** transfer the binary from this worktree
+  into the cloud container via the device bridge, then `chmod +x` and run
+  directly (`--help`, `check`, `orient`, etc.) — no Rust toolchain needed
+  there. The exact transfer mechanism is whatever file-delivery tool the
+  Cowork session has available; this has not yet been reproduced end-to-end
+  by CDC (tracked as slice05 ledger row F-2 in
+  `docs/design-v1.0.0/arc-store-lifecycle/slice05-cdc-binary-access/`).
+- **Architecture caveat:** the binary targets **x86_64**. If a given Cowork
+  container (or the `device_bash` bridge VM) runs **aarch64 Linux** instead,
+  this binary will fail with an exec-format error — check `uname -m` in that
+  environment before assuming it will run; a `aarch64-unknown-linux-musl`
+  build would be a one-line addition to `make build-linux` if needed.
+- **Building from source remains the fallback**, not the primary path, for
+  any session that *can* run cargo/rustc (e.g. this local worktree, or a CDC
+  environment where the Rust toolchain does happen to be available).
+
 ## Conventions
 
 - **Errors** carry source position; parse/build errors include `Position`.
