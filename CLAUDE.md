@@ -110,3 +110,16 @@ core-idioms guides. If it isn't present, ask before cloning.
 - Imperative, descriptive commit messages; explain *why*.
 - Before submitting: `make test` + `make lint` + `make format` (+ `make coverage`).
 - `make push` pushes `main` and tags to `origin` (GitHub).
+
+
+## Related projects (peers)
+
+**bitubardos** is a *peer repository project*, not an odm arc or feature branch.
+It is governed by the full collaboration-framework workflow (its own project ->
+arcs -> slices -> ledgers) and lives on its own branch/worktree
+(`.worktrees/bitubardos`). Merge policy (operator, 2026-08-03): it is peer to the
+1.0.x and (coming) 1.1.x release work; **nothing from bitubardos lands in `main`
+until after the 1.0.0 release is cut**, after which its features
+forward-merge/rebase into the 1.1.x line (`main` sees none of it until the first
+1.1.0 release). Do not treat bitubardos as a sub-part of an odm release. See
+`project-plan.md` Section 6 and project memory `bitubardos`.

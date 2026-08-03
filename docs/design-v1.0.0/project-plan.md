@@ -199,6 +199,35 @@ tree, or stay in this one, is unsettled — flagged in Version History.
 split is a *hypothesis* tested against the total-cycle control (ODD-0018), not assumed.
 Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
 
+## 4a. Near-term usability + the 1.1.x feature set (added 2026-08-03)
+
+> **Added in v1.19 (2026-08-03, planning session w/ Duncan).** These items
+> surfaced *after* the v1.2 consolidation and had lived only in the ephemeral CDC
+> bootstrap agenda (see the bootstrap's NEXT-SESSION AGENDA) -- never in a durable
+> plan. Consolidated here so the plan, not the resume note, is their source of
+> truth. The export/serve arcs are being worked out in separate in-progress
+> threads and will be expanded here (plan late, plan deep). Housekeeping/cutover
+> items (delete `./docs`, choose an export dir, relocate the dashboard + move the
+> bootstrap out of the store) are **not** here -- they are active
+> `arc-store-as-source` slice-04 work.
+
+Because **1.0.0 goes full-odm (no legacy `./docs` planning dir)**, the tool must
+be usable by both the operator and CDC to *find* things in the store -- which
+makes **full-text search a usability minimum**, not a nicety. Semantic search and
+graph traversal are richer and can wait for 1.1.x.
+
+| Item | Capability | `depends_on` | Status |
+|------|-----------|--------------|--------|
+| **Full-text search (FTS)** | Content search over the store corpus (tantivy). The minimum retrieval surface once `./docs` is gone -- both operator and CDC must find nodes by content, not by `grep` across worktrees. | A4 (index) | **near-term / elevated -- minimum for full-odm usability; 1.0.0-adjacent (hard-gate vs. first fast-follow: OPEN, operator call)** |
+| **Static HTML export** | One of >=2 export/serve arcs: static projection of the rollup to **HTML + JSON + Markdown** (`rollup --format=html` first); the hand-built `project-status.html` dashboard becomes derivable. Extends ODD-0017, which today names JSON+Markdown only (HTML is not yet a target there). | A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
+| **Embedded HTTP server (`odm serve`)** | Dynamic pages served locally via **minijinja** templating; the `render(Rollup)->Html` seam. Local-only. (See project memory `odm-html-views-stack`.) | HTML export / A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
+| **Semantic search** | Embedding / vector search over the store (lancedb). | FTS, A4 | **1.1.x** |
+| **In-memory graph traversal / graphdb** | Richer graph queries over an in-memory graph (petgraph -- already a dep of `odm-graph`). | A2 | **1.1.x** |
+
+*(HTML export + the `odm serve` HTTP server are the "two (or more) arcs" of the
+same post-MVP HTTP/render line; their arc breakdown lands once the in-progress
+threads settle.)*
+
 ## 5. Project Ledger
 
 > Per LEDGER-DISCIPLINE v2.0 §C (**provisional** — the project tier is validated by
@@ -251,7 +280,42 @@ gate** (go / adjust / kill against the DoD, reviewed by the operator + an indepe
 context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, not an
 unbounded grind.
 
+## 6. Related projects (peers -- framework-governed)
+
+**bitubardos** is a **peer repository project**, not an odm arc and not a
+sub-part of any odm release. It stands on its own and falls under the **full
+collaboration-framework workflow** -- its own project -> arcs -> slices ->
+ledgers, planned and closed like any project. It lives on its own branch/worktree
+(`.worktrees/bitubardos`).
+
+Merge policy (operator, 2026-08-03): bitubardos is **peer to the 1.0.x release
+work and will be peer to the 1.1.x release work**. **Nothing from bitubardos
+lands in `main` until after the 1.0.0 release is cut.** The expected path is
+**incremental forward-merge / rebase of bitubardos features into the 1.1.x
+line**; `main` sees none of it until the **first 1.1.0 release**.
+
+This entry is definitional: it exists so a reader learns *here* that bitubardos
+is a peer project (governed by the framework in full), rather than mistaking it
+for an odm feature branch or an easter-egg. Its plan-of-record lives in its own
+tree, not this file.
+
 ## Version History
+
+### v1.19 -- 2026-08-03 -- newer post-MVP items consolidated (§4a) + bitubardos defined as a peer project (§6)
+Added **§4a** (near-term usability + the 1.1.x feature set) and **§6** (related
+peer projects). §4a folds the newer wishlist -- **FTS** (elevated: minimum for
+full-odm usability), **static HTML export** + **`odm serve`** HTTP server (>=2
+post-MVP arcs, details in-progress in separate threads), and **semantic search** +
+**graph traversal** (1.1.x) -- into the plan; these had lived only in the
+ephemeral CDC bootstrap agenda. §6 defines **bitubardos** as a framework-governed
+**peer project** with an explicit merge policy (no `main` before 1.0.0;
+forward-merge into 1.1.x). Pure expansion -- §§1-5 unchanged; no DoD/ledger rows
+added (extension/peer scope, not v1.0.0 DoD). **Surfaced by:** the 2026-08-03
+operator planning session (consolidation of the un-persisted agenda + the
+bitubardos clarification); companions written to project memory (`bitubardos`,
+`odm-html-views-stack`) and both odm `CLAUDE.md`s.
+
+
 
 ### v1.18 — 2026-08-02 — closed arcs recorded **done (100%)**; CI-green at `e8e69de`
 
