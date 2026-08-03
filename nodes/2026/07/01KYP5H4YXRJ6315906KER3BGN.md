@@ -5,7 +5,7 @@ type: design
 schema: design/v1.1
 name: Migration Fidelity — source provenance, synthesis, artifact nodes & frontmatter fidelity
 created: 2026-07-27
-updated: 2026-08-01
+updated: 2026-08-02
 tags:
 - migration
 - source
@@ -26,7 +26,7 @@ source:
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-01
+  migrated_on: 2026-08-03
 status:
   accepted:
     reached: 2026-07-27
@@ -92,6 +92,13 @@ third, genuinely-must-be-stored axis and names it to avoid collision:
   intact.**
 - **`provenance`** (0013, unchanged) — *derived* git + supersede + gate lineage; never stored.
 
+> **An authored node (arc-store-as-source, ODD-0026) is a new *point* in this space, not a fourth
+> axis.** It is characterized by `origin: authored` (a new value on the existing `origin` axis) and
+> a `source` record whose shape carries no external path (`class: authored`). The three axes —
+> `origin`, `source`, `provenance` — are unchanged in kind; "authored" is simply the value `origin`
+> and `source` take together for a node that was never pulled from an external file. See the
+> ODD-0013 amendment (arc-store-as-source slice02, F-8) for the exact schema shape.
+
 ### 2.1 Migration is strictly 1:1 and verbatim, hard-gated (F2, F3, F4, F5)
 
 A migrated node's **body is its source body**. "Body" = the text after the frontmatter fence for
@@ -109,6 +116,17 @@ line endings CRLF→LF**, nothing else. Any *internal* change still fails the ga
 endings are a cross-platform checkout artifact, not content. `source.normalization: trim+lf` is
 recorded so the comparison stays interpretable.
 
+> **Scope clarified (arc-store-as-source slice02, ODD-0026 §2.2): the gate applies only to a node
+> with an external `source` to verify against.** An authored node (`origin: authored`) has no
+> migration event and no external body to prove faithfulness against — there is nothing to hash and
+> nothing to gate, **by construction**, not a special-cased exemption. `verify_body_hash` is only
+> ever called from the migration/reconcile paths (`self_host`/`repair`/`mapping::backfill_source`/
+> `mapping::reconcile_source`), and every one now skips an `origin: authored` node before it would
+> reach the gate — the same way they skip a synthesis or retired node. **No-regression clause
+> (load-bearing):** for a node that *does* carry a migration `source`, the gate is entirely
+> unchanged — a drifted non-stub body still hard-fails (arc-migration-fidelity s05 F-5;
+> regression-fixtured at arc-store-as-source slice02, F-7). Fork B *narrows* the gate's
+> applicability; it does not weaken it for the nodes it still applies to.
 ### 2.2 The `source` record + preserved `author` / `version` (F5 + fidelity findings)
 
 Every migrated node carries a **`source` sub-map**, computed at migration time:
@@ -122,6 +140,13 @@ source:
   migrated_by: odm-migrate/1.0.0     # tool + version → pre-fix imports become queryable
   migrated_on: 2026-07-27
 ```
+
+> **An authored node also carries a `source` sub-map** (ODD-0026 §2.1 — provenance is kept, never
+> dropped for having nothing to migrate), but a structurally different one: `class: authored`, no
+> `paths`, no `normalization`/`migrated_by`/`migrated_on` (there was no migration to record). An
+> optional `migrated_from` marker preserves a converted node's former `paths` without re-verifying
+> against them (arc-store-as-source slice02 sub-decision (i)). See the ODD-0013 amendment for the
+> full shape; this ODD's own concern — migration fidelity — simply does not apply to it.
 
 Separately, two fields the source frontmatter carried that the node model **must preserve as
 first-class metadata** (not derive, not drop):
@@ -348,6 +373,15 @@ the arc's composition check (MF-9) passes against a corpus with real bodies, ful
 
 ## Version History
 
+### v1.4 — 2026-08-03 — arc-store-as-source slice02: the gate is migration-scoped, not removed
+
+Clarifies that the body-hash fidelity gate (§2.1) applies only to a node with an external `source`
+to verify against — an authored node (ODD-0026, `origin: authored`) has no migration event and
+nothing to hash, by construction. `origin`/`source`/`provenance` (§2.0) stay three axes; "authored"
+is a new point in that space (an `origin` value + a source-less `source` shape), not a fourth axis.
+No-regression clause: the gate is entirely unchanged for genuinely-migrated content — a drifted
+non-stub body still hard-fails (regression-fixtured at arc-store-as-source slice02, F-7). Surfaced
+by: ODD-0026 §2.2 (fork B) + §3 (design basis), implemented arc-store-as-source slice02.
 ### v1.3 — 2026-08-01 — Accepted
 
 **§2.3 reversed for the project specifically (arc-migration-fidelity s15, operator decision

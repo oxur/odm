@@ -14,20 +14,97 @@ source:
   class: other
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-02
+  migrated_on: 2026-08-03
 ---
 # CDC Session Bootstrap — pick up where we left off
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-08-02** (§0e — current; §§0d–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-08-02 (evening)** (§0f — current; §§0e–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
 
 ---
 
-## 0e. Resume update — 2026-08-02 (Migration Fidelity CLOSED; Store Lifecycle paused; the LLM arc is next — START HERE)
+## 0f. Resume update — 2026-08-02 (evening) (closed arcs recorded DONE; Store-as-Source arc born; store commit index fixed — START HERE)
+
+**This is the current "read first." §§0e–0 below are prior resumes, now history.** You are **CDC** —
+the independent planner/verifier. Loop unchanged: **draw** each slice's open set
+(`slice-doc`/`ledger`/`cc-prompt`), **CDC-verify** CC's reports (reproduce-don't-attest), **maintain the
+arc-plan + the dashboard** via bubble-up. Peer frame, own your errors plainly, calibrated honesty. Read the
+collaboration-framework docs IN FULL at start.
+
+### What changed since §0e
+- **The closed arcs are now recorded DONE (operator call).** `project-plan.md` → **v1.18**: SH bumped
+  `attested → done` (**P-14**), and **P-15 (Release Hardening)** + **P-16 (Migration Fidelity)** added as
+  `done` (own P-rows, resolving the v1.8 open question). The **dashboard** (`project-status.html`) recolors
+  `--closed` → green so **RH/SH/MF render green** like `complete`; **SL/A6 (paused) stay their own
+  orange** — distinct status, not recolored. A1–A5 already `complete`.
+- **Store-as-Source arc BORN** (`arc-store-as-source/arc-plan.md` **v1.6**). This is the "take the training
+  wheels off" arc: odm authors its **own** planning docs (store = source of truth); `./docs` is freed for
+  **end-user documentation only**. Slices: **01** ODD-0026 model (forks **A/B/D/E open**, C settled) · **02**
+  self-sourced planning nodes (no `undeveloped`/missing-source error for a store-authored node) · **03**
+  native authoring commands (`node new --from-file/--body/$EDITOR`; `node edit <ref>`) — **this is the
+  "native editing / content support"** · **04** cutover (delete the `./docs` planning subtree) · **05**
+  decomposition-bookkeeping consistency (**CDC-verified PASS**, `c0f4773`) · **06** auto-extend authored
+  decomposition (**CDC-verified PASS**, `7cd5e01`).
+- **`migrate --all` is now HANDS-OFF** for authored additions (slice 06 / SS-9): an already-affirmed parent
+  that gains a plan-tree-declared work-child auto-extends its decomposition — **no manual `node
+  decomposed`**. Reproduced on the real corpus: `RECOMPOSE` = `0 re-affirmed, 1 auto-extended, 0 drift`,
+  `check` 0 errors. Removals and never-affirmed parents still behave conservatively (CC correctly
+  distinguished a *vanished* work-child from a *present non-work* id).
+- **`store commit` leaves the git index CLEAN** (Store-Lifecycle **slice 04 / SL-6**, **CDC-verified PASS**,
+  `e8e69de`). `commit_all` now syncs the index from the committed tree (`sync_index_to_tree`), so a raw
+  `git status` reads clean after a commit. **This root-causes + kills the recurring "phantom
+  staged-deletion" scare** (the commit was always correct; the index was stale) and **retires the manual
+  `git reset` step** on the operator's next `store commit` with the rebuilt binary.
+- **LLM-command-surface arc RECONCILED to v1.4** (not started). B2-3 folded in as **slice 10** (name/title
+  de-redundancy — restore ODD-0013 §2.1; ledger **A-12**) = **the "title cleanups"**; Batch-2 (B2-1→02,
+  B2-2→08) + F-21→01, F-22→02, CDC-ARC-1/L-8→09; re-grounded 60→400. Critical path 01(+07)→08→02→03;
+  slice 10 pairs with 08.
+
+### Where "native editing" and "title cleanups" are tracked (operator asked 2026-08-02)
+- **Native editing (content) support** → **Store-as-Source slice 03** (`node new --from-file/--body/$EDITOR`,
+  `node edit`); ledger **SS-4**, rolls into arc DoD **SS-6**; design half = **ODD-0026 fork E** (lean, not
+  decided). **Open** — gated behind slice 01 (ODD-0026) + slice 02 (self-sourced nodes).
+- **Title cleanups** (the `(plan-of-record)`/role-metadata redundancy) → **LLM arc slice 10**, ledger
+  **A-12**. **Open** — the whole LLM arc is reconciled but not started. Going-forward half already in effect
+  (CDC stops adding the labels); the repair (24 store names + 57 H1 titles) + normalizer fix + `check` guard
+  are unbuilt.
+
+### Arc board (2026-08-02 evening)
+A1–A5 **complete** · **RH / SH / MF closed = DONE** (green) · **SL paused** after s01+s04 (s02 `status` /
+s03 `sync` deferred) · **A6 paused** (PM-skill s05 / retire-prose s06 remain — still P-12's gate) ·
+**LLM-command-surface reconciled v1.4, NOT started** · **Store-as-Source design-first** (s05/s06 done; s01
+ODD-0026 + s02/s03/s04 remain) · A7/A8 **scoped**.
+
+### HEADs & canonical files (2026-08-02 evening)
+- `release/1.0.x` HEAD **`e8e69de`** (slice-04 store-commit index fix) — **CI-green, operator-attested**.
+- odm store branch HEAD **`24f1037`** (**425 nodes**), migrated clean + committed.
+- Canonical: `project-plan.md` **v1.18** · `project-status.html` (green recolor) · `arc-store-as-source/`,
+  `arc-llm-command-surface/` (v1.4), `arc-store-lifecycle/` (v1.1 + s04) arc-plans.
+
+### Do-this-next
+- **Operator:** rebuild `./bin/odm` to pick up slice 04; on the next `store commit`, confirm raw `git
+  status` is clean (closes SL-6's real leg, retires the manual `git reset`).
+- **Decide ODD-0026 forks A/B/D/E** (leans recorded in `arc-store-as-source/arc-plan.md` slice 01) to open
+  Store-as-Source → then s02 (self-sourced) → s03 (native authoring / "native editing").
+- **LLM arc is ready to start** (v1.4): 01(+07)→08→02→03; slice 10 (title cleanups) pairs with 08.
+
+### Gotchas re-confirmed this session (they WILL bite)
+- **Stale mount-cache:** the file-staging pipeline can serve a STALE copy of a plan-tree file. **Ground-truth
+  via `device_bash` before editing** any plan-tree file (bit us twice: dashboard + this bootstrap both
+  looked older in `/tmp` than live).
+- **File-transfer tools don't reach the worktree:** `device_commit_files` / `device_list_dir` reject
+  `.worktrees/1.0.x/...` ("not inside a connected folder"), **but `device_bash` writes there fine.** So
+  **edit live plan-tree files in place via `device_bash`** (python/sed), not SendUserFile→commit.
+- **git:** `GIT_DIR=$R/.git/worktrees/1.0.x` + `GIT_WORK_TREE=$R/.worktrees/1.0.x` (store: `.../worktrees/odm`).
+- **CDC sandbox can't run macOS `odm`/cargo** — attest cargo/exec rows → CI; reproduce structural rows by
+  direct file read. `device_bash` **cannot delete** — I moved a stray backup to
+  `design-v1.0.0/_to_delete/project-status.html.bak-precolor`; **operator: delete that `_to_delete/` folder.**
+
+## 0e. Resume update — 2026-08-02 (Migration Fidelity CLOSED; Store Lifecycle paused; the LLM arc is next) — HISTORY (superseded by §0f)
 
 **This is the current "read first." §§0d–0 below are prior resumes, now history.** You are **CDC** —
 the independent planner/verifier. Loop unchanged: **draw** each slice's open set

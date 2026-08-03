@@ -14,7 +14,7 @@ source:
   class: slice-doc
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-02
+  migrated_on: 2026-08-03
 edges:
   part_of: 01KZ1YCK41SK7J1H134AK7WB7T
 ---
@@ -52,16 +52,25 @@ no longer depends on an external `./docs` source to hold or verify it.*
 
 ## The forks, with CDC recommendations (ratify or adjust)
 
+> **All five forks RATIFIED (operator, 2026-08-02 / 2026-08-03); ODD-0026 authored as a Draft**
+> at `docs/design/01-draft/0026-store-as-source-model.md`. **Fork A was CORRECTED** from the A1
+> lean shown below to *keep provenance* (see A). The recommendations are retained for the record;
+> the ratified decisions live in **ODD-0026 sec. 2**.
+
 **A — `source.paths` for planning nodes.**
 Today every planning node carries `source.paths: [docs/…]` + `class: arc-plan|…`
 and a body-hash gate against that file. Options: **(A1)** drop external source
 entirely for authored nodes — the store file is the source; mark them (e.g.
 `origin: authored`, or `source: { class: authored }`); or **(A2)** repoint
 `source.paths` self-referentially at the store node's own file.
-**Recommend A1.** ODD-0025 *already* models "a node with no external 1:1 source"
-(the project synthesis node and retired nodes). A1 generalizes that one category;
-A2 keeps a vacuous hash and a path that means nothing. Decide the exact marker in
-the ODD.
+**DECIDED (ratified 2026-08-03): KEEP `source`/provenance -- do NOT drop it.**
+~~Recommend A1~~ *(the original "drop external source" lean was **overturned by the
+operator**: `source`/`source.paths` is enduring provenance metadata -- where
+pulled-in content came from -- not migration scaffolding to discard).* An authored
+node records `origin: authored` + a `source` block with no external `paths`
+(`class: authored`); migrated nodes keep their full `source` record unchanged. The
+node schema gains explicit language that "authored" is a provenance *value*, not the
+absence of the field, so the misread cannot recur. See **ODD-0026 sec. 2.1**.
 
 **B — the body-hash fidelity gate.**
 The gate (ODD-0025) proves a migrated body matches its external source. For a

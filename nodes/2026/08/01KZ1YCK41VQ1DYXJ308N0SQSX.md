@@ -14,7 +14,7 @@ source:
   class: arc-plan
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-02
+  migrated_on: 2026-08-03
 edges:
   part_of: 01KYSX4RGCZT9H1N83TJFX8XFB
 status:
@@ -43,7 +43,7 @@ status:
 > model — orphan branch, never rewrite history, divergence stops). **Refs:** `arc-store-home/arc-plan.md`;
 > `crates/odm-store/src/{git,worktree,init}.rs`; `crates/odm-cli/src/store_cmd.rs`.
 >
-> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git.
+> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused.
 
 ## Capability
 
@@ -72,6 +72,16 @@ raw-git footnote.
 - **s03 — `store sync`.** Push/pull the orphan branch to/from its remote — the **ff-only, divergence-stops**
   discipline `store init`'s attach/ff-sync arm already embodies (`store_cmd.rs`), lifted into a standalone
   verb; `--dry-run`/`--json`; never rewrites history, stops (with a clear affordance) on divergence.
+- **s04 — `store commit` leaves the git index consistent (remediation of SL-1; runs now).** `commit_all`
+  writes the commit tree directly via `gix` and never updates the on-disk index, so after every
+  `store commit` a raw `git status` misreports the just-committed files as staged-deletions + untracked
+  (the root cause of this session's recurring "phantom staged-deletion" scare — the commit was always
+  correct; the index was stale). Sync the index to the new HEAD after committing; add the clean-`git status`
+  test SL-1's suite lacked. Additive — the race-free `odm store status` tree-comparison (`delta.rs`) and the
+  `.odm/`-exclude (ODD-0022) are untouched. **CDC-verified PASS 2026-08-02** (code `e8e69de`;
+  `slice04-commit-index-consistency/`): the fix reuses the committed tree for the index write
+  (index == HEAD by construction), with a real `git status --porcelain` regression test; `delta.rs`
+  provably untouched.
 
 ## Arc Ledger (composition rows — opens here, closes in `closing-report.md`)
 
@@ -85,6 +95,7 @@ raw-git footnote.
 | SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | planned |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
+| SL-6 | After `store commit`, the git **index** matches the new HEAD — a raw `git status` is **clean** (no stale-index staged-deletions), without changing the commit content, the `.odm/` exclusion, or the odm-aware delta | fixture: `store commit` → `git status --porcelain` empty; SL-1 tests still green | serious (SL-1 remediation; underpins SL-4) | **done — CDC-verified PASS 2026-08-02** (`slice04-commit-index-consistency/cdc-verification.md`, code `e8e69de`); real leg = operator's next `store commit` on the rebuilt binary |
 
 ## Exit criteria (arc acceptance)
 
@@ -100,6 +111,24 @@ s02/s03 follow. Mostly CLI wiring over `odm-store`'s existing git plumbing (`git
 do worktree/branch/commit ops for `init`) — the capability is largely *exposing* what init already uses.
 
 ## Version History
+
+### 2026-08-02 — s04 inserted (SL-1 index-consistency remediation)
+
+Added **s04** + ledger row **SL-6** after a live defect surfaced: `store commit`
+commits by building a tree via `gix` and never updates the on-disk index, so raw
+`git status` misreports every commit as staged-deletions + untracked. This is the
+root cause of the "phantom staged-deletion" confusion that recurred across the
+2026-08-02 session — twice mistaken for a corrupted store; it was always just the
+stale index (the commit content was correct throughout). SL-1's tests verified the
+commit *content*, not the resulting `git status`, so the gap slipped through its
+PASS. s04 syncs the index to HEAD after committing and adds the clean-`git status`
+test, without touching the commit content, the `.odm/` exclusion, or the race-free
+`odm store status` tree-comparison. It runs **now** (operator call) as an SL-1
+remediation; s02/s03 stay paused. Surfaced by: operator (hit it live twice) + CDC
+root-cause read of `git.rs::commit_all`. **CDC-verified PASS 2026-08-02** (`e8e69de`):
+`commit_all` now syncs the index from the committed tree (`sync_index_to_tree`), a
+real `git status --porcelain` test asserts clean, `delta.rs` provably untouched. SL-6
+done; the manual `git reset` step retires on the operator's next `store commit`.
 
 ### 2026-08-02 — s01 (`store commit`) closed; bubble-up
 

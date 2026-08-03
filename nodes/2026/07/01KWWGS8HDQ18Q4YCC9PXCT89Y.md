@@ -5,7 +5,7 @@ type: design
 schema: design/v1.1
 name: odm — Architecture & Design (v-major rebuild)
 created: 2026-06-20
-updated: 2026-07-29
+updated: 2026-08-02
 tags:
 - architecture
 - design
@@ -22,7 +22,7 @@ source:
   class: odd
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-30
+  migrated_on: 2026-08-03
 status:
   draft:
     reached: 2026-06-26
@@ -159,7 +159,7 @@ author: "Katherine Johnson"         # optional; document-node only (v2.4, ODD-00
 version: "2.3"                      # optional; document-node only (v2.4, ODD-0025 §2.2) — the
                                      #   doc's own content-version marker; distinct from `schema:`
                                      #   (ODD-0020 §3), which versions the frontmatter shape
-origin: planned                     # how this node AROSE: planned | discovered | amendment
+origin: planned                     # how this node AROSE: planned | discovered | amendment | authored
 reserved: false                     # tentative future-work placeholder (not yet real work)
 source:                             # optional; every MIGRATED node carries one (v2.4, ODD-0025
                                      #   §2.0/§2.2) — work and document nodes alike; absent on a
@@ -171,6 +171,15 @@ source:                             # optional; every MIGRATED node carries one 
   normalization: trim+lf            #   what the body-hash gate stripped before comparing
   migrated_by: odm-migrate/1.0.0    #   tool + version
   migrated_on: 2026-07-27
+  # --- authored shape (origin: authored) — ODD-0026 §2.1 ---
+  # class: authored                 #   marks the provenance state explicitly (never an absent block)
+  # paths: []                       #   no external path — the store IS the source
+  # normalization: (absent)         #   nothing to hash-normalize; there was no migration
+  # migrated_by: (absent)           #   no migrating tool
+  # migrated_on: (absent)           #   no migration date
+  # migrated_from: []               #   OPTIONAL marker (slice02 sub-decision (i)): former
+  #                                 #     source.paths, preserved on conversion — provenance kept,
+  #                                 #     just no longer re-verified against
 edges:
   part_of: 01J9...ARC               # single parent (containment tree)
   depends_on:
@@ -196,6 +205,23 @@ desired_facts:                       # for the reconciler (§5)
     describe: "prod service has DB_HOST and connects"
     probe: { kind: shell, run: "scripts/check-db.sh", expect_exit: 0 }
 ```
+
+**The authored `source` shape (ODD-0026 §2.1, arc-store-as-source slice02).** `source` is never
+dropped for having "nothing to migrate": an authored node (`origin: authored`) carries
+`source: { class: "authored" }` with no `paths`/`migrated_by`/`migrated_on`, plus an optional
+`migrated_from` marker preserving a converted node's former `paths`. `check`
+(`Violation::InconsistentAuthoredSource`) enforces both directions of the agreement — `origin:
+authored` requires `source.class == "authored"`, and `source.class == "authored"` requires
+`origin: authored` — so neither reading drifts from the other silently. "Authored" is a provenance
+*value*, never the absence of the field.
+
+**The author-owned vs odm-owned field boundary** (ODD-0026 §2.5). The metadata an author supplies
+when creating or editing a node is a strict subset of the schema: `name`/title, `type`,
+`edges.part_of`, status intent, and `tags`. Everything else is **odm-owned** and never
+author-settable: `id` (mint-time only), `number` (mint-time only), placement/path (derived from
+type + containment), and the entire `source`/provenance record (odm-set from the migration or
+authoring event, never hand-supplied). A future authoring surface (slice03) validates this boundary
+before any write — a partial that tries to set an odm-owned field is rejected, not silently accepted.
 
 Frontmatter is **emitted in a canonical field order** (round-trip stable;
 `parse ∘ emit = identity` is a proptest invariant): `id, number, type, schema,
@@ -603,6 +629,18 @@ Two workstreams ride alongside the engine:
 once A1–A3 land.
 
 ## Version History
+
+### v2.6 — 2026-08-03 — arc-store-as-source slice02: `origin: authored` + the author/odm boundary
+
+Adds `authored` to the `origin` value set (§2.3): a node born in the store, never pulled from an
+external file. `source` is reaffirmed as enduring provenance, kept for every node that has ever
+carried one — "authored" is `source.class`'s explicit value for a store-born node (no `paths`, no
+`migrated_by`/`migrated_on`), never the absence of the `source` block. An optional
+`source.migrated_from` marker preserves a converted node's former `source.paths` without
+re-verifying against it. `check` (`Violation::InconsistentAuthoredSource`) enforces the two-way
+agreement between `origin` and `source.class`. Also records the author-owned vs odm-owned field
+boundary (ODD-0026 §2.5) that a future native-authoring surface (slice03) validates before every
+write. Surfaced by: ODD-0026 §3 (design basis), implemented arc-store-as-source slice02.
 
 ### v2.5 — 2026-07-29 — L-8b: `state` corrected to Accepted (release-gate housekeeping)
 
