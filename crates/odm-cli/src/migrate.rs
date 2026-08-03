@@ -56,6 +56,10 @@ pub(crate) struct Options {
     /// self-host + design/research reconcile + `--artifacts` + `--notes` +
     /// the additional-paths sweep (arc-migration-fidelity slice13/slice14).
     pub all: bool,
+    /// Re-classify every genuinely-migrated `project`/`arc`/`slice` node as
+    /// authored and exit — explicit, one-time, not part of `--all`
+    /// (arc-store-as-source slice02, ODD-0026 §2.1 sub-decision (i)).
+    pub to_authored: bool,
 }
 
 /// Root resolution shared by every mode (arc-migration-fidelity s14 F-3):
@@ -109,6 +113,29 @@ pub(crate) fn migrate(
             )
         })?;
         return notes(store, &dev_root, dry_run, out, err);
+    }
+    // Explicit, one-time, and deliberately not part of `--all` (see the
+    // flag's own doc comment) — short-circuits the same way the other
+    // single-purpose derivations above do.
+    if options.to_authored {
+        let mode = Mode::from_dry_run(dry_run);
+        let report = odm_migrate::selfhost::convert_to_authored(store, mode)
+            .context("converting migrated planning nodes to authored")?;
+        render_convert_to_authored(&report, out)?;
+        let verb =
+            if dry_run { "migrate --to-authored (dry-run)" } else { "migrate --to-authored" };
+        let status = format!(
+            "{verb}: {} node(s) {}{}",
+            report.converted_count(),
+            if dry_run { "would convert" } else { "converted" },
+            if dry_run { " — nothing written" } else { "" }
+        );
+        if dry_run {
+            term::info(err, &status)?;
+        } else {
+            term::success(err, &status)?;
+        }
+        return Ok(());
     }
     // `--all` composes every derivation into one idempotent, dry-run-able
     // pass (arc-migration-fidelity s13 — the exact gap that let s11/12/13's
@@ -544,6 +571,7 @@ fn self_host_inner(
 
 /// The reconcile (repair/backfill) table's columns.
 const RECONCILE_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME", "ID"];
+const CONVERT_COLUMNS: [&str; 4] = ["ACTION", "#", "NAME", "TYPE"];
 
 /// Renders the reconcile pass: every existing node `repair` touched (a stub
 /// body replaced, or a faithful node gated-backfilled with `source`).
@@ -567,6 +595,40 @@ fn render_repair(
         "Total: {} {}",
         report.repaired_count(),
         if report.dry_run { "to reconcile" } else { "reconciled" }
+    ));
+    writeln!(out)?;
+    writeln!(out, "{}", table.render())?;
+    writeln!(out)?;
+    Ok(())
+}
+
+/// Renders [`odm_migrate::selfhost::convert_to_authored`]'s pass
+/// (arc-store-as-source slice02): a `converted` row per genuinely-migrated
+/// `project`/`arc`/`slice` node re-classified as authored. Silent when
+/// nothing was eligible (every planning node is already authored, or none
+/// has been migrated yet).
+fn render_convert_to_authored(
+    report: &odm_migrate::selfhost::ConvertReport,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    if report.converted.is_empty() {
+        return Ok(());
+    }
+    let verb = if report.dry_run { "would convert" } else { "converted" };
+    let title = if report.dry_run { "TO-AUTHORED (DRY RUN)" } else { "TO-AUTHORED" };
+    let mut table = Themed::new(title, &CONVERT_COLUMNS);
+    for c in &report.converted {
+        table.row([
+            verb.to_string(),
+            c.number.to_string(),
+            c.name.clone(),
+            c.node_type.as_str().to_string(),
+        ]);
+    }
+    table.summary(format!(
+        "Total: {} {}",
+        report.converted_count(),
+        if report.dry_run { "to convert" } else { "converted" }
     ));
     writeln!(out)?;
     writeln!(out, "{}", table.render())?;

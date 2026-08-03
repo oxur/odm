@@ -188,6 +188,13 @@ pub enum SkipReason {
     /// The frontmatter parsed but could not be mapped (missing number / unknown
     /// state).
     Unmappable(MapError),
+    /// `self_host` matched an existing node by structural coordinate against
+    /// one with `origin: authored` (arc-store-as-source slice02) — recognized
+    /// as already-imported and left completely untouched: no source rewrite,
+    /// no body churn, no re-fidelity. An authored node is self-sourced by
+    /// design (ODD-0026 §2.1); its plan-tree counterpart, if `./docs` still
+    /// has one, is provenance only, never re-verified against.
+    Authored,
 }
 
 impl std::fmt::Display for SkipReason {
@@ -202,6 +209,9 @@ impl std::fmt::Display for SkipReason {
             }
             SkipReason::Malformed(m) => write!(f, "malformed: {m}"),
             SkipReason::Unmappable(e) => write!(f, "{e}"),
+            SkipReason::Authored => {
+                write!(f, "already exists — authored (self-sourced, untouched)")
+            }
         }
     }
 }

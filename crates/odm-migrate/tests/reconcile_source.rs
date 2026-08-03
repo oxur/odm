@@ -44,11 +44,12 @@ fn persist_sourced(store: &Store, number: u32, source_path: &str, body: &str) ->
     let fm = fm.with_source(Source {
         paths: vec![source_path.into()],
         class: "odd".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: day(),
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(day()),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     });
     let document = Document::new(fm, body.to_string());
     store.persist(&document).expect("persist");

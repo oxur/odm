@@ -141,6 +141,8 @@ pub struct Provenance {
     pub discovered: Vec<NodeRef>,
     /// Nodes that arose from an amendment to an existing plan.
     pub amendment: Vec<NodeRef>,
+    /// Nodes born in the store, never pulled from an external file (ODD-0026).
+    pub authored: Vec<NodeRef>,
 }
 
 /// The drift projection folded into the rollup/orient views (A5 — Q-A3-2):
@@ -559,6 +561,7 @@ fn provenance(nodes: &[Frontmatter]) -> Provenance {
             Origin::Planned => prov.planned.push(node),
             Origin::Discovered => prov.discovered.push(node),
             Origin::Amendment => prov.amendment.push(node),
+            Origin::Authored => prov.authored.push(node),
         }
     }
     prov

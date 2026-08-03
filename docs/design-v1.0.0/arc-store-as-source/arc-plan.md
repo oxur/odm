@@ -2,7 +2,7 @@
 
 <!-- Name/title carries no document-role metadata, per ODD-0013 §2.1. -->
 
-**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 (self-sourced nodes) next ·
+**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 (self-sourced nodes) CC-closed (2026-08-03); slice 03 (native authoring commands) next ·
 **Unnumbered**, per the `arc-release-hardening` / `arc-migration-fidelity` /
 `arc-llm-command-surface` precedent (the numbering scheme is under review in RH).
 
@@ -77,7 +77,7 @@ any change to end-user-doc *content*.
 | Slice | Scope | Kind |
 |---|---|---|
 | **01 · ODD-0026 — the store-as-source model** | Resolve the four open design forks (A/B/D/E; C is settled) and author + accept **ODD-0026**. Design/decision unit; the deliverable is the accepted ODD, from which slices 02–04 derive their acceptance criteria. *Authored by CDC + operator (a decision, not an implementation).* | design |
-| **02 · self-sourced planning nodes** | Make `migrate` / `reconcile` / `check` honor a planning node that has **no external source**: no `undeveloped`/`missing-source`/body-hash error for a store-authored node; convert the existing planning nodes to self-sourced per ODD-0026; keep schema/edge/decomposition/order validation intact. The core enabler — after this, the store *is* authoritative. | code |
+| **02 · self-sourced planning nodes** | Make `migrate` / `reconcile` / `check` honor a planning node that has **no external source**: no `undeveloped`/`missing-source`/body-hash error for a store-authored node; convert the existing planning nodes to self-sourced per ODD-0026; keep schema/edge/decomposition/order validation intact. The core enabler — after this, the store *is* authoritative. **CC-closed 2026-08-03** (`origin: authored` + `Source::authored` + `Violation::InconsistentAuthoredSource`; `self_host`/`reconcile` never churn an authored node; `migrate --to-authored` — explicit, one-time, deliberately not part of `--all`; 9/11 ledger rows done, 2 attested (ODD amendment stubs not yet folded in); real-corpus leg deferred to CDC). | code |
 | **03 · native authoring commands** | `odm node new` gains a body path (`--from-file <md>` and/or `--body`, and/or `$EDITOR`); `odm node edit <ref>` opens the store node for editing; child/slice minting is a clean one-command operation (closing the `undeveloped-stub` gap). "Edit the store file + `odm check`" remains the always-works fallback. | code |
 | **04 · cutover** | After a final safety `migrate --all` + green `check`: delete the `./docs` planning subtree (git-recoverable), keep `./docs` for end-user docs, and update project memory, `CLAUDE.md`, and CC's settings to the odm-native authoring workflow. Gated on 01–03 and an explicit operator go. | code + docs |
 | **05 · decomposition bookkeeping: consistency fix + deterministic auto-recompose** | Two coupled defects the 2026-08-02 store surfaced. **(a) Consistency bug:** `node decomposed` affirms *all* reverse-`part_of` children (incl. artifact/note nodes) but `check`'s decomposition-drift computes a *different* current-child set (excludes them) — so an affirmed parent reports a permanent phantom "removed N" that re-affirming cannot clear (MF `#58837400`: the 2 non-slice children `536513400`/`560811200`). Pick **one** child-set definition and use it in both `node decomposed` and `check`. **(b) Auto-recompose:** when `migrate` churns children deterministically and the resulting set is *provably the same* as the prior affirmed set (re-mint / re-read, no membership change), it re-affirms automatically — the deterministic bookkeeping odm exists to kill, not to nag the user with. A *genuine* membership change (a real new/removed child) still surfaces for the human scope-completeness judgment (the mechanical half auto-heals; the judgment half does not). | code |
@@ -121,10 +121,10 @@ class-(c) bubble-up rows accrue as slices close.
 | ID | Criterion | Verify | Sev | Status |
 |---|---|---|---|---|
 | **SS-1** | ODD-0026 accepted, recording the model + the fate of `source.paths` and the body-hash gate for planning nodes | `docs/design/04-accepted/0026-*.md` present, status Accepted | serious | **done** (2026-08-03, slice 01) |
-| **SS-2** | A planning node with **no external source** passes `check` (no `undeveloped-stub` / missing-source / body-hash error) | fixture: an authored node, `check` clean | serious | open |
-| **SS-3** | Existing planning nodes converted to self-sourced per ODD-0026; a full `migrate --all` + `check` is green with the `./docs` plan tree still present | `migrate --all` then `check` exit 0 | serious | open |
+| **SS-2** | A planning node with **no external source** passes `check` (no `undeveloped-stub` / missing-source / body-hash error) | fixture: an authored node, `check` clean | serious | **done — fixture + real end-to-end CLI test** (slice 02, 2026-08-03) |
+| **SS-3** | Existing planning nodes converted to self-sourced per ODD-0026; a full `migrate --all` + `check` is green with the `./docs` plan tree still present | `migrate --all` then `check` exit 0 | serious | mechanism **done**, fixture-proven; **real-corpus leg deferred to CDC** (slice 02 — `.worktrees/odm` not checked out in the implementation worktree) |
 | **SS-4** | A node body can be **created and updated via `./bin/odm`** (no hand-edit of store files required) | `node new --from-file` + `node edit` demonstrated; the created/edited body reads back via `node show` | serious | open |
-| **SS-5** | The body-hash fidelity gate **still applies to genuinely-migrated content** (end-user/legacy docs with an external source) — no regression | fixture: a migrated node with a corrupted body still fails `check` | correctness | open |
+| **SS-5** | The body-hash fidelity gate **still applies to genuinely-migrated content** (end-user/legacy docs with an external source) — no regression | fixture: a migrated node with a corrupted body still fails `check` | correctness | **done — regression-fixtured** (slice 02, 2026-08-03) |
 | **SS-6** | **DoD — reproduced at arc scale:** a fresh context authors a new arc + slice end-to-end using only `./bin/odm`, with no `./docs` planning tree and no hand-edited store files | demonstration transcript | **serious** | open |
 | **SS-7** | With the `./docs` planning subtree deleted, `check` / `orient` / `list` / `rollup` are green and unchanged; end-user `./docs` is untouched | delete on a branch, `check` exit 0 | serious | open |
 | **SS-8** | Decomposition bookkeeping is deterministic: (a) `node decomposed` and `check` use **one** child-set definition — a parent whose current children set-equal its affirmed set reports **0** drift (MF `#58837400` clears); (b) `migrate` auto-recomposes provably-identity child churn with no manual re-affirm | fixture: the MF artifact-child case → 0 drift after affirm; a re-mint `migrate` leaves `check` green with no manual step | serious | (a) **done** — slice 05 CDC-verified; (b) delivered, inert (SS5-1) |
@@ -161,6 +161,35 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.9 -- 2026-08-03 (slice 02 CC-closed: self-sourced planning nodes implemented)
+
+CC implemented slice 02 — **the core enabler**: an authored node (`origin: authored`, `source: {
+class: authored }`, no external paths) is now a first-class, checked, migrate-safe citizen of the
+store. Schema: `Origin::Authored`; `Source`'s migration-only fields became optional (`None` on an
+authored node); `source.migrated_from` preserves a converted node's provenance; a new structural
+check (`Violation::InconsistentAuthoredSource`) enforces the two-way `origin`/`source.class`
+agreement. `self_host` gained a fourth identity-matching tier (`by_coordinate_authored`) — without
+it, an authored node's empty `source.paths` made it invisible to the existing matching, so the
+first `migrate --all` after this landed would have **re-minted every authored node as a duplicate**
+the moment its still-present `./docs` file was seen; caught by reading the matching logic before
+writing code, not after. `reconcile` gained an explicit authored-skip; `mapping.rs` (design/
+research) needed no change, confirmed safe by construction. **`odm migrate --to-authored`**: a new,
+explicit, `--dry-run`-able, idempotent conversion pass for the existing corpus (sub-decision (i) —
+re-classify + preserve provenance) — **deliberately not folded into `--all`**, since converting a
+node stops further `./docs` edits from reaching it (self-sourced now), a real workflow change the
+operator should trigger knowingly, not absorb as a side effect of their ordinary `migrate --all`
+habit. **F-7 no-regression fixtured**: a genuinely-migrated node with a drifted body still hard-fails
+`repair`, proven alongside an untouched authored sibling in the same run. ODD-0013/ODD-0025
+amendment stubs written in the slice directory (F-8/F-9), code-complete but not yet folded into the
+accepted ODDs — a separate operator/CDC action. **9/11 ledger rows done**, 2 attested (the
+amendments); the real-corpus leg of SS-3 (F-6) is **deferred to CDC** — `.worktrees/odm` is not
+checked out in the implementation worktree, the same blocker every slice this session has hit. One
+self-caught iteration: the first version of the new check ran over index-backed frontmatters that
+don't carry `source` at all (caught by a real end-to-end CLI test, not a unit test) — moved to
+`content_validity`, the store-loaded pass `check_source_paths` already uses for the identical
+reason. Full workspace `make check` green. See `slice02-self-sourced-nodes/{ledger,closing-report}.md`.
+Surfaced by: CC (this session). **Next:** slice 03 (native authoring commands) — SS-4.
 
 ### v1.8 -- 2026-08-03 (slice 01 CLOSED; ODD-0026 Accepted; SS-1 done)
 

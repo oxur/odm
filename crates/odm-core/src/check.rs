@@ -22,11 +22,16 @@
 //!    whose `reenter_when` references a `desired_fact` it does not declare (see
 //!    [`Violation::DanglingReenterWhen`]).
 //!
-//! [`content_validity`] adds two **content-level** families (arc06 slice03,
-//! ODD-0020) that need the actual frontmatter (which the index omits), so the CLI
-//! runs them over store-loaded nodes: **per-type field-validity**
-//! ([`Violation::FieldNotValidForType`]) and the **schema-version marker**
-//! ([`Violation::UnsupportedSchema`]).
+//! [`content_validity`] adds **content-level** families that need the actual
+//! frontmatter (which the index omits), so the CLI runs them over
+//! store-loaded nodes, not the fast index-backed [`check`]: **per-type
+//! field-validity** ([`Violation::FieldNotValidForType`]), the
+//! **schema-version marker** ([`Violation::UnsupportedSchema`]), **source-path
+//! portability** ([`Violation::AbsoluteSourcePath`]), and — ODD-0026 §2.1,
+//! arc-store-as-source slice02 — **authored/source consistency**
+//! ([`Violation::InconsistentAuthoredSource`]): `source` is not in the index
+//! at all, so this check needs the same store-loaded pass `AbsoluteSourcePath`
+//! does.
 //!
 //! Graph-level checks (cycles-without-tears, out-of-order/staleness,
 //! recomposition, below-threshold satisfaction) are deliberately **not** here;
@@ -39,6 +44,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::NaiveDate;
 
 use crate::Id;
+use crate::Origin;
 use crate::frontmatter::Frontmatter;
 
 /// A single structural problem found by [`check`].
@@ -148,6 +154,18 @@ pub enum Violation {
         /// The offending path, exactly as stored.
         path: std::path::PathBuf,
     },
+    /// `origin: authored` and `source` disagree about whether this node is
+    /// authored (ODD-0026 §2.1): `origin: authored` with no `source`, or a
+    /// `source` that isn't the authored shape (`class` other than
+    /// `"authored"`, or a non-empty `paths`/`migrated_by`/`migrated_on` — data
+    /// an authored node, never migrated, cannot legitimately carry); or
+    /// conversely `source.class == "authored"` on a node whose `origin` isn't
+    /// `authored`. "Authored" is a provenance *value*, never the absence of
+    /// one, and the two signals must always agree.
+    InconsistentAuthoredSource {
+        /// What specifically disagrees.
+        reason: &'static str,
+    },
 }
 
 /// Validates the structure of a node corpus, returning all findings.
@@ -196,6 +214,7 @@ pub fn content_validity(nodes: &[Frontmatter]) -> Vec<Finding> {
         check_field_validity(fm, &mut findings);
         check_schema_version(fm, &mut findings);
         check_source_paths(fm, &mut findings);
+        check_authored_source(fm, &mut findings);
     }
     findings
 }
@@ -358,6 +377,59 @@ fn check_link_integrity(fm: &Frontmatter, ids: &BTreeSet<Id>, findings: &mut Vec
     }
     for target in edges.tears.iter().map(|t| dependency_target(&t.edge)) {
         dangling(fm, ids, "tears", target, findings);
+    }
+}
+
+/// `origin: authored` and `source` must agree (ODD-0026 §2.1): "authored" is
+/// a provenance *value*, never the absence of `source`, so an authored node
+/// still carries `source: { class: "authored" }` — with no `paths` and no
+/// `migrated_by`/`migrated_on` (there was no migration to record). Every
+/// *other* check keeps firing on an authored node exactly as on a migrated
+/// one; this is the only rule that treats the two differently, and it treats
+/// them as a **consistency requirement** in both directions, not a
+/// suppression: a mismatch either way is reported, never silently accepted.
+fn check_authored_source(fm: &Frontmatter, findings: &mut Vec<Finding>) {
+    if fm.origin() == Origin::Authored {
+        let Some(source) = fm.source() else {
+            findings.push(finding(
+                fm,
+                Violation::InconsistentAuthoredSource {
+                    reason: "origin: authored requires a source record (class: \"authored\")",
+                },
+            ));
+            return;
+        };
+        if !source.is_authored() {
+            findings.push(finding(
+                fm,
+                Violation::InconsistentAuthoredSource {
+                    reason: "origin: authored requires source.class == \"authored\"",
+                },
+            ));
+        }
+        if !source.paths.is_empty() {
+            findings.push(finding(
+                fm,
+                Violation::InconsistentAuthoredSource {
+                    reason: "an authored node carries no source.paths — it was never migrated",
+                },
+            ));
+        }
+        if source.migrated_by.is_some() || source.migrated_on.is_some() {
+            findings.push(finding(
+                fm,
+                Violation::InconsistentAuthoredSource {
+                    reason: "an authored node carries no migrated_by/migrated_on — there was no migration",
+                },
+            ));
+        }
+    } else if fm.source().is_some_and(crate::frontmatter::Source::is_authored) {
+        findings.push(finding(
+            fm,
+            Violation::InconsistentAuthoredSource {
+                reason: "source.class == \"authored\" requires origin: authored",
+            },
+        ));
     }
 }
 

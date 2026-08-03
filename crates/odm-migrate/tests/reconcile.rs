@@ -97,6 +97,69 @@ fn reconcile_rediscovers_an_arc_whose_directory_moved() {
     assert_eq!(stored, "docs/design-v1.0.0/arc01-renamed/arc-plan.md");
 }
 
+// ----- arc-store-as-source slice02: an authored node is never re-fidelity-
+// ----- checked, even when its plan-tree counterpart keeps drifting --------
+
+#[test]
+fn reconcile_never_touches_an_authored_node_even_as_its_plan_tree_file_drifts() {
+    use odm_core::Origin;
+    use odm_core::frontmatter::{Document, Frontmatter, Source};
+
+    let repo = TempDir::new().unwrap();
+    write_plan_set_with_git(repo.path(), "arc01-alpha", "# Arc 01 — Alpha (docs, stale)\n");
+    let plan_root = repo.path().join("docs/design-v1.0.0");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+
+    // An authored arc at the coordinate self_host's discovery would compute —
+    // ODD-0026 §2.1's shape: `origin: authored`, no external `source.paths`.
+    let arc_id = odm_core::Id::new();
+    let created = chrono::NaiveDate::from_ymd_opt(2026, 7, 20).unwrap();
+    let mut fm = Frontmatter::new(
+        arc_id,
+        1100,
+        NodeType::Arc,
+        "Arc 01 — Alpha",
+        created,
+        created,
+        Origin::Authored,
+    );
+    fm.stamp_schema();
+    let fm = fm.with_source(Source::authored(Vec::new()));
+    store
+        .persist(&Document::new(fm, "# Arc 01 — Alpha\n\nAuthored, store-owned.\n".to_string()))
+        .unwrap();
+
+    self_host(&store, &plan_root, Mode::Commit)
+        .expect("self-host recognizes it, mints only the project");
+
+    // The plan-tree file keeps drifting, as every legacy arc-plan.md does
+    // until the slice04 cutover — this must never leak back into the
+    // authored node.
+    write(
+        repo.path(),
+        "docs/design-v1.0.0/arc01-alpha/arc-plan.md",
+        "# Arc 01 — Alpha\n\nAmended in ./docs — must never land in the authored node.\n",
+    );
+
+    let report = reconcile(&store, &plan_root, Mode::Commit).expect("reconcile");
+    assert_eq!(report.reconciled_count(), 0, "an authored node is never reconciled against ./docs");
+
+    let node = arc_node(&store);
+    assert_eq!(node.frontmatter().id(), arc_id, "same node");
+    assert_eq!(node.frontmatter().origin(), Origin::Authored, "origin untouched");
+    assert_eq!(
+        node.body(),
+        "# Arc 01 — Alpha\n\nAuthored, store-owned.\n",
+        "body never overwritten from the drifting ./docs file"
+    );
+    assert!(
+        node.frontmatter().source().is_some_and(|s| s.is_authored()),
+        "source stays the authored shape, never rebuilt as a migration record"
+    );
+}
+
 // ----- F-3: the living-plan-node policy — reconcile twice, no rejection ---
 
 #[test]
@@ -196,11 +259,12 @@ fn reconcile_excludes_a_synthesis_bearing_project() {
     *fm = fm.clone().with_source(odm_core::frontmatter::Source {
         paths: vec![Path::new("docs/design-v1.0.0/project-plan.md").to_path_buf()],
         class: "vision".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: fm.updated(),
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(fm.updated()),
         synthesis: Some("editorial-merge".to_string()),
         attestation: Some("operator: distills the source".to_string()),
+        migrated_from: Vec::new(),
     });
     store.persist(&project).unwrap();
     write(repo.path(), "docs/design-v1.0.0/project-plan.md", "# Test Project\n\nAmended.\n");

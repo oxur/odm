@@ -231,11 +231,12 @@ mod tests {
         let base_fm = base_fm.with_source(Source {
             paths: vec![PathBuf::from("project-plan.md")],
             class: "project-plan".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(day()),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         });
         store.persist(&Document::new(base_fm, plan_body.to_string())).unwrap();
 
@@ -255,11 +256,12 @@ mod tests {
         let synth_fm = synth_fm.with_source(Source {
             paths: vec![PathBuf::from("project-plan.md")],
             class: "vision".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(day()),
             synthesis: Some("editorial-merge".to_string()),
             attestation: Some("operator: distills the source".to_string()),
+            migrated_from: Vec::new(),
         });
         store
             .persist(&Document::new(
@@ -376,11 +378,12 @@ mod tests {
         let other_fm = other_fm.with_source(Source {
             paths: vec![PathBuf::from("a.md"), PathBuf::from("b.md")],
             class: "synthesis".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(day()),
             synthesis: Some("concatenation".to_string()),
             attestation: None,
+            migrated_from: Vec::new(),
         });
         let other_body = "merged body\n";
         store.persist(&Document::new(other_fm, other_body.to_string())).unwrap();
@@ -481,11 +484,12 @@ mod tests {
         let synth_fm = synth_fm.with_source(Source {
             paths: vec![PathBuf::from("project-plan.md")],
             class: "vision".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(day()),
             synthesis: Some("editorial-merge".to_string()),
             attestation: Some("operator: distills the source".to_string()),
+            migrated_from: Vec::new(),
         });
         store.persist(&Document::new(synth_fm, "# Vision\n\nText.\n".to_string())).unwrap();
 
@@ -525,11 +529,12 @@ mod tests {
         let synth_fm = synth_fm.with_source(Source {
             paths: vec![PathBuf::from("project-plan.md")],
             class: "vision".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(day()),
             synthesis: Some("editorial-merge".to_string()),
             attestation: Some("operator: distills the source".to_string()),
+            migrated_from: Vec::new(),
         });
         store.persist(&Document::new(synth_fm, "# Vision\n\nText.\n".to_string())).unwrap();
 

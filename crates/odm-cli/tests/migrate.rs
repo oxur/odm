@@ -624,11 +624,12 @@ fn seed_vision_pair(store: &Store, project_name: &str, project_body: &str) -> (I
     let base_fm = base_fm.with_source(Source {
         paths: vec![PathBuf::from("project-plan.md")],
         class: "project-plan".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: today,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(today),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     });
     store.persist(&Document::new(base_fm, project_body.to_string())).unwrap();
 
@@ -648,11 +649,12 @@ fn seed_vision_pair(store: &Store, project_name: &str, project_body: &str) -> (I
     let synth_fm = synth_fm.with_source(Source {
         paths: vec![PathBuf::from("project-plan.md")],
         class: "vision".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: today,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(today),
         synthesis: Some("editorial-merge".to_string()),
         attestation: Some("operator: distills the source".to_string()),
+        migrated_from: Vec::new(),
     });
     store
         .persist(&Document::new(synth_fm, "# Vision\n\nSynthesized, not the source.\n".to_string()))
@@ -1101,4 +1103,67 @@ fn check_green_on_migrated_odm_docs() {
 
     let (code, out) = run_code(store_dir.path(), &["validate"]);
     assert_eq!(code, Some(0), "check is green on the imported odd corpus:\n{out}");
+}
+
+// ----- arc-store-as-source slice02: `migrate --to-authored` ------------------
+// Ledger: docs/design-v1.0.0/arc-store-as-source/slice02-self-sourced-nodes/ledger.md
+
+#[test]
+fn migrate_to_authored_converts_the_planning_corpus_and_check_stays_green() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--all"]);
+    assert!(ok, "{err}");
+
+    let (ok, out, err) = run(store_dir.path(), &["migrate", "--to-authored"]);
+    assert!(ok, "{err}");
+    assert!(out.contains("TO-AUTHORED"), "the convert table rendered:\n{out}");
+    assert!(err.contains("2 node(s) converted"), "project + arc converted:\n{err}");
+
+    let store = Store::open(store_dir.path());
+    let nodes = store.load_all().unwrap();
+    let arc = nodes.iter().find(|d| d.frontmatter().node_type() == NodeType::Arc).unwrap();
+    assert_eq!(arc.frontmatter().origin(), Origin::Authored);
+    let source = arc.frontmatter().source().expect("still carries a source record");
+    assert!(source.paths.is_empty(), "no external paths on an authored node");
+    assert!(!source.migrated_from.is_empty(), "the historical path is preserved");
+
+    // The ./docs plan tree is still present (slice02 does not delete it —
+    // that's slice04) and `check` is still green.
+    let (code, checked) = run_code(store_dir.path(), &["validate"]);
+    assert_eq!(code, Some(0), "check is green after conversion:\n{checked}");
+}
+
+#[test]
+fn migrate_to_authored_is_idempotent_and_conflicts_with_all() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+    run(store_dir.path(), &["migrate", "--all"]);
+    run(store_dir.path(), &["migrate", "--to-authored"]);
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--to-authored"]);
+    assert!(ok, "{err}");
+    assert!(err.contains("0 node(s) converted"), "already-authored nodes are a no-op:\n{err}");
+
+    let cli = Cli::try_parse_from(["odm", "migrate", "--all", "--to-authored"]);
+    assert!(cli.is_err(), "--to-authored is not part of --all, and conflicts with it");
+}
+
+#[test]
+fn migrate_to_authored_dry_run_writes_nothing() {
+    let store_dir = TempDir::new().unwrap();
+    write_all_fixture(store_dir.path());
+    run(store_dir.path(), &["migrate", "--all"]);
+
+    let (ok, _out, err) = run(store_dir.path(), &["migrate", "--to-authored", "--dry-run"]);
+    assert!(ok, "{err}");
+    assert!(err.contains("would convert"), "{err}");
+    assert!(err.contains("nothing written"), "{err}");
+
+    let store = Store::open(store_dir.path());
+    let nodes = store.load_all().unwrap();
+    assert!(
+        nodes.iter().all(|d| d.frontmatter().origin() != Origin::Authored),
+        "dry-run converted nothing"
+    );
 }

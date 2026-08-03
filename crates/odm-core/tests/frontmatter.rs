@@ -486,11 +486,12 @@ proptest! {
             fm = fm.with_source(Source {
                 paths: vec!["docs/design-v1.0.0/arc01-alpha/arc-plan.md".into()],
                 class: "arc-plan".to_string(),
-                normalization: "trim+lf".to_string(),
-                migrated_by: "odm-migrate/1.0.0".to_string(),
-                migrated_on: created,
+                normalization: Some("trim+lf".to_string()),
+                migrated_by: Some("odm-migrate/1.0.0".to_string()),
+                migrated_on: Some(created),
                 synthesis: None,
                 attestation: None,
+                migrated_from: Vec::new(),
             });
         }
 
@@ -512,11 +513,12 @@ fn author_version_source_round_trip() {
                 .into(),
         ],
         class: "slice-doc".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/1.0.0".to_string(),
-        migrated_on: day(2026, 7, 27),
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/1.0.0".to_string()),
+        migrated_on: Some(day(2026, 7, 27)),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     };
     let fm = Frontmatter::new(
         id,

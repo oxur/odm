@@ -666,6 +666,19 @@ enum Command {
             conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes"]
         )]
         all: bool,
+        /// Re-classify every genuinely-migrated `project`/`arc`/`slice` node
+        /// as **authored** (ODD-0026 §2.1 sub-decision (i), arc-store-as-
+        /// source slice02): `origin` flips to `authored`, and the former
+        /// `source.paths` is preserved in a new `source.migrated_from`
+        /// marker. Explicit and one-time — deliberately **not** part of
+        /// `--all`, so it never fires as a side effect of the ordinary
+        /// migrate workflow; `--dry-run` previews it first. Idempotent — an
+        /// already-authored node is a no-op.
+        #[arg(
+            long,
+            conflicts_with_all = ["plan", "legacy", "replan", "coverage", "artifacts", "notes", "all"]
+        )]
+        to_authored: bool,
     },
     /// Manage nodes: create, inspect, relate, and advance them.
     ///
@@ -850,6 +863,7 @@ pub fn dispatch(
             artifacts,
             notes,
             all,
+            to_authored,
         } => {
             let forced = if plan {
                 Some(odm_migrate::Corpus::Plan)
@@ -873,7 +887,16 @@ pub fn dispatch(
                 &store,
                 root,
                 &additional_paths,
-                migrate::Options { forced, replan, dry_run, coverage, artifacts, notes, all },
+                migrate::Options {
+                    forced,
+                    replan,
+                    dry_run,
+                    coverage,
+                    artifacts,
+                    notes,
+                    all,
+                    to_authored,
+                },
                 out,
                 err,
             )?;

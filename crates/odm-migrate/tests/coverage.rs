@@ -401,11 +401,12 @@ fn coverage_provenance_absence() {
     let source = Source {
         paths: vec![PathBuf::from("design-v1.0.0/arc01-alpha/slice01-aa/slice-doc.md")],
         class: "slice-doc".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/1.0.0".to_string(),
-        migrated_on: today,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/1.0.0".to_string()),
+        migrated_on: Some(today),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     };
 
     persist_node(&store, 200, NodeType::Slice, "No source", "# X\nbody\n", false, None);

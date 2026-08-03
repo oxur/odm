@@ -54,11 +54,12 @@ fn seed_design_node(root: &Path, name: &str, source_path: &str) {
         .with_source(Source {
             paths: vec![source_path.into()],
             class: "odd".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "test".to_string(),
-            migrated_on: today,
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("test".to_string()),
+            migrated_on: Some(today),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         });
     let document = Document::new(fm, "# Doc\n\nBody.\n".to_string());
     Store::open(root).persist(&document).expect("seed persist");

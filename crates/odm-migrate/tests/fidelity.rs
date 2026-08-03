@@ -117,8 +117,12 @@ fn selfhost_populates_source_record() {
         .source()
         .expect("arc carries a source record");
     assert_eq!(source.class, "arc-plan");
-    assert_eq!(source.normalization, "trim+lf");
-    assert!(source.migrated_by.starts_with("odm-migrate/"), "{}", source.migrated_by);
+    assert_eq!(source.normalization.as_deref(), Some("trim+lf"));
+    assert!(
+        source.migrated_by.as_deref().is_some_and(|v| v.starts_with("odm-migrate/")),
+        "{:?}",
+        source.migrated_by
+    );
     assert_eq!(source.paths.len(), 1, "1:1 migration — a single source path");
     assert!(source.paths[0].ends_with("arc-plan.md"), "{:?}", source.paths[0]);
 
@@ -166,8 +170,8 @@ fn mapping_populates_source_record() {
 
     let source = nodes[&5].frontmatter().source().expect("carries a source record");
     assert_eq!(source.class, "odd");
-    assert_eq!(source.normalization, "trim+lf");
-    assert!(source.migrated_by.starts_with("odm-migrate/"));
+    assert_eq!(source.normalization.as_deref(), Some("trim+lf"));
+    assert!(source.migrated_by.as_deref().is_some_and(|v| v.starts_with("odm-migrate/")));
     assert_eq!(source.paths.len(), 1);
     assert!(source.paths[0].ends_with("0005-new-approach.md"), "{:?}", source.paths[0]);
 }

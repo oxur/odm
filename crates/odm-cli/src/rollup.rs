@@ -351,6 +351,7 @@ fn render_provenance(s: &mut String, prov: &Provenance) {
     render_origin_group(s, "Planned", &prov.planned);
     render_origin_group(s, "Discovered", &prov.discovered);
     render_origin_group(s, "Amendment", &prov.amendment);
+    render_origin_group(s, "Authored", &prov.authored);
 }
 
 /// Renders one origin group as a labelled list (or `(none)` when empty).

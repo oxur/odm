@@ -267,12 +267,24 @@ pub fn self_host(
     // case, since `relativize` tolerates both) — from every work node that
     // already carries a `source` record; `by_coordinate` (the one-time
     // transition fallback, F-2) from every work node that does not — the
-    // corpus's pre-slice05 state.
+    // corpus's pre-slice05 state; `by_coordinate_authored` (arc-store-as-
+    // source slice02) from every work node with `origin: authored` — an
+    // authored node's `source.paths` is always empty (ODD-0026 §2.1), so it
+    // would otherwise be invisible to `by_source` and get re-minted as a
+    // duplicate the moment its plan-tree counterpart is still present under
+    // `./docs` (true for every node until the slice04 cutover). Matched by
+    // coordinate for the same reason `by_coordinate` is: an authored node
+    // carries no external path for `by_source` to key on.
     let mut by_source: HashMap<String, Document> = HashMap::new();
     let mut by_coordinate: HashMap<(NodeType, u32), Document> = HashMap::new();
+    let mut by_coordinate_authored: HashMap<(NodeType, u32), Document> = HashMap::new();
     for document in store.load_all().map_err(MigrateError::LoadCorpus)? {
         let fm = document.frontmatter();
         if !fm.node_type().is_work() {
+            continue;
+        }
+        if fm.origin() == Origin::Authored {
+            by_coordinate_authored.insert((fm.node_type(), fm.number()), document.clone());
             continue;
         }
         match fm.source() {
@@ -325,6 +337,20 @@ pub fn self_host(
                 });
                 to_rewrite.push((node, existing_doc.clone(), source_key));
             }
+            continue;
+        }
+        if let Some(existing_doc) = by_coordinate_authored.get(&key) {
+            // Recognized, self-sourced, and never touched: no source
+            // rewrite, no body churn, no re-fidelity (ODD-0026 §2.1/§2.2) —
+            // the plan-tree file at `source_key`, if `./docs` still has one,
+            // is this node's historical provenance only, not something to
+            // re-verify against.
+            ids.insert(key, existing_doc.frontmatter().id());
+            skipped.push(Skipped {
+                number: Some(node.number),
+                path: plan_root.to_path_buf(),
+                reason: SkipReason::Authored,
+            });
             continue;
         }
         if let Some(existing_doc) = by_coordinate.get(&key) {
@@ -524,6 +550,125 @@ impl RepairReport {
     pub fn repaired_count(&self) -> usize {
         self.repaired.len()
     }
+}
+
+/// One node converted from migrated to authored (arc-store-as-source
+/// slice02, ODD-0026 §2.1 sub-decision (i)).
+#[derive(Debug, Clone)]
+pub struct Converted {
+    /// The node's number (unchanged by conversion).
+    pub number: u32,
+    /// The node's identity (unchanged by conversion).
+    pub id: Id,
+    /// The node's name.
+    pub name: String,
+    /// The node's type (`project`/`arc`/`slice`).
+    pub node_type: NodeType,
+    /// The migration path(s) preserved in the new `source.migrated_from`
+    /// marker — the node's provenance, kept even though it is no longer
+    /// re-verified against them.
+    pub migrated_from: Vec<std::path::PathBuf>,
+}
+
+/// The outcome of a [`convert_to_authored`] run.
+#[derive(Debug, Clone)]
+pub struct ConvertReport {
+    /// Nodes converted (or, under `--dry-run`, that would be).
+    pub converted: Vec<Converted>,
+    /// Whether this was a dry run (nothing written).
+    pub dry_run: bool,
+}
+
+impl ConvertReport {
+    /// The number of nodes converted (or planned, under `--dry-run`).
+    #[must_use]
+    pub fn converted_count(&self) -> usize {
+        self.converted.len()
+    }
+}
+
+/// Re-classifies every genuinely-migrated `project`/`arc`/`slice` node in
+/// `store` as **authored** (arc-store-as-source slice02, ODD-0026 §2.1
+/// sub-decision (i) — the operator-confirmed lean): `origin` flips to
+/// [`Origin::Authored`], and `source` is rebuilt via [`Source::authored`]
+/// with the node's former `source.paths` preserved in the new
+/// `source.migrated_from` marker — provenance is enduring (§2.1), so the
+/// node's history is kept even though it stops being re-verified against it.
+///
+/// This is a **deliberate, explicit, one-time action** — not folded into
+/// `migrate --all`'s automatic passes, unlike `self_host`/`repair`/
+/// `reconcile`. Two reasons: first, the conversion is exactly what makes
+/// [`reconcile`] stop picking up further `./docs` edits for a node (an
+/// authored node is self-sourced — see `reconcile`'s own guard), which is a
+/// real, disclosed behavior change the operator should trigger knowingly
+/// (with `--dry-run` first), not one that fires the next time they run their
+/// ordinary workflow. Second, `self_host`'s own `to_create` path is
+/// unchanged by this slice — a plan-tree file self-hosted for the first time
+/// still mints an ordinary migrated node — so "convert everything migrated"
+/// and "self-host what's new" are two distinct, separately-triggered steps.
+///
+/// Only `project`/`arc`/`slice` nodes with a genuine migration `source`
+/// (`source.is_some() && !source.is_authored()`) are eligible — an
+/// already-authored node is a no-op (idempotent re-run), and a sourceless
+/// node is `repair`'s territory, not this pass's (converting "no source at
+/// all" to "authored" would erase the honest signal that it has never been
+/// backfilled). A synthesis node (`source.synthesis`) or a retired node is
+/// excluded, the same way [`reconcile`]/[`repair`] exclude them — neither is
+/// an ordinary 1:1 migration target.
+///
+/// # Errors
+///
+/// [`MigrateError::LoadCorpus`] if the corpus cannot be loaded, or
+/// [`MigrateError::Persist`] if a converted node cannot be written.
+pub fn convert_to_authored(store: &Store, mode: Mode) -> Result<ConvertReport, MigrateError> {
+    let corpus = store.load_all().map_err(MigrateError::LoadCorpus)?;
+    let today = today();
+    let mut converted = Vec::new();
+
+    for document in &corpus {
+        let fm = document.frontmatter();
+        if !fm.node_type().is_work() {
+            continue; // design/research is mapping.rs's territory
+        }
+        if fm.origin() == Origin::Authored {
+            continue; // already converted — idempotent no-op
+        }
+        let Some(source) = fm.source() else {
+            continue; // sourceless — repair()'s territory, not this pass's
+        };
+        if source.is_authored() {
+            continue; // defensive: shouldn't happen (origin would already be Authored)
+        }
+        if is_synthesis(document) || fm.retired().is_some() {
+            continue; // not an ordinary 1:1 migration target
+        }
+
+        let migrated_from = source.paths.clone();
+        let mut new_fm = fm.clone();
+        new_fm.set_origin(Origin::Authored);
+        new_fm.set_updated(today);
+        new_fm.stamp_schema();
+        let new_fm =
+            new_fm.with_source(odm_core::frontmatter::Source::authored(migrated_from.clone()));
+
+        converted.push(Converted {
+            number: fm.number(),
+            id: fm.id(),
+            name: fm.name().to_string(),
+            node_type: fm.node_type(),
+            migrated_from,
+        });
+
+        if !mode.is_dry_run() {
+            let new_document = Document::new(new_fm, document.body().to_string());
+            store
+                .persist(&new_document)
+                .map_err(|source| MigrateError::Persist { number: fm.number(), source })?;
+        }
+    }
+
+    converted.sort_by_key(|c| c.number);
+    Ok(ConvertReport { converted, dry_run: mode.is_dry_run() })
 }
 
 /// Whether `document` carries a `source.synthesis` record — a merge node
@@ -780,6 +925,9 @@ pub fn reconcile(
         }
         if fm.source().is_none() {
             continue; // sourceless — repair()'s territory
+        }
+        if fm.origin() == Origin::Authored {
+            continue; // self-sourced — never re-fidelity-checked against `./docs` (ODD-0026 §2.2)
         }
         let Some(plan_node) = plan_by_key.get(&(fm.node_type(), fm.number())) else {
             continue; // no current plan-set entry to reconcile against — left as-is
@@ -1196,11 +1344,12 @@ mod tests {
         .with_source(odm_core::frontmatter::Source {
             paths: vec![std::path::PathBuf::from("project-plan.md")],
             class: "vision".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/test".to_string(),
-            migrated_on: today(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/test".to_string()),
+            migrated_on: Some(today()),
             synthesis: Some("editorial-merge".to_string()),
             attestation: Some("operator: distills the source".to_string()),
+            migrated_from: Vec::new(),
         });
         let document =
             Document::new(fm, "# odm\n\n# Vision\n\nSynthesized, not the source.\n".to_string());

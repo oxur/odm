@@ -314,8 +314,8 @@ fn rollup_empty_corpus_renders_placeholders() {
     assert!(md.contains("_(nothing ready)_"), "empty ready placeholder:\n{md}");
     assert!(md.contains("_(nothing blocked)_"), "empty blocked placeholder:\n{md}");
     assert!(md.contains("## Active tears"), "tears section present:\n{md}");
-    // All three provenance groups render their empty placeholder.
-    assert_eq!(md.matches("_(none)_").count(), 4, "tears + 3 empty origin groups:\n{md}");
+    // All four provenance groups render their empty placeholder.
+    assert_eq!(md.matches("_(none)_").count(), 5, "tears + 4 empty origin groups:\n{md}");
 }
 
 // ----- Coverage: a tree node with no gate-set renders without a status tail -

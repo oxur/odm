@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use chrono::NaiveDate;
-use odm_core::check::{Violation, check};
+use odm_core::check::{Violation, check, content_validity};
 use odm_core::frontmatter::{Edges, Frontmatter, SupersedeKind, Supersedes};
 use odm_core::{Id, NodeType, Origin};
 
@@ -248,6 +248,127 @@ fn all_edge_kinds_are_link_checked() {
     assert_eq!(dangling, 6, "all six edge kinds with a missing target are flagged");
 }
 
+// ----- arc-store-as-source slice02: authored nodes (ODD-0026 §2.1) ----------
+// Ledger: docs/design-v1.0.0/arc-store-as-source/slice02-self-sourced-nodes/ledger.md
+
+fn authored(id: Id, number: u32, name: &str) -> Frontmatter {
+    use odm_core::frontmatter::Source;
+    let mut fm = node(id, number, name);
+    fm.set_origin(Origin::Authored);
+    fm.with_source(Source::authored(Vec::new()))
+}
+
+// F-1: the authored shape validates; a malformed one is rejected.
+
+#[test]
+fn a_correctly_shaped_authored_node_is_green() {
+    // `InconsistentAuthoredSource` needs `source`, which the fast index-backed
+    // `check()` doesn't carry (mirrors `AbsoluteSourcePath`) — it lives in
+    // `content_validity()`, the store-loaded pass. Both stay clean.
+    let fm = authored(id(A), 1, "Authored");
+    assert!(check(&[fm.clone()]).is_empty());
+    assert!(content_validity(&[fm]).is_empty());
+}
+
+#[test]
+fn origin_authored_with_no_source_is_rejected() {
+    // A malformed authored node: `origin: authored` but no `source` record at
+    // all — "authored" must be a provenance *value*, never the absence of one.
+    let mut fm = node(id(A), 1, "Bad"); // Origin::Planned, no source — flip origin only
+    fm.set_origin(Origin::Authored);
+    let findings = content_validity(&[fm]);
+    assert!(
+        findings.iter().any(|f| matches!(&f.violation,
+            Violation::InconsistentAuthoredSource { reason } if reason.contains("requires a source record"))),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn origin_authored_with_migrated_paths_is_rejected() {
+    // A malformed authored node: claims `origin: authored` but its `source`
+    // still carries migration paths — the two provenance signals disagree.
+    use odm_core::frontmatter::Source;
+    let mut fm = node(id(A), 1, "Bad");
+    fm.set_origin(Origin::Authored);
+    let fm = fm.with_source(Source {
+        paths: vec!["docs/design-v1.0.0/arc01-alpha/arc-plan.md".into()],
+        class: "authored".to_string(),
+        normalization: None,
+        migrated_by: None,
+        migrated_on: None,
+        synthesis: None,
+        attestation: None,
+        migrated_from: Vec::new(),
+    });
+    let findings = content_validity(&[fm]);
+    assert!(
+        findings.iter().any(|f| matches!(&f.violation,
+            Violation::InconsistentAuthoredSource { reason } if reason.contains("no source.paths"))),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn source_class_authored_without_origin_authored_is_rejected() {
+    // The reverse mismatch: `source.class == "authored"` but `origin` was
+    // never flipped to `Authored` — still inconsistent, still flagged.
+    use odm_core::frontmatter::Source;
+    let fm = node(id(A), 1, "Bad").with_source(Source::authored(Vec::new()));
+    let findings = content_validity(&[fm]);
+    assert!(
+        findings.iter().any(|f| matches!(&f.violation,
+            Violation::InconsistentAuthoredSource { reason } if reason.contains("requires origin: authored"))),
+        "{findings:?}"
+    );
+}
+
+// F-2: an authored node with a valid part_of passes check cleanly.
+
+#[test]
+fn an_authored_node_with_a_valid_parent_is_green() {
+    let parent = node(id(A), 1, "Parent");
+    let mut child = authored(id(B), 2, "Child");
+    child.edges_mut().part_of = Some(id(A));
+    assert!(check(&[parent, child]).is_empty());
+}
+
+// F-3: schema/edge/cycle validation still applies in full to authored nodes.
+
+#[test]
+fn an_authored_node_with_a_dangling_part_of_still_fails() {
+    let mut fm = authored(id(A), 1, "Orphan");
+    fm.edges_mut().part_of = Some(id(MISSING));
+    let findings = check(&[fm]);
+    assert!(
+        findings.iter().any(|f| f.violation == Violation::DanglingPartOf { target: id(MISSING) }),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn an_authored_node_in_a_supersession_cycle_still_fails() {
+    let mut a = authored(id(A), 1, "A");
+    a.edges_mut().supersedes = vec![Supersedes { node: id(B), kind: SupersedeKind::Obsoletes }];
+    let mut b = authored(id(B), 2, "B");
+    b.edges_mut().supersedes = vec![Supersedes { node: id(A), kind: SupersedeKind::Obsoletes }];
+    let cycles: Vec<_> = check(&[a, b])
+        .into_iter()
+        .filter(|f| matches!(f.violation, Violation::SupersessionCycle { .. }))
+        .collect();
+    assert_eq!(cycles.len(), 1, "authored nodes are not exempt from cycle detection");
+}
+
+#[test]
+fn an_authored_node_with_an_empty_name_still_fails() {
+    let fm = authored(id(A), 1, "   ");
+    let findings = check(&[fm]);
+    assert!(
+        findings.iter().any(|f| f.violation == Violation::MissingField { field: "name" }),
+        "{findings:?}"
+    );
+}
+
 // ----- T-1/T-2/T-3 (arc05 slice05): stale-doc-vs-decision (C5) ---------------
 
 fn dm(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -490,11 +611,12 @@ mod content {
         let mut synthesis_project = project.with_source(Source {
             paths: vec!["docs/project-plan.md".into()],
             class: "vision".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/1.0.0".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/1.0.0".to_string()),
+            migrated_on: Some(day()),
             synthesis: Some("editorial-merge".to_string()),
             attestation: Some("distills the plan verbatim".to_string()),
+            migrated_from: Vec::new(),
         });
         synthesis_project.edges_mut().supersedes =
             vec![CoreSupersedes { node: id(B), kind: SupersedeKind::Updates }];
@@ -537,11 +659,12 @@ mod content {
         let a_source = || Source {
             paths: vec!["docs/design/01-draft/0001-x.md".into()],
             class: "odd".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/1.0.0".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/1.0.0".to_string()),
+            migrated_on: Some(day()),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         };
 
         // Valid: author/version/source on a document node → no finding.
@@ -638,11 +761,12 @@ mod content {
         let bad = odd(A, 1, "Doc").with_source(Source {
             paths: vec!["/Users/oubiwann/lab/oxur/odm/.worktrees/1.0.x/docs/design/x.md".into()],
             class: "odd".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/1.0.0".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/1.0.0".to_string()),
+            migrated_on: Some(day()),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         });
         let findings = content_validity(&[bad]);
         assert!(
@@ -664,11 +788,12 @@ mod content {
         let bad = odd(A, 1, "Doc").with_source(Source {
             paths: vec![".worktrees/1.0.x/docs/design/x.md".into()],
             class: "odd".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/1.0.0".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/1.0.0".to_string()),
+            migrated_on: Some(day()),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         });
         let findings = content_validity(&[bad]);
         assert!(
@@ -686,11 +811,12 @@ mod content {
         let good = odd(A, 1, "Doc").with_source(Source {
             paths: vec!["docs/design-v1.0.0/arc01-alpha/arc-plan.md".into()],
             class: "arc-plan".to_string(),
-            normalization: "trim+lf".to_string(),
-            migrated_by: "odm-migrate/1.0.0".to_string(),
-            migrated_on: day(),
+            normalization: Some("trim+lf".to_string()),
+            migrated_by: Some("odm-migrate/1.0.0".to_string()),
+            migrated_on: Some(day()),
             synthesis: None,
             attestation: None,
+            migrated_from: Vec::new(),
         });
         assert!(
             content_validity(&[good])

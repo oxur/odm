@@ -178,6 +178,7 @@ pub(crate) struct ProvenanceJson {
     planned: Vec<NodeRefJson>,
     discovered: Vec<NodeRefJson>,
     amendment: Vec<NodeRefJson>,
+    authored: Vec<NodeRefJson>,
 }
 
 impl From<&Provenance> for ProvenanceJson {
@@ -186,6 +187,7 @@ impl From<&Provenance> for ProvenanceJson {
             planned: p.planned.iter().map(Into::into).collect(),
             discovered: p.discovered.iter().map(Into::into).collect(),
             amendment: p.amendment.iter().map(Into::into).collect(),
+            authored: p.authored.iter().map(Into::into).collect(),
         }
     }
 }

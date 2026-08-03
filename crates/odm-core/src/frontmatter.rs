@@ -518,6 +518,14 @@ impl Frontmatter {
         self.updated = updated;
     }
 
+    /// Changes how the node arose — used by the ODD-0026 slice-02 conversion
+    /// pass to re-classify an existing migrated node as [`Origin::Authored`]
+    /// (sub-decision (i)). Ordinarily `origin` is set once, at creation, and
+    /// never touched; this is the one sanctioned exception.
+    pub fn set_origin(&mut self, origin: Origin) {
+        self.origin = origin;
+    }
+
     /// Mutable access to the outgoing edges (e.g. to record a `supersedes`).
     pub fn edges_mut(&mut self) -> &mut Edges {
         &mut self.edges
@@ -611,37 +619,61 @@ pub struct Decomposition {
     pub children: Vec<Id>,
 }
 
-/// A migrated node's **source record** (ODD-0025 §2.0/§2.2): *where* the
-/// node's content came from. A third, deliberately distinct axis alongside
-/// [`Origin`] (*why* the node exists) and 0013's `provenance` (*derived*
-/// git/supersede/gate lineage, never stored) — `source` is stored because git
-/// cannot derive it: after migration, git blame returns the migrate commit,
-/// not the original author or path.
+/// A node's **source record** (ODD-0025 §2.0/§2.2, extended ODD-0026 §2.1):
+/// *where* the node's content came from. A third, deliberately distinct axis
+/// alongside [`Origin`] (*why* the node exists) and 0013's `provenance`
+/// (*derived* git/supersede/gate lineage, never stored) — `source` is stored
+/// because git cannot derive it: after migration, git blame returns the
+/// migrate commit, not the original author or path.
 ///
-/// Present only on a migrated node; absent on a hand-created one. Fields are
-/// computed once, at migration time, and never re-verified later — no hash is
-/// stored (ODD-0025 §2.1: content is allowed to change post-migration, e.g. a
-/// Version-History section, so a stored hash would be a false drift signal).
+/// **Two shapes share this one type** (ODD-0026 §2.1 — `source`/provenance is
+/// kept as an enduring field; "authored" is a provenance *value*, never the
+/// absence of one):
+///
+/// - **Migrated** (`origin: planned`/etc.) — `paths` non-empty, `migrated_by`/
+///   `migrated_on`/`normalization` all `Some`. Fields are computed once, at
+///   migration time, and never re-verified later — no hash is stored
+///   (ODD-0025 §2.1: content is allowed to change post-migration, e.g. a
+///   Version-History section, so a stored hash would be a false drift
+///   signal).
+/// - **Authored** (`origin: authored`) — `class: "authored"`, `paths` empty,
+///   `migrated_by`/`migrated_on`/`normalization` all `None` (there was no
+///   migration event to record). `migrated_from` optionally carries a
+///   historical marker when this node was *converted* from a migrated one
+///   (ODD-0026 slice-02 sub-decision (i)), so provenance is not lost even
+///   though the node is now store-owned. See [`Source::authored`].
+///
+/// Present on every node except one that predates ODD-0025 entirely and has
+/// not yet been backfilled or authored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     /// The source file path(s) this node's content was migrated from — a
     /// list (1+) so a later synthesis (many sources → one node, ODD-0025
-    /// §2.3) fits the same shape without a model change.
+    /// §2.3) fits the same shape without a model change. Empty for an
+    /// authored node (ODD-0026 §2.1).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<PathBuf>,
     /// The source document's class (the `DocClass` odm-migrate's coverage
     /// detector assigns, e.g. `"arc-plan"`, `"slice-doc"`, `"odd"`) — carried
     /// as a plain string since the enum lives in `odm-migrate`, which depends
-    /// on this crate, not the reverse.
+    /// on this crate, not the reverse. `"authored"` for a store-born node
+    /// (ODD-0026 §2.1).
     pub class: String,
     /// What the body-hash gate's normalization stripped before comparing
     /// (ODD-0025 §2.1, e.g. `"trim+lf"`), so the comparison stays
-    /// interpretable without re-deriving the rule from code.
-    pub normalization: String,
+    /// interpretable without re-deriving the rule from code. `None` on an
+    /// authored node — there is no migration body-hash to normalize for
+    /// (ODD-0026 §2.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalization: Option<String>,
     /// The migrating tool + version (e.g. `"odm-migrate/1.0.0"`) — so a
-    /// pre-fix import is queryable by tool version.
-    pub migrated_by: String,
-    /// The date the migration ran.
-    pub migrated_on: NaiveDate,
+    /// pre-fix import is queryable by tool version. `None` on an authored
+    /// node (there was no migration).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrated_by: Option<String>,
+    /// The date the migration ran. `None` on an authored node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrated_on: Option<NaiveDate>,
     /// The synthesis regime, if this node's content was **synthesized** —
     /// many sources merged into one (ODD-0025 §2.3) — rather than migrated
     /// 1:1: `"concatenation"`, `"editorial-merge"`, or `"other"`. `None` for
@@ -656,6 +688,46 @@ pub struct Source {
     /// ordinary migrated node.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attestation: Option<String>,
+    /// A historical marker recording where an **authored** node was migrated
+    /// from *before* being converted to self-sourced (ODD-0026 slice-02
+    /// sub-decision (i)) — provenance is enduring (§2.1), so a re-classified
+    /// node does not lose the record of its origin, it just stops being
+    /// re-verified against it. Empty on a node that was always authored, and
+    /// on every migrated node (which carries its provenance in `paths`
+    /// instead).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub migrated_from: Vec<PathBuf>,
+}
+
+impl Source {
+    /// Builds the `source` record for an **authored** node (ODD-0026 §2.1):
+    /// `class: "authored"`, no `paths`, no `migrated_by`/`migrated_on`/
+    /// `normalization` — there was no migration to record. `migrated_from` is
+    /// empty for a node that was always authored, or carries the historical
+    /// source path(s) when this node was converted from a migrated one
+    /// (slice-02 sub-decision (i)).
+    #[must_use]
+    pub fn authored(migrated_from: Vec<PathBuf>) -> Self {
+        Self {
+            paths: Vec::new(),
+            class: "authored".to_string(),
+            normalization: None,
+            migrated_by: None,
+            migrated_on: None,
+            synthesis: None,
+            attestation: None,
+            migrated_from,
+        }
+    }
+
+    /// Whether this source record is the **authored** shape (`class ==
+    /// "authored"`) — the corroborating signal alongside
+    /// [`Frontmatter::origin`] being [`Origin::Authored`]; [`check`](crate::check)
+    /// verifies the two agree.
+    #[must_use]
+    pub fn is_authored(&self) -> bool {
+        self.class == "authored"
+    }
 }
 
 /// A node's retirement marker (set by `odm retire`).

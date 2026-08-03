@@ -16,6 +16,11 @@ pub enum Origin {
     Discovered,
     /// Arose from an amendment to an existing plan.
     Amendment,
+    /// Born in the store — never pulled from an external file (ODD-0026
+    /// §2.1). A provenance *value*, not the absence of one: an authored node
+    /// still carries a [`Source`](crate::frontmatter::Source) record (`class:
+    /// "authored"`), just with no external `paths`.
+    Authored,
 }
 
 impl Origin {
@@ -27,6 +32,7 @@ impl Origin {
             Origin::Planned => "planned",
             Origin::Discovered => "discovered",
             Origin::Amendment => "amendment",
+            Origin::Authored => "authored",
         }
     }
 }
@@ -45,12 +51,13 @@ impl FromStr for Origin {
     /// # Errors
     ///
     /// Returns [`ParseOriginError`] if `s` is not one of `planned`,
-    /// `discovered`, or `amendment`.
+    /// `discovered`, `amendment`, or `authored`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "planned" => Ok(Origin::Planned),
             "discovered" => Ok(Origin::Discovered),
             "amendment" => Ok(Origin::Amendment),
+            "authored" => Ok(Origin::Authored),
             _ => Err(ParseOriginError(s.to_owned())),
         }
     }

@@ -87,11 +87,12 @@ pub fn build_source(
     Source {
         paths,
         class: class.into(),
-        normalization: NORMALIZATION.to_string(),
-        migrated_by: migrated_by(),
-        migrated_on,
+        normalization: Some(NORMALIZATION.to_string()),
+        migrated_by: Some(migrated_by()),
+        migrated_on: Some(migrated_on),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     }
 }
 
@@ -317,8 +318,8 @@ mod tests {
             "arc-plan",
             NaiveDate::from_ymd_opt(2026, 7, 27).unwrap(),
         );
-        assert_eq!(source.normalization, "trim+lf");
-        assert!(source.migrated_by.starts_with("odm-migrate/"));
+        assert_eq!(source.normalization.as_deref(), Some("trim+lf"));
+        assert!(source.migrated_by.as_deref().is_some_and(|v| v.starts_with("odm-migrate/")));
         assert_eq!(source.class, "arc-plan");
     }
 

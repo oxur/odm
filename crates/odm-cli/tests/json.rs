@@ -297,7 +297,7 @@ fn rollup_json_shape_locked() {
     );
     assert!(v["tree"].is_array() && v["ready"].is_array() && v["blocked"].is_array());
     assert!(v["tears"].is_array() && v["deferred"].is_array());
-    assert_eq!(keys(&v["provenance"]), ["amendment", "discovered", "planned"]);
+    assert_eq!(keys(&v["provenance"]), ["amendment", "authored", "discovered", "planned"]);
     // A5 slice04: the drift slot is populated — additive over the A3 `{tracked}`
     // shape (`tracked` retained, projection fields added alongside). slice08 adds
     // `unchecked` (never-checked volatile facts) — additive, no schema bump.

@@ -1486,6 +1486,7 @@ fn violation_label(v: &Violation) -> &'static str {
         Violation::FieldNotValidForType { .. } => "wrong-type-field",
         Violation::UnsupportedSchema { .. } => "unsupported-schema",
         Violation::AbsoluteSourcePath { .. } => "absolute-source-path",
+        Violation::InconsistentAuthoredSource { .. } => "inconsistent-authored-source",
         // `Violation` is #[non_exhaustive] (v2 adds kinds); render unknowns
         // generically rather than failing the build when they appear.
         _ => "violation",
@@ -1530,6 +1531,7 @@ fn violation_detail(v: &Violation) -> String {
         Violation::AbsoluteSourcePath { path } => {
             format!("`source.paths` entry {} is not repo-content-root-relative", path.display())
         }
+        Violation::InconsistentAuthoredSource { reason } => reason.to_string(),
         _ => "structural violation".to_string(),
     }
 }
@@ -1578,6 +1580,12 @@ fn violation_fix(store: &Store, finding: &Finding) -> String {
         }
         Violation::AbsoluteSourcePath { .. } => {
             format!("edit {file}: rewrite `source.paths` relative to the repo content root")
+        }
+        Violation::InconsistentAuthoredSource { .. } => {
+            format!(
+                "edit {file}: make `origin` and `source.class` agree on whether this node is \
+                 authored (ODD-0026 §2.1)"
+            )
         }
         _ => format!("inspect {file}"),
     }

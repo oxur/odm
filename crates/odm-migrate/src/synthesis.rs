@@ -194,11 +194,12 @@ pub fn build_synthesis(
     fm = fm.with_source(Source {
         paths: sources.iter().map(|s| s.path.clone()).collect(),
         class: class.into(),
-        normalization: NORMALIZATION.to_string(),
-        migrated_by: migrated_by(),
-        migrated_on,
+        normalization: Some(NORMALIZATION.to_string()),
+        migrated_by: Some(migrated_by()),
+        migrated_on: Some(migrated_on),
         synthesis: Some(synthesis_type.as_str().to_string()),
         attestation: attestation.map(Attestation::record),
+        migrated_from: Vec::new(),
     });
 
     Ok(fm)

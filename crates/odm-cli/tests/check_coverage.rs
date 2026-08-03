@@ -79,11 +79,12 @@ fn seed_covering_node(root: &Path, relative_to_scan_root: &str) {
     .with_source(Source {
         paths: vec![relative_to_scan_root.into()],
         class: "other".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "test".to_string(),
-        migrated_on: today,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("test".to_string()),
+        migrated_on: Some(today),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     });
     let document = Document::new(fm, "# Covering node\n".to_string());
     Store::open(root).persist(&document).expect("seed persist");

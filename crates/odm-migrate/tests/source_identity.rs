@@ -79,11 +79,12 @@ fn persist_source_bearing_node(
     let fm = fm.with_source(Source {
         paths: vec![source_path.to_path_buf()],
         class: class.to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: created,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(created),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     });
     let document = Document::new(fm, format!("# {name}\n"));
     store.persist(&document).unwrap();
@@ -186,6 +187,65 @@ fn selfhost_transitions_a_pre_source_node_by_coordinate_then_by_source() {
         "second run matches by source, not the transition path"
     );
     assert_eq!(store.load_all().unwrap().len(), 2, "still no duplicate");
+}
+
+// ----- arc-store-as-source slice02: authored nodes are recognized, never
+// ----- churned, even while their plan-tree file is still present ----------
+// Ledger: docs/design-v1.0.0/arc-store-as-source/slice02-self-sourced-nodes/ledger.md
+
+/// Persists a node with `origin: authored` — the ODD-0026 shape: `source:
+/// { class: authored }`, no external `paths`.
+fn persist_authored_node(store: &Store, number: u32, node_type: NodeType, name: &str) -> Id {
+    let id = Id::new();
+    let created = day(2026, 7, 20);
+    let mut fm = Frontmatter::new(id, number, node_type, name, created, created, Origin::Authored);
+    fm.stamp_schema();
+    let fm = fm.with_source(Source::authored(Vec::new()));
+    let document = Document::new(fm, format!("# {name}\n\nAuthored body.\n"));
+    store.persist(&document).unwrap();
+    id
+}
+
+#[test]
+fn selfhost_never_churns_an_authored_node_even_when_its_plan_tree_file_still_exists() {
+    let docs = TempDir::new().unwrap();
+    let root = docs.path();
+    write(root, "project-plan.md", "# Test Project\n");
+    // The plan-tree file is still present (true for every node until the
+    // slice04 cutover) — this is exactly the shape that, without slice02's
+    // fix, would look "unmatched" to self_host and get re-minted.
+    write(root, "arc01-alpha/arc-plan.md", "# Arc 01 — Alpha (docs version, stale)\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+    let arc_id = persist_authored_node(&store, arc_number(1), NodeType::Arc, "Arc 01 — Alpha");
+
+    let report = self_host(&store, root, Mode::Commit).expect("self-host");
+
+    assert_eq!(report.created_count(), 1, "project only — the authored arc is not re-minted");
+    assert!(
+        report
+            .skipped
+            .iter()
+            .any(|s| s.number == Some(arc_number(1)) && matches!(s.reason, SkipReason::Authored)),
+        "reported as recognized-authored, not a plain skip or a duplicate: {:?}",
+        report.skipped.iter().map(|s| (s.number, s.reason.to_string())).collect::<Vec<_>>()
+    );
+
+    let nodes = nodes_by_key(&store);
+    assert_eq!(store.load_all().unwrap().len(), 2, "project + the one authored arc — no duplicate");
+    let arc = &nodes[&(NodeType::Arc, arc_number(1))];
+    assert_eq!(arc.frontmatter().id(), arc_id, "same node, never re-minted");
+    assert_eq!(arc.frontmatter().origin(), Origin::Authored, "origin untouched");
+    assert_eq!(
+        arc.body(),
+        "# Arc 01 — Alpha\n\nAuthored body.\n",
+        "body never churned from the still-present ./docs file"
+    );
+    assert!(
+        arc.frontmatter().source().is_some_and(Source::is_authored),
+        "source stays the authored shape, never rebuilt as a migration record"
+    );
 }
 
 // ----- F-3: re-run after adding a named arc mints no duplicate (s04 hazard) -
@@ -330,6 +390,52 @@ fn repair_surfaces_a_drifted_non_stub_body_as_a_hash_mismatch() {
     );
 }
 
+// ----- arc-store-as-source slice02 F-7: the no-regression clause -----------
+// (ODD-0026 §2.2 — fork B narrows the gate to migrated-with-source nodes,
+// it does not remove it) — proven in a corpus that also carries an
+// authored node, so the new authored-recognition path can't be masking it.
+
+#[test]
+fn a_drifted_migrated_node_still_hard_fails_alongside_an_untouched_authored_one() {
+    let docs = TempDir::new().unwrap();
+    let root = docs.path();
+    write(root, "project-plan.md", "# Test Project\n");
+    write(
+        root,
+        "arc01-alpha/arc-plan.md",
+        "# Arc 01 — Alpha (plan-of-record)\n\nThe real, current source content.\n",
+    );
+    write(root, "arc02-beta/arc-plan.md", "# Arc 02 — Beta (docs, stale)\n");
+
+    let store_dir = TempDir::new().unwrap();
+    let store = Store::open(store_dir.path());
+
+    // An authored arc, self-sourced and immune to this gate entirely.
+    persist_authored_node(&store, arc_number(2), NodeType::Arc, "Arc 02 — Beta");
+
+    // A genuinely-migrated (pre-source) arc whose body has drifted from its
+    // real source — the gate `repair()` must still enforce.
+    persist_legacy_node_with_body(
+        &store,
+        arc_number(1),
+        NodeType::Arc,
+        "Arc 01 — Alpha",
+        "# Arc 01 — Alpha (plan-of-record)\n\nA DIFFERENT body — drifted from source.\n",
+    );
+
+    let err = repair(&store, root, Mode::Commit)
+        .expect_err("the authored sibling does not mask the drift on the migrated node");
+    assert!(matches!(err, MigrateError::BodyHashMismatch { .. }), "{err:?}");
+
+    // The authored node is confirmed untouched by the same run that hard-failed.
+    let nodes = nodes_by_key(&store);
+    assert_eq!(
+        nodes[&(NodeType::Arc, arc_number(2))].frontmatter().origin(),
+        Origin::Authored,
+        "the authored sibling is unaffected by the migrated node's failure"
+    );
+}
+
 // ----- F-6: the project node is excluded from backfill ---------------------
 
 #[test]
@@ -386,11 +492,12 @@ fn repair_excludes_a_synthesis_bearing_project() {
     let fm = fm.with_source(Source {
         paths: vec![Path::new("project-plan.md").to_path_buf()],
         class: "vision".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: created,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(created),
         synthesis: Some("editorial-merge".to_string()),
         attestation: Some("operator: distills the source".to_string()),
+        migrated_from: Vec::new(),
     });
     let body = "# odm\n\n# Vision\n\nSynthesized, not the source.\n";
     store.persist(&Document::new(fm, body.to_string())).unwrap();
@@ -481,11 +588,12 @@ fn selfhost_transition_excludes_a_synthesis_bearing_project() {
     let fm = fm.with_source(Source {
         paths: vec![Path::new("project-plan.md").to_path_buf()],
         class: "vision".to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: created,
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(created),
         synthesis: Some("editorial-merge".to_string()),
         attestation: Some("operator: distills the source".to_string()),
+        migrated_from: Vec::new(),
     });
     let body = "# odm\n\n# Vision\n\nSynthesized, not the source.\n";
     store.persist(&Document::new(fm, body.to_string())).unwrap();

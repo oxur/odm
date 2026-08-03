@@ -75,11 +75,12 @@ fn persist_source_bearing_node(
     let fm = fm.with_source(Source {
         paths: vec![source_path.to_path_buf()],
         class: class.to_string(),
-        normalization: "trim+lf".to_string(),
-        migrated_by: "odm-migrate/test".to_string(),
-        migrated_on: day(),
+        normalization: Some("trim+lf".to_string()),
+        migrated_by: Some("odm-migrate/test".to_string()),
+        migrated_on: Some(day()),
         synthesis: None,
         attestation: None,
+        migrated_from: Vec::new(),
     });
     let document = Document::new(fm, body.to_string());
     store.persist(&document).unwrap();
