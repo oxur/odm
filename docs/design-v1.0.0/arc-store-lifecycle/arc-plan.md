@@ -12,7 +12,7 @@
 > model — orphan branch, never rewrite history, divergence stops). **Refs:** `arc-store-home/arc-plan.md`;
 > `crates/odm-store/src/{git,worktree,init}.rs`; `crates/odm-cli/src/store_cmd.rs`.
 >
-> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused.
+> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused. **Update 2026-08-03: arc RESUMED — s02/s03 un-paused** (operator call). Migration Fidelity is closed (P-16, the gate); the odm store branch has never been pushed to GH because `store sync` doesn't exist yet, blocking CDC's ability to clone the store. **s03 (`store sync`) is the immediate priority** — unblocks pushing the store to origin; s02 (`store status`) follows.
 
 ## Capability
 
@@ -41,6 +41,13 @@ raw-git footnote.
 - **s03 — `store sync`.** Push/pull the orphan branch to/from its remote — the **ff-only, divergence-stops**
   discipline `store init`'s attach/ff-sync arm already embodies (`store_cmd.rs`), lifted into a standalone
   verb; `--dry-run`/`--json`; never rewrites history, stops (with a clear affordance) on divergence.
+- **s05 — CDC binary access (cargo-zigbuild cross-compilation).** Add a `cargo-zigbuild`
+  cross-compilation step to the operator's local build that produces a **static
+  `x86_64-unknown-linux-musl` binary** — a fully self-contained Linux executable CDC can
+  stage directly from the worktree. No Rust toolchain needed in the cloud container; no
+  duplicate build. CDC verifies: stage, `chmod +x`, smoke-test (`--help`, `check`, `orient`).
+  The binary location is documented in `CLAUDE.md`. **Runs ahead of s02/s03** — enables CDC
+  to participate in verifying those slices. *(Inserted v1.2, 2026-08-03.)*
 - **s04 — `store commit` leaves the git index consistent (remediation of SL-1; runs now).** `commit_all`
   writes the commit tree directly via `gix` and never updates the on-disk index, so after every
   `store commit` a raw `git status` misreports the just-committed files as staged-deletions + untracked
@@ -64,6 +71,7 @@ raw-git footnote.
 | SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | planned |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
+| SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | planned — inserted v1.2 |
 | SL-6 | After `store commit`, the git **index** matches the new HEAD — a raw `git status` is **clean** (no stale-index staged-deletions), without changing the commit content, the `.odm/` exclusion, or the odm-aware delta | fixture: `store commit` → `git status --porcelain` empty; SL-1 tests still green | serious (SL-1 remediation; underpins SL-4) | **done — CDC-verified PASS 2026-08-02** (`slice04-commit-index-consistency/cdc-verification.md`, code `e8e69de`); real leg = operator's next `store commit` on the rebuilt binary |
 
 ## Exit criteria (arc acceptance)
@@ -80,6 +88,25 @@ s02/s03 follow. Mostly CLI wiring over `odm-store`'s existing git plumbing (`git
 do worktree/branch/commit ops for `init`) — the capability is largely *exposing* what init already uses.
 
 ## Version History
+
+### v1.2 — 2026-08-03 — s05 (CDC binary access) inserted; arc RESUMED
+
+**s05 inserted:** cargo-zigbuild cross-compilation producing a static
+`x86_64-unknown-linux-musl` binary for CDC's cloud container. Operator-driven
+(the build runs on the operator's Mac); CDC verifies (stage + smoke-test in
+the container). **Runs ahead of s02/s03** — enables CDC to participate in
+verifying the remaining store lifecycle commands. Ledger row SL-7 added.
+Slice docs: `slice05-cdc-binary-access/`. Surfaced by: the 2026-08-03
+dev-workflow/tooling discussion (operator + CDC).
+
+### 2026-08-03 — arc RESUMED; s02/s03 un-paused (operator call)
+
+Migration Fidelity is closed (P-16); the gate holding the arc pause is clear.
+**s03 (`store sync`) is the immediate priority** — the odm store branch has never
+been pushed to GH because `store sync` doesn't exist yet; this blocks CDC from
+cloning the store in cloud sessions. s02 (`store status`) follows. s01 + s04
+remain done. Surfaced by: the 2026-08-03 dev-workflow/tooling discussion
+(operator + CDC).
 
 ### 2026-08-02 — s04 inserted (SL-1 index-consistency remediation)
 

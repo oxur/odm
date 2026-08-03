@@ -218,11 +218,12 @@ graph traversal are richer and can wait for 1.1.x.
 
 | Item | Capability | `depends_on` | Status |
 |------|-----------|--------------|--------|
-| **Full-text search (FTS)** | Content search over the store corpus (tantivy). The minimum retrieval surface once `./docs` is gone -- both operator and CDC must find nodes by content, not by `grep` across worktrees. | A4 (index) | **near-term / elevated -- minimum for full-odm usability; 1.0.0-adjacent (hard-gate vs. first fast-follow: OPEN, operator call)** |
+| **Full-text search (FTS)** | Content search over the store corpus (tantivy). The minimum retrieval surface once `./docs` is gone -- both operator and CDC must find nodes by content, not by `grep` across worktrees. | A4 (index) | **1.0.0 HARD GATE (operator call 2026-08-03) -- A6 slice05; must land before A6 arc close** |
 | **Static HTML export** | One of >=2 export/serve arcs: static projection of the rollup to **HTML + JSON + Markdown** (`rollup --format=html` first); the hand-built `project-status.html` dashboard becomes derivable. Extends ODD-0017, which today names JSON+Markdown only (HTML is not yet a target there). | A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
 | **Embedded HTTP server (`odm serve`)** | Dynamic pages served locally via **minijinja** templating; the `render(Rollup)->Html` seam. Local-only. (See project memory `odm-html-views-stack`.) | HTML export / A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
 | **Semantic search** | Embedding / vector search over the store (lancedb). | FTS, A4 | **1.1.x** |
 | **In-memory graph traversal / graphdb** | Richer graph queries over an in-memory graph (petgraph -- already a dep of `odm-graph`). | A2 | **1.1.x** |
+| **Binary distribution (GH Actions release workflow)** | Cross-compiled static binaries (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`) built by a CI matrix on tag-push, attached to GH releases. Solves three problems: (1) CDC/Cowork sessions get a static Linux binary without needing the Rust toolchain (~50% of new instances refuse to build); (2) non-developer end users get a download-and-run install path; (3) operator can also grab a release binary instead of building from source. Tooling: `cargo-zigbuild` or `cross` for the musl targets. | — | **1.0.0-adjacent — release-blocking for CDC usability; own slice or part of the release cut** |
 
 *(HTML export + the `odm serve` HTTP server are the "two (or more) arcs" of the
 same post-MVP HTTP/render line; their arc breakdown lands once the in-progress
@@ -300,6 +301,28 @@ for an odm feature branch or an easter-egg. Its plan-of-record lives in its own
 tree, not this file.
 
 ## Version History
+
+### v1.21 -- 2026-08-03 -- FTS elevated to 1.0.0 hard gate (operator call)
+**FTS** status in §4a changed from "near-term / elevated — hard-gate vs.
+fast-follow: OPEN" to **1.0.0 HARD GATE — A6 slice05**. The operator's
+2026-08-03 call resolves the open question: FTS must land before A6 arc close
+(both operator and CDC need content search to work in the self-hosted store
+before the PM skill can document it and the prose can retire). Companion
+updates: A6 arc-plan v1.10 (FTS + mini-UAT slices inserted, PM-skill and
+retire-prose renumbered); SL arc-plan resumed (s02/s03 un-paused). Pure status
+change in §4a — no other sections affected. **Surfaced by:** the 2026-08-03
+dev-workflow/tooling planning session (operator + CDC).
+
+### v1.20 -- 2026-08-03 -- binary distribution added to §4a
+
+Added **binary distribution (GH Actions release workflow)** to §4a: cross-compiled
+static binaries for Linux (x86_64/aarch64 musl) + macOS (x86_64/aarch64), built
+by CI on tag-push, attached to GH releases. Marked **1.0.0-adjacent /
+release-blocking for CDC usability** -- ~50% of new CDC instances refuse to
+build Rust, and non-developer end users need a download-and-run path. Tooling:
+`cargo-zigbuild` or `cross` for the musl static targets. Pure expansion of §4a
+-- no other sections changed. **Surfaced by:** the 2026-08-03 dev-workflow
+discussion (operator + CDC, this session).
 
 ### v1.19 -- 2026-08-03 -- newer post-MVP items consolidated (§4a) + bitubardos defined as a peer project (§6)
 Added **§4a** (near-term usability + the 1.1.x feature set) and **§6** (related

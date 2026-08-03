@@ -58,21 +58,34 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 4. **slice04 — self-host cutover** *(was slice03)*. Bring the `design-v1.0.0` plan set
    (project-plan, arc-plans, slice docs) into the node model; the design docs move under
    `nodes/`; `orient`/`rollup` run on the self-hosted corpus. *The loop closes.*
-5. **slice05 — PM-skill population.** From ODD-0001, build the standalone PM
+5. **slice05 — FTS core (tantivy).** Full-text search over the store corpus: add tantivy,
+   build an on-demand index from node bodies + frontmatter, expose `odm search <query>`
+   (keyword search with ranked results); `--json` output; index cached in `.odm/`. The
+   **minimum retrieval surface** once `./docs` is gone — both operator and CDC must find
+   nodes by content, not by `grep` across worktrees. *(Inserted v1.10 — operator's
+   2026-08-03 call: FTS is a hard gate for A6 close, not a post-MVP item.)*
+6. **slice06 — mini-UAT (operator + CDC end-to-end).** Both the operator and CDC exercise
+   odm's live workflow on the real store: read (`orient`, `show`, `list`), write (`node
+   set-body`, `store commit`, `store sync`), and search (`odm search`). Acceptance: both
+   users can navigate, modify, and find content in the store without falling back to raw
+   git/grep. Punch-list format — findings tracked, fixed, or carried. *(Inserted v1.10 —
+   the acceptance gate for A6 close.)*
+7. **slice07 — PM-skill population** *(was slice05)*. From ODD-0001, build the standalone PM
    skill in `billosys/ai-engineering`: GOOD/BAD counter-examples + "when you need to X, run
    `odm <cmd>`" entries, seeded by the prior project's missteps. **Writes against the
-   UAT-settled surface** (the UAT/CLI-hardening arc runs first — see the pause note below).
-6. **slice06 — retire redundant framework prose.** Replace the framework's
+   UAT-settled surface** (Release Hardening closed; the command surface is settled).
+8. **slice08 — retire redundant framework prose** *(was slice06)*. Replace the framework's
    *mechanical* PM rules (numbering, ordering, deferral-tracking, drift-watching) with
    pointers to `odm check` / the relevant commands; keep the posture/craft prose that odm
    does not mechanize. *(Folds in the carried `CLAUDE.md` oxur-cli doc-drift fix, v1.2 — now
    superseded by the UAT arc's styling decision: adopt shared theming, not "no oxur-cli".)*
 
-> **⏸ A6 is PAUSED after slice04 (v1.9).** User-acceptance testing surfaced a substantial
-> batch of CLI / naming / numbering / output feedback — too large and too model-level (type
-> taxonomy, output architecture) for a slice. It was **extracted to its own arc** (the
-> UAT / CLI-hardening arc). A6 resumes at **slice05 (PM-skill)** once that arc wraps, so the
-> skill and the retired prose target the *settled* command surface.
+> **▶ A6 RESUMED (v1.10, 2026-08-03).** The Release Hardening arc is closed; the command
+> surface is settled. Two new slices inserted — **slice05 (FTS core)** and **slice06
+> (mini-UAT)** — before the PM-skill and prose-retirement slices, because both operator
+> and CDC need content search to work in the self-hosted store before the PM skill can
+> document "run `odm search`" and the prose can retire. Sequence: s05 (FTS) → s06 (UAT)
+> → s07 (PM-skill) → s08 (retire prose) → arc close.
 
 ## Arc Ledger
 
@@ -87,14 +100,17 @@ retired in favor of `odm check`. The `odm-migrate` crate + the
 | A-2 | slice02 (migrate odm's own docs) closed | ptr: slice02 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`028d21d`; 6/6; cov `odm-migrate` lib 99.56% / mapping 99.05% / legacy 93.86% line); `odm migrate docs/design` → 12 `odd` nodes committed under `nodes/2026/07/`, legacy intact; `odm check` green ("ok, 12 nodes"), green-by-construction (document nodes orphan-exempt); three slice01 flags settled **without amendment** (distinct `(type=odd,number)` space; `supersedes` parser hardened for `null`/number/`"ODD-NN"`; no multi-supersession in corpus); no `07-deferred` → `deferred→retire` interim stands; idempotent + `--dry-run` at real scale; **no** `odm-index` change. cargo rows pending CI. Branched off slice01. | → `done` when slice02 reproduces (CI green). |
 | A-3 | slice03 (**schema versioning** — ODD-0020) closed | ptr: slice03 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`5b5dd43`; 6/6; cov schema.rs 96.55% / check.rs 95.34% / frontmatter.rs 99.52% / odm-migrate lib 99.21% line); `schema: <type>/vN.N` field (absent⇒v0.1; new nodes stamp `<type>/v1.0` via `odm new` + migrate); per-type field-validity a `check` **Error** (`content_validity`, store-read: work-only `{desired_facts,deferred}` / doc-only `{supersedes,affects}`); forward-compat (newer schema → reported `UnsupportedSchema`); backfill folded into migrate (`backfill_schema`). **Real backfill committed**: `odm migrate docs/design` → 13 `nodes/` files all `odd/v1.0` (12 upgraded + ODD-0020 created); `odm check` green (13 nodes); **no** `odm-index` change. cargo rows pending CI. Branched off slice02. | → `done` when slice03 reproduces (CI green). |
 | A-4 | slice04 (self-host cutover) closed | ptr: slice04 `cdc-verification.md` | correctness | arc-plan | open | attested: CC closing-report (`4ac36f6`; 7/7; cov selfhost.rs 96.25% / odm-migrate lib 99.21% line); new `odm-migrate::selfhost` + `odm self-host <plan>`; **45 work nodes** committed (1 project + 6 arcs + 38 slices), each `<type>/v1.0`, in a correct containment tree; gate status from P-row/close-file (A1–A5 verified, A6 active) at `Asserted`; **`odm check` green on 58 nodes** (13 odd + 45 work, no findings); `rollup`/`orient` reproduce the real state; dir-structure adapter (no manifest); `[gates.*]` added to `odm.toml`; A7/A8 excluded (flagged); idempotent + `--dry-run` + never-delete; **no** `odm-index` change. cargo rows pending CI. Branched off slice03. | → `done` when slice04 reproduces (CI green). |
-| A-5 | slice05 (PM-skill population) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan | open | | attested. (v1.8 briefly bumped this to slice06 for a UAT-slice insertion; v1.9 extracted UAT to its own arc and restored slice05.) |
+| A-5 | slice07 (PM-skill population, was slice05) closed | ptr: slice07 `cdc-verification.md` | correctness | arc-plan | open | | (v1.10: renumbered s05→s07 after FTS + UAT insertion.) |
 | A-6 | **Compose:** `odm migrate` imports legacy ODDs into the new model — idempotent, `--dry-run`-able, supersede-not-delete (no legacy file removed) | arc-scale demo: migrate a legacy corpus; re-run is a no-op; no deletions | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice01, `4479076`): faithful mapping + idempotent (keyed on preserved `number`) + `--dry-run` + never-delete (byte-snapshot proven) + loud-on-malformed, on fixtures. To **reproduce at arc scale** at arc-close (never inherited) — on odm's own corpus once slice02 lands. | reproduce at arc scale |
 | A-7 | **Compose:** the importer runs cleanly on odm's **own** `docs/design`; `check` passes on the imported graph | arc-scale demo: migrate odm's docs; `odm check` green | serious | arc-plan | open | mechanism-complete (slice02, `028d21d`): `odm migrate docs/design` imports 12 `odd` nodes; `odm check` exit 0 (green-by-construction) on the imported graph; legacy intact; idempotent. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale |
 | A-8 | **Compose:** odm **self-hosts** — its plan lives under `nodes/` and `odm orient`/`rollup`/`check` run on the real corpus | arc-scale demo: `odm orient` over the self-hosted plan | serious | arc-plan / 0013 §9 | open | mechanism-complete (slice04, `4ac36f6`): the `design-v1.0.0` plan set (project + A1–A6 + slices) is imported as 45 work nodes under `nodes/`; `odm check` green (58 nodes), `odm rollup` reproduces A1–A5 done / A6 active, `odm orient` runs clean. To **reproduce at arc scale** at arc-close (never inherited). **P-12 reproducible-at-arc-close.** | reproduce at arc scale. The self-hosting trigger. |
 | A-9 | **Compose:** the PM skill is populated from ODD-0001 and the redundant *mechanical* framework prose is retired with a pointer to `odm check` | arc-scale demo: the skill carries the "run `odm <cmd>`" entries; the retired prose points to odm | serious | arc-plan / 0013 §11 | open | | reproduce at arc scale |
 | A-10 | bubble-up findings dispositioned | ptr: arc-plan change-log | correctness | bubble-up | open | | accrues as slices close |
-| A-11 | slice06 (retire redundant framework prose) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan | open | | attested. **Class-(a) stable ID** — appended (not a renumber) when slice03=schema was inserted; class-(a) = A-1…A-5 **+ A-11** (6 slices). (v1.8 briefly bumped this to slice07; v1.9 restored slice06 when UAT was extracted to its own arc.) |
+| A-11 | slice08 (retire redundant framework prose, was slice06) closed | ptr: slice08 `cdc-verification.md` | correctness | arc-plan | open | | **Class-(a) stable ID.** (v1.10: renumbered s06→s08 after FTS + UAT insertion; class-(a) = A-1…A-5 + A-11 + A-13 + A-14, 8 slices.) |
 | A-12 | **Compose:** nodes carry a per-type `schema: <type>/vN.N` marker; `migrate` stamps `v1.0` and reads unversioned legacy as `v0.1`; a wrong-type field is a `check` finding | arc-scale demo: migrate → stamped nodes; a v0.1 legacy read; `check` flags a wrong-type field | serious | ODD-0020 / arc-plan v1.5 | open | mechanism-complete (slice03, `5b5dd43`): `schema` field + per-type marker + `stamp_schema` on every create path + `content_validity` (`FieldNotValidForType`/`UnsupportedSchema`); migrate stamps `odd/v1.0`, reads legacy as `v0.1`; the 13 real `nodes/` files carry `odd/v1.0`. To **reproduce at arc scale** at arc-close (never inherited). | reproduce at arc scale. **Class-(b) stable ID** — the schema-versioning capability (slice03). |
+| A-13 | slice05 (**FTS core — tantivy**) closed | ptr: slice05 `cdc-verification.md` | correctness | arc-plan v1.10 | open | | inserted v1.10 (2026-08-03). |
+| A-14 | slice06 (**mini-UAT — operator + CDC end-to-end**) closed | ptr: slice06 `cdc-verification.md` | correctness | arc-plan v1.10 | open | | inserted v1.10 (2026-08-03). The acceptance gate for arc close. |
+| A-15 | **Compose:** store content is searchable via `odm search`; both operator and CDC can locate nodes by content without grep | arc-scale demo: run `odm search` on the self-hosted store; find a known node by content keyword | serious | arc-plan v1.10 / project-plan §4a | open | | the FTS compose row (inserted v1.10). |
 
 Closes in `arc06-migrate-self-host/closing-report.md`: per-row walk + composition verdict,
 independently gated. A failed class-(b) row spawns a **remediation slice**, not a re-pass.
@@ -156,6 +172,28 @@ self-hosting** — and per the project-plan, the A7/A8 telemetry/forecasting hor
 becomes scopable.
 
 ## Version History
+
+### v1.10 — 2026-08-03
+**A6 RESUMED; FTS + mini-UAT slices inserted; PM-skill and retire-prose
+renumbered.** The Release Hardening arc is closed and the command surface is
+settled — the gate holding A6 paused is clear. Two new slices inserted before
+the PM-skill and prose-retirement work:
+
+- **slice05 — FTS core (tantivy):** full-text search over the store corpus.
+  The **minimum retrieval surface** once `./docs` is gone; both operator and
+  CDC must find nodes by content, not by grep across worktrees. The operator's
+  2026-08-03 call resolves the open question in project-plan §4a: FTS is a
+  **1.0.0 hard gate**, not a post-MVP item.
+- **slice06 — mini-UAT (operator + CDC end-to-end):** both users exercise
+  odm's live workflow on the real store — read, write, and search — as the
+  acceptance gate for A6 close.
+
+Old slice05 (PM-skill) → **slice07**; old slice06 (retire prose) → **slice08**.
+Ledger: A-5 and A-11 updated with new slice numbers; A-13 (FTS close), A-14
+(UAT close), and A-15 (FTS compose) added. Class-(a) = A-1…A-5 + A-11 + A-13 +
+A-14 (8 slices). Sequence: s05 (FTS) → s06 (UAT) → s07 (PM-skill) → s08
+(retire prose) → arc close. Surfaced by: the 2026-08-03 dev-workflow/tooling
+planning session (operator + CDC).
 
 ### v1.9 — 2026-07-07
 **UAT extracted to its own arc; A6 paused after slice04, resumes at slice05
