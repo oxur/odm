@@ -5,7 +5,7 @@ type: artifact
 schema: artifact/v1.1
 name: CDC Session Bootstrap — pick up where we left off
 created: 2026-07-25
-updated: 2026-08-02
+updated: 2026-08-03
 origin: planned
 reserved: false
 source:
@@ -20,14 +20,83 @@ source:
 
 > **The canonical bootstrap for the CDC/CC collaboration on `odm` — living resume + genesis.**
 > Read this first in a new session to reach full situational awareness without re-reading the
-> whole history. Updated at session close. **Resume last updated: 2026-08-02 (evening)** (§0f — current; §§0e–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
+> whole history. Updated at session close. **Resume last updated: 2026-08-03** (§0g — current; §§0f–0 and §§1–7 below are history). **2026-07-25:** the genesis doc (formerly
 > `workbench/odm-session-bootstrap.md`, 2026-06-19 — why the project exists) was **merged in
 > as §8** and this file made the single canonical bootstrap; §§1–7 (the "what's true now / do
 > this next" resume) are unchanged from 2026-07-07.
 
 ---
 
-## 0f. Resume update — 2026-08-02 (evening) (closed arcs recorded DONE; Store-as-Source arc born; store commit index fixed — START HERE)
+## 0g. Resume update — 2026-08-03 (Store-as-Source slices 01–03 CDC-verified + folded into the store; NEXT-SESSION AGENDA recorded — START HERE)
+
+**This is the current "read first." §§0f–0 below are prior resumes, now history.** You are **CDC** —
+independent planner/verifier. Loop unchanged: draw each slice's open set, CDC-verify CC's reports
+(reproduce-don't-attest), maintain the arc-plan + dashboard via bubble-up. Peer frame, calibrated honesty.
+
+### What landed since §0f (this session, 2026-08-03)
+- **ODD-0026 Accepted** (v1.1) — the store-as-source model — now store design node **#26**.
+- **Store-as-Source slice 01** (ODD-0026) closed; **slices 02** (self-sourced nodes) **+ 03** (native
+  authoring, *programmatic* surface) CC-implemented **+ CDC-verified PASS**; slices 05/06 done.
+- **Slice 03 built the authoring surface:** `node new` (mints `origin: authored` + verbatim body),
+  `node set <ref> <field> <value>`, `node set-body` — the metadata partial (dual JSON/TOML; the
+  author-vs-odm boundary enforced structurally by `deny_unknown_fields`). SS-4 (create **and** update
+  via `./bin/odm`, no hand-edit) proven. The interactive `$EDITOR`/section surface is split to
+  **plan-late slice 07**.
+- **ODD-0013 → v2.6, ODD-0025 → v1.4** — the authored-node amendments folded into the accepted docs.
+- **Store-Lifecycle slice 04 (SL-6) real leg CLOSED:** a live `store commit` now leaves `git status`
+  clean — the "phantom staged-deletion" scare is gone for good.
+- **Real corpus:** `migrate --all` folded the whole session in (ODD-0026 #26, slices 02/03 nodes, 16
+  artifacts, amendments reconciled), `check` **0 errors** (10 benign decomposition warnings);
+  `odm store commit` → **b753e83**, **445 nodes**, index==HEAD clean.
+- **NOT converted to authored:** `migrate --to-authored` was **not** run — the corpus is still migrated
+  mirrors (`origin: planned`, source → `./docs`). Conversion belongs **inside the slice 04 cutover**,
+  not piecemeal (converting a node freezes further `./docs` edits to it).
+- **Do NOT** `node decomposed 61401500` (arc-store-as-source) yet — slice 04/07 aren't drawn, so its
+  decomposition genuinely isn't complete; the warning is correct to leave standing.
+
+### Cross-conversation state (1.1.x lives elsewhere)
+- **1.1.x HTML-export work** is in a **separate conversation**; it stalled ~4 days ago when the 1.0.x
+  store-as-source / authoring holes surfaced (the holes *this* arc fixed). Operator is catching that
+  CDC up.
+- The **bitubardos** branch/project is a **1.1.x easter-egg**, discussed in another conversation and
+  touched here as an early node-authoring example (which itself surfaced more holes).
+
+### NEXT-SESSION AGENDA (operator's, 2026-08-03) — discuss these first
+1. **Delete the `./docs` planning dir** (the cutover — slice 04).
+2. **Decide a good export dir** (open: no default was ever set; ephemeral-vs-published fork; CDC lean =
+   top-level `export/`, gitignored — see the ODD-0017 read below).
+3. **Move the manual HTML "export"** (the `project-status.html` dashboard) into that dir; maintain it
+   there until automated HTML export exists.
+4. **Move the bootstrap OUT of the odm store** — it's ephemeral, doesn't belong as a source-tracked
+   store node (this doc is exactly the friction: it changes every session).
+5. **Record 1.1.x plans: static HTML export** (export format list = **HTML + JSON + Markdown**).
+6. **Record 1.1.x plans: a dynamic embedded HTTP server** serving dynamic pages via **minijinja** templating.
+7. **Plan the bitubardos project.**
+8. **New feature: in-memory graphdb (petgraph).**
+9. **New feature: in-memory full-text search (tantivy).**
+10. **New feature: semantic search (lancedb).**
+11. **Doublecheck the location of our backlog.**
+12. **Update our backlog.**
+
+### Export-dir context (this session's ODD-0017 read — for agenda 2/3/5/6)
+`odm export` (ODD-0017 Part A, Accepted) is a one-way projection; tentative v1 targets are a **JSON
+interchange + a Markdown template** — **HTML is NOT a named target** (the dashboard is hand-built); it
+is its own **not-started** arc, and Q-1 (the target set) is open. **No default export dir is decided
+anywhere** (checked ODD-0017 / project-plan / `odm.toml` / store `config.toml` / `CLAUDE.md`). `.odm/`
+is derived-cache-only (gitignored, ODD-0022-excluded) — not an export home; exports project *out* of
+the store, so not the store branch either.
+
+### HEADs & do-this-next
+- `release/1.0.x`: slices 01–03 committed; **confirm CC's slice-03 impl is committed** (it was
+  staged/uncommitted at CDC-verify time). Store `odm` branch: **b753e83** (445 nodes), index clean.
+- The immediate arc-move is **slice 04 (cutover)**: draw it wiring `migrate --to-authored` (convert the
+  corpus, preserving `migrated_from`) **+** the `./docs` deletion into one `--dry-run`-first,
+  explicit-go sequence. Gated on operator go.
+- Gotchas unchanged: **CDC can't run the macOS `odm`/cargo** (attest → CI; reproduce structural rows by
+  file read); edit plan-tree files live via `device_bash` (base64 transfer corrupts long blobs — use
+  plain-ASCII or md5/allow-set guards); git via `GIT_DIR=$R/.git/worktrees/1.0.x`.
+
+## 0f. Resume update — 2026-08-02 (evening) (closed arcs recorded DONE; Store-as-Source arc born; store commit index fixed) — HISTORY (superseded by §0g)
 
 **This is the current "read first." §§0e–0 below are prior resumes, now history.** You are **CDC** —
 the independent planner/verifier. Loop unchanged: **draw** each slice's open set
