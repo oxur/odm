@@ -12,7 +12,7 @@
 > model — orphan branch, never rewrite history, divergence stops). **Refs:** `arc-store-home/arc-plan.md`;
 > `crates/odm-store/src/{git,worktree,init}.rs`; `crates/odm-cli/src/store_cmd.rs`.
 >
-> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused. **Update 2026-08-03: arc RESUMED — s02/s03 un-paused** (operator call). Migration Fidelity is closed (P-16, the gate); the odm store branch has never been pushed to GH because `store sync` doesn't exist yet, blocking CDC's ability to clone the store. **s03 (`store sync`) is the immediate priority** — unblocks pushing the store to origin; s02 (`store status`) follows.
+> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused. **Update 2026-08-03: arc RESUMED — s02/s03 un-paused** (operator call). Migration Fidelity is closed (P-16, the gate); the odm store branch has never been pushed to GH because `store sync` doesn't exist yet, blocking CDC's ability to clone the store. **s03 (`store sync`) is the immediate priority** — unblocks pushing the store to origin; s02 (`store status`) follows. **Update 2026-08-03: s02 (`store status`) closed** — SL-2 done. **s03 (`store sync`) is now the sole remaining slice.**
 
 ## Capability
 
@@ -67,7 +67,7 @@ raw-git footnote.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | SL-1 | `store commit` persists the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent no-op when clean; `--dry-run`/`--json` | run it after a `migrate`; the orphan branch gains one commit with the right message; a second run is a no-op | serious (the gap this arc opens for) | **done — CDC-verified PASS 2026-08-02** (`slice01-store-commit/cdc-verification.md`); + a real ODD-0022 fix (`.odm/` caches now excluded from the orphan branch, `write_tree` gix-exclude-aware) |
-| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | planned |
+| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | **done — CC-attested PASS 2026-08-03** (`slice02-store-status/closing-report.md`; 12 fixtures incl. a real bare-repo remote for ahead/behind, no mock) |
 | SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | planned |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
@@ -88,6 +88,20 @@ s02/s03 follow. Mostly CLI wiring over `odm-store`'s existing git plumbing (`git
 do worktree/branch/commit ops for `init`) — the capability is largely *exposing* what init already uses.
 
 ## Version History
+
+### 2026-08-03 — s02 (`store status`) closed; bubble-up
+
+`slice02-store-status` closed — CC-attested (`closing-report.md`): `odm store status` reports the
+pending node delta (**identical** computation to `commit`, proven by a fixture that diffs
+`status`'s and `commit --dry-run`'s `delta` output on the same dirty worktree, not just asserted
+individually) and ahead/behind vs. the configured upstream, reusing `init.rs`'s
+`Ancestry`/`SyncAction`/`sync_action()` plumbing with **no fetch** (D-1, flagged rather than
+built). The ahead/behind fixtures use a **real bare-repo remote** (`git init --bare` + push +
+fetch, no network, no mock). Read-only invariant (F-6) fixtured with a before/after snapshot of
+`HEAD`, `git status --porcelain`, and the node-path listing, plus a second `status` run diffed
+byte-for-byte against the first to rule out a hidden fetch. Zero `odm-store` changes — every
+function needed was already public. SL-2 done. **s03 (`store sync`) is now the arc's only
+remaining slice.**
 
 ### 2026-08-03 — s05 (CDC binary access) closed; bubble-up
 

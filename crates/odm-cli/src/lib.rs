@@ -284,6 +284,19 @@ enum StoreCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Read-only view of the store's git state: the pending node delta (what
+    /// `commit` would write) and ahead/behind vs. the configured upstream.
+    ///
+    /// The read half of the same coin as `commit` — reuses its delta
+    /// computation and `init`'s remote-tracking plumbing, but never writes:
+    /// no commit, no fetch, no index or worktree mutation. The upstream
+    /// comparison reflects whatever the last fetch left behind (`sync` is
+    /// what fetches); a store with no upstream reports that, not an error.
+    Status {
+        /// Emit JSON describing the pending delta and upstream state.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// The `odm node …` operations — node entity management (ODD-0023 §4).
@@ -921,6 +934,9 @@ pub fn dispatch(
                 }
                 StoreCommand::Commit { message, dry_run, json } => {
                     store_cmd::commit(root, message.as_deref(), dry_run, json, out, err)?;
+                }
+                StoreCommand::Status { json } => {
+                    store_cmd::status(root, json, out, err)?;
                 }
             },
         },

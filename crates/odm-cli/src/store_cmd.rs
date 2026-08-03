@@ -13,7 +13,7 @@ use std::path::Path;
 use anyhow::Context;
 use odm_store::init::{self, Mode, SyncAction};
 use odm_store::rename::Decision;
-use odm_store::{InitPlan, NodeDelta, RenamePlan, Repo, StoreHome};
+use odm_store::{InitPlan, NodeDelta, RenamePlan, Repo, StoreHome, worktree};
 use serde::Serialize;
 
 use crate::term;
@@ -521,5 +521,170 @@ pub(crate) fn commit(
         return Ok(());
     }
     term::success(err, &format!("store commit: {sha} on {branch:?} — {message:?}"))?;
+    Ok(())
+}
+
+/// The `--json` shape for `store status` (F-5): the pending delta `commit`
+/// would write, plus ahead/behind vs. the configured upstream.
+#[derive(Serialize)]
+struct StatusJson {
+    /// Whether the store worktree has no pending node changes.
+    clean: bool,
+    /// The orphan branch this reports on.
+    branch: String,
+    /// The store's root directory.
+    store_root: String,
+    /// The node-file delta `commit` would write.
+    delta: NodeDelta,
+    /// Ahead/behind vs. the configured upstream, or `None` when there is none.
+    upstream: Option<UpstreamJson>,
+}
+
+/// The upstream half of [`StatusJson`].
+#[derive(Serialize)]
+struct UpstreamJson {
+    /// The upstream ref compared against, e.g. `origin/odm-store`.
+    #[serde(rename = "ref")]
+    reference: String,
+    /// `up-to-date` | `local-ahead` | `upstream-ahead` | `diverged`.
+    action: &'static str,
+    /// Commits local has that upstream lacks.
+    ahead: usize,
+    /// Commits upstream has that local lacks.
+    behind: usize,
+}
+
+/// The `--json` `upstream.action` for a [`SyncAction`] (never called for
+/// `NoUpstream` — that case reports `upstream: null` instead).
+fn action_str(action: &SyncAction) -> &'static str {
+    match action {
+        SyncAction::FastForward => "upstream-ahead",
+        SyncAction::UpToDate => "up-to-date",
+        SyncAction::LocalAhead(_) => "local-ahead",
+        SyncAction::Diverged => "diverged",
+        SyncAction::NoUpstream => "no-upstream",
+    }
+}
+
+/// The plain-text delta half of the status line: `commit`'s own wording
+/// (`NodeDelta::summary`, or its `auto_message` fallback for a dirty
+/// worktree with no *node* changes — e.g. only `config.toml` touched) minus
+/// the `"store: "` prefix, since `status` already opens with
+/// `"store status: "`. `"nothing to commit"` when the worktree is fully
+/// clean, matching `commit`'s own clean-path wording — driven by `clean`
+/// (`Repo::is_clean`), not `delta.is_empty()`, since the two can diverge
+/// exactly the way `commit`'s `auto_message` fallback exists to handle.
+fn delta_phrase(clean: bool, delta: &NodeDelta) -> String {
+    if clean {
+        return "nothing to commit".to_string();
+    }
+    let full = auto_message(delta);
+    full.strip_prefix("store: ").unwrap_or(&full).to_string()
+}
+
+/// The plain-text upstream half of the status line.
+fn upstream_phrase(action: &SyncAction, upstream_ref: &str, ahead: usize, behind: usize) -> String {
+    match action {
+        SyncAction::UpToDate => format!("up to date with {upstream_ref}"),
+        SyncAction::FastForward => {
+            format!("{behind} commit(s) behind {upstream_ref} — run `store sync` to fast-forward")
+        }
+        SyncAction::LocalAhead(_) => {
+            format!("{ahead} commit(s) ahead of {upstream_ref} — push when ready")
+        }
+        SyncAction::Diverged => format!(
+            "diverged from {upstream_ref} ({ahead} ahead, {behind} behind) — reconcile manually"
+        ),
+        SyncAction::NoUpstream => "no upstream configured".to_string(),
+    }
+}
+
+/// Runs `odm store status`: a read-only view of the store's git state
+/// (arc-store-lifecycle s02) — the pending node delta `commit` would write
+/// (F-1/F-2), plus ahead/behind vs. the configured upstream (F-3/F-4).
+///
+/// **Never mutates anything** (F-6): no commit, no fetch, no index or
+/// worktree write. The upstream comparison reads whatever the last fetch
+/// left behind (D-1) — `store sync` is the verb that fetches; `status` stays
+/// a pure, side-effect-free read.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if there is no store worktree to check,
+/// or a git operation fails.
+pub(crate) fn status(
+    root: &Path,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let Some(location) = home.location.clone() else {
+        anyhow::bail!(
+            "no `[store]` in {} — there is no store worktree to check; the store is the repo \
+             root. Run `odm store init` first.",
+            home.repo_root.join("odm.toml").display()
+        )
+    };
+    let branch = location.branch_name.clone();
+    let store_root = home.store_root.clone();
+    let repo_root = home.repo_root.clone();
+
+    let repo = Repo::open(&store_root).with_context(|| {
+        format!(
+            "opening the store worktree at {} — has `odm store init` run?",
+            store_root.display()
+        )
+    })?;
+
+    let delta = odm_store::delta::compute(&repo, &store_root)?;
+    let clean = repo.is_clean()?;
+
+    // Same remote-tracking plumbing `init`'s sync arm uses, but with no fetch
+    // (D-1) — `status` reports against whatever the last fetch left behind.
+    let upstream_ref = format!("{}/{branch}", init::DEFAULT_REMOTE);
+    let local = worktree::rev_parse(&repo_root, &branch)?;
+    let upstream = worktree::rev_parse(&repo_root, &upstream_ref)?;
+
+    let (action, ahead, behind) = match (&local, &upstream) {
+        (Some(l), Some(u)) => {
+            let ahead = worktree::count_commits(&repo_root, &format!("{u}..{l}"))?;
+            let behind = worktree::count_commits(&repo_root, &format!("{l}..{u}"))?;
+            let ancestry = init::Ancestry {
+                local_is_ancestor: worktree::is_ancestor(&repo_root, l, u)?,
+                upstream_is_ancestor: worktree::is_ancestor(&repo_root, u, l)?,
+                local_ahead: ahead,
+            };
+            (init::sync_action(Some(ancestry)), ahead, behind)
+        }
+        _ => (init::sync_action(None), 0, 0),
+    };
+
+    if json {
+        let view = StatusJson {
+            clean,
+            branch,
+            store_root: store_root.display().to_string(),
+            delta,
+            upstream: (action != SyncAction::NoUpstream).then(|| UpstreamJson {
+                reference: upstream_ref.clone(),
+                action: action_str(&action),
+                ahead,
+                behind,
+            }),
+        };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    let msg = format!(
+        "store status: {} — {}",
+        delta_phrase(clean, &delta),
+        upstream_phrase(&action, &upstream_ref, ahead, behind)
+    );
+    match action {
+        SyncAction::Diverged | SyncAction::FastForward => term::warning(err, &msg)?,
+        _ => term::success(err, &msg)?,
+    }
     Ok(())
 }
