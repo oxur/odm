@@ -62,7 +62,7 @@ invariant.
   stronger evidence). ODD-0026 sec. 2.5 under-specified this; CC's reading is reasonable and
   flagged. Worth a one-line confirm in ODD-0026 (or the slice-07 draft) so the intent tier is
   recorded in the model, not only in code.
-- **F-3/F-7 real-corpus leg (deferred):** the same `new -> set -> set-body -> show` round-trip on
+- **F-3/F-7 real-corpus leg -- CLOSED 2026-08-03:** the same `new -> set -> set-body -> show` round-trip on
   the live store, on the operator's rebuilt binary -- same deferral pattern as every code slice.
 - **Slice 07 (interactive `$EDITOR`/section surface)** remains open, plan-late, off the SS-4/SS-6
   critical path.
