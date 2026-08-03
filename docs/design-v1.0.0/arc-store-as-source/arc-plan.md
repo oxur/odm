@@ -2,7 +2,7 @@
 
 <!-- Name/title carries no document-role metadata, per ODD-0013 §2.1. -->
 
-**Opened:** 2026-08-02 · **Status:** shaped (design-first; ODD-0026 pending) ·
+**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 (self-sourced nodes) next ·
 **Unnumbered**, per the `arc-release-hardening` / `arc-migration-fidelity` /
 `arc-llm-command-surface` precedent (the numbering scheme is under review in RH).
 
@@ -120,7 +120,7 @@ class-(c) bubble-up rows accrue as slices close.
 
 | ID | Criterion | Verify | Sev | Status |
 |---|---|---|---|---|
-| **SS-1** | ODD-0026 accepted, recording the model + the fate of `source.paths` and the body-hash gate for planning nodes | `docs/design/04-accepted/0026-*.md` present, status Accepted | serious | open |
+| **SS-1** | ODD-0026 accepted, recording the model + the fate of `source.paths` and the body-hash gate for planning nodes | `docs/design/04-accepted/0026-*.md` present, status Accepted | serious | **done** (2026-08-03, slice 01) |
 | **SS-2** | A planning node with **no external source** passes `check` (no `undeveloped-stub` / missing-source / body-hash error) | fixture: an authored node, `check` clean | serious | open |
 | **SS-3** | Existing planning nodes converted to self-sourced per ODD-0026; a full `migrate --all` + `check` is green with the `./docs` plan tree still present | `migrate --all` then `check` exit 0 | serious | open |
 | **SS-4** | A node body can be **created and updated via `./bin/odm`** (no hand-edit of store files required) | `node new --from-file` + `node edit` demonstrated; the created/edited body reads back via `node show` | serious | open |
@@ -136,12 +136,13 @@ fresh/independent context, not by the implementer.
 ## The design forks (resolved in slice 01 / ODD-0026)
 
 Stated here so the arc's design basis is visible; slice 01 carries the detail and
-my recommendations. Four are open choices (A, B, D, E); **C is already settled** and
+my recommendations. Four were open choices (A, B, D, E), now **resolved in ODD-0026 (Accepted)**; **C is already settled** and
 is listed only to make the cutover scope explicit.
 
-- **A — `source.paths` for planning nodes.** Drop external source entirely (node
-  file is the source; mark `origin: authored`) vs. repoint self-referentially.
-  *Lean: drop it* — generalizes ODD-0025's existing no-source case.
+- **A -- `source.paths` for planning nodes. RESOLVED (ODD-0026 sec. 2.1): KEEP provenance.**
+  Authored nodes carry `origin: authored` + a no-external-path `source` (`class: authored`); migrated
+  nodes keep the full `source` record. ~~Earlier lean: drop it~~ **overturned** -- `source` is enduring
+  provenance, not migration scaffolding, and the schema is clarified so "authored" reads as a value.
 - **B — the body-hash gate.** Applies only to migrated nodes (external source) and
   is N/A for authored nodes, vs. kept as a self-checksum. *Lean: N/A for authored*
   — the gate proves faithful *migration*; there is nothing to migrate. Git is the
@@ -160,6 +161,14 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.8 -- 2026-08-03 (slice 01 CLOSED; ODD-0026 Accepted; SS-1 done)
+
+**Slice 01 closed.** ODD-0026 was accepted by the operator and promoted to `docs/design/04-accepted/0026-store-as-source-model.md` (v1.1, `state: Accepted`); the slice's close set (`closing-report.md`, `cdc-verification.md`) is written and its ledger walked (D1-1 `reconciled`, D1-2..D1-9 `attested`). Arc ledger **SS-1 -> done**. One plan change bubbled up (recorded in v1.7 and applied here): **fork A was corrected** -- the "## The design forks" section's stale "*Lean: drop it*" is replaced with the resolved decision (KEEP `source`/provenance; authored = `origin: authored`, no external path). ODD-0026 sec. 3 adds two deliverables to **slice 02**: the ODD-0013 schema amendment (`origin: authored`, the authored `source` shape, the author-vs-odm field boundary) and the ODD-0025 amendment (authored nodes bypass the migration body-hash gate) -- both now in slice 02's open set. No re-sequencing: `02 -> 03 -> 04` stands. Surfaced by: slice 01 close. **Next:** slice 02 (self-sourced planning nodes) -- open set drawn.
+
+### v1.7 — 2026-08-03 (slice 01 opened; ODD-0026 authored as Draft; forks A-E resolved, A corrected)
+
+**Slice 01's open set was completed and ODD-0026 authored** at `docs/design/01-draft/0026-store-as-source-model.md` (Draft; decisions ratified by the operator 2026-08-02/03, prose pending acceptance). All five forks are now recorded. **Fork A was CORRECTED:** the earlier "drop external source" lean (A1) was overturned by the operator -- `source`/provenance is KEPT as enduring metadata; an authored node carries `origin: authored` + a no-external-path `source` (`class: authored`), and the node schema gains explicit "authored is a provenance *value*, not the absence of the field" language so the misread cannot recur. B (body-hash N/A for authored, migration gate unchanged), C (design corpus settled), D (end-user `./docs` outside), E (odm owns the seam; canonical metadata partial with dual JSON/TOML I/O; author-vs-odm field boundary; validate-before-write; create + channel-addressed-edit surface). ODD-0026 sec.3 specifies the amendments this arc's later slices apply: ODD-0013 (add `origin: authored`, the authored `source` shape, the boundary) and ODD-0025 (authored nodes bypass the migration body-hash gate by construction). Slice-01 `ledger.md` rows D1-2..D1-9 are now `attested` (recorded in the ODD); **D1-1 stays open** until the operator accepts ODD-0026 -- on acceptance it promotes to `04-accepted/`, D1-1 closes `reconciled`, and slice 01 closes. Authored in the plan tree per the operator ("do this in the old place; hard switch after native authorship lands") -- ODD-0026 migrates into the store on the next `migrate --all`. Surfaced by: slice 01. **Next:** operator accepts ODD-0026, then slice 02 (self-sourced planning nodes).
 
 ### v1.6 — 2026-08-02 (SS-9 closed: hands-off migrate reproduced on the real corpus)
 
