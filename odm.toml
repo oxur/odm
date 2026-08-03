@@ -9,7 +9,7 @@
 [store]
 worktree_base = ".."
 worktree_name = "odm"
-branch_name = "odm"
+branch_name = "odm-store"
 
 [legacy]
 docs_directory = "./docs"

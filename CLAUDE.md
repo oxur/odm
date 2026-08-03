@@ -10,14 +10,14 @@
 > `arc-release-hardening/`.
 >
 > **The corpus is no longer in this working tree.** Since the RH C-5 cutover
-> (2026-07-26) odm's own nodes live on the orphan **`odm` branch**, checked out
-> at **`.worktrees/odm/`** — `odm.toml` here is only a locator pointing at it,
-> and the operational config (gate-sets, display) is `.worktrees/odm/config.toml`.
-> Run `odm` commands from the repo root as before; resolution follows the
-> locator. To read a node file directly, look under `.worktrees/odm/nodes/`, not
-> `nodes/`. **Commit corpus changes on the `odm` branch** (`git -C .worktrees/odm
-> …`) — they are a separate history from the code, and `/.worktrees/` is
-> gitignored here on purpose.
+> (2026-07-26) odm's own nodes live on the orphan **`odm-store` branch** (renamed
+> from `odm` on 2026-08-03), checked out at **`.worktrees/odm/`** — `odm.toml`
+> here is only a locator pointing at it, and the operational config (gate-sets,
+> display) is `.worktrees/odm/config.toml`. Run `odm` commands from the repo
+> root as before; resolution follows the locator. To read a node file directly,
+> look under `.worktrees/odm/nodes/`, not `nodes/`. **Commit corpus changes on
+> the `odm-store` branch** (`git -C .worktrees/odm …`) — they are a separate
+> history from the code, and `/.worktrees/` is gitignored here on purpose.
 
 
 Guidance for Claude Code (claude.ai/code) when working in this repository.
