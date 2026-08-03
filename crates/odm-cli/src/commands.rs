@@ -18,7 +18,7 @@ use anyhow::{Context as _, anyhow, bail};
 use chrono::NaiveDate;
 use odm_core::check::{Finding, Violation};
 use odm_core::frontmatter::{
-    Dependency, Document, Frontmatter, SupersedeKind, Supersedes, TornEdge,
+    Dependency, Document, Frontmatter, Source, SupersedeKind, Supersedes, TornEdge,
 };
 use odm_core::gates::{GateSet, GateSets};
 use odm_core::graph::{Block, NodeGraph, Tear};
@@ -268,26 +268,123 @@ fn supersede_kind_str(kind: SupersedeKind) -> &'static str {
 // Commands
 // ---------------------------------------------------------------------------
 
-/// `new <type> <name> [--parent <ref>]` — idempotent describe-or-create.
-/// Confirmations go to `err` (diagnostics).
+/// Where a `node new`/`node set-body` body comes from — resolved by the
+/// caller (the CLI dispatch, which of `--content`/`--from-file`/`--body` was
+/// given) so this layer only ever reads one already-disambiguated source
+/// (arc-store-as-source slice03).
+pub enum BodySource<'a> {
+    /// `--content`/`--from-file` — read verbatim from a markdown file.
+    File(&'a Path),
+    /// `--body` — the literal string, verbatim.
+    Inline(&'a str),
+}
+
+impl BodySource<'_> {
+    fn read(&self) -> anyhow::Result<String> {
+        match self {
+            BodySource::File(path) => std::fs::read_to_string(path)
+                .with_context(|| format!("reading body content {}", path.display())),
+            BodySource::Inline(s) => Ok((*s).to_string()),
+        }
+    }
+}
+
+/// Options for [`new`] beyond `type`/`name` (arc-store-as-source slice03) —
+/// grouped since the flag set outgrew a readable argument list.
+pub struct NewOptions<'a> {
+    /// `--parent` — takes precedence over the metadata partial's `part_of`.
+    pub parent: Option<&'a str>,
+    /// `--metadata=<file>` — the author-owned partial ([`crate::metadata`]).
+    pub metadata: Option<&'a Path>,
+    /// `--content`/`--from-file`/`--body`, already disambiguated. `None` for
+    /// a bare `node new` — mints an authored stub.
+    pub body: Option<BodySource<'a>>,
+    /// Show what would happen without writing.
+    pub dry_run: bool,
+    /// Emit JSON instead of a human confirmation line.
+    pub json: bool,
+}
+
+/// `new <type> <name> [--parent <ref>] [--metadata=<file>] [--content=<md>]`
+/// — idempotent describe-or-create. Confirmations go to `err` (diagnostics);
+/// `--json` writes the created (or, under `--dry-run`, would-be-created) node
+/// to `out` instead.
+///
+/// Mints `origin: authored` + `source: { class: authored }` (arc-store-as-
+/// source slice02's model — every node this command creates is store-owned
+/// from birth, never pulled from an external file) with odm owning
+/// `id`/`number`/placement/`source`; the metadata partial and body are the
+/// only author-owned inputs (ODD-0026 §2.5, ODD-0013 v2.6). A bare
+/// `node new` (no `--metadata`/body flags) mints an authored stub — the
+/// skeleton-then-grow path, filled in later via `node set`/`node set-body`.
+///
+/// # Errors
+///
+/// Returns an error (before any write) if the type is unknown, the metadata
+/// partial fails to load/validate (including an odm-owned field — rejected
+/// by [`crate::metadata::MetadataPartial`]'s shape), `--parent`/`part_of`
+/// doesn't resolve, a status intent names a gate not in the type's gate-set,
+/// or the body content can't be read.
 pub fn new(
     store: &Store,
+    root: &Path,
     node_type: &str,
     name: &str,
-    parent: Option<&str>,
-    dry_run: bool,
+    options: NewOptions<'_>,
+    out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let NewOptions { parent, metadata, body, dry_run, json } = options;
+
     let node_type: NodeType = node_type.parse().map_err(|_| {
         anyhow!(
             "unknown type {node_type:?}; expected one of \
-             project|arc|slice|design|research|adr|note"
+             project|arc|slice|design|research|adr|note|artifact"
         )
     })?;
 
-    // Resolve the parent (if any) up front, so an unresolvable ref fails before
-    // anything is written.
-    let parent_id = parent.map(|p| resolve(store, p)).transpose()?.map(|d| d.frontmatter().id());
+    // Load + validate the metadata partial up front — before the
+    // idempotency check below, so a malformed call errors the same way
+    // whether or not the node already exists (F-2: rejected before any
+    // write). An odm-owned field (`id`/`source`/…) is rejected by the
+    // partial's own shape (`deny_unknown_fields`) inside `metadata::load`.
+    let partial = metadata.map(crate::metadata::load).transpose()?;
+
+    // `--parent` wins over the partial's `part_of` when both are given.
+    let part_of_ref: Option<&str> =
+        parent.or_else(|| partial.as_ref().and_then(|p| p.part_of.as_deref()));
+    let parent_id =
+        part_of_ref.map(|p| resolve(store, p)).transpose()?.map(|d| d.frontmatter().id());
+
+    // A status intent needs a gate-set to validate against — only required
+    // when one is actually given, so a bare/tags-only/part_of-only create
+    // never needs gate config in hand at all.
+    let status_gate_set = if let Some(status) = partial.as_ref().and_then(|p| p.status.as_deref()) {
+        let (gates, _) = load_gate_config(root)?;
+        let gate_set = gates
+            .for_type(node_type)
+            .ok_or_else(|| {
+                anyhow!(
+                    "no gate-set for type `{}`; add a `[gates.{}]` sequence to odm.toml",
+                    node_type.as_str(),
+                    node_type.as_str()
+                )
+            })?
+            .clone();
+        if !gate_set.contains(status) {
+            bail!(
+                "unknown gate {status:?} for type `{}`; allowed: {}",
+                node_type.as_str(),
+                gate_set.sequence().join(", ")
+            );
+        }
+        Some(gate_set)
+    } else {
+        None
+    };
+
+    // Read the body up front too — fail before any write, same discipline.
+    let body_text = body.as_ref().map(BodySource::read).transpose()?;
 
     let all = store.load_all()?;
 
@@ -319,17 +416,36 @@ pub fn new(
     let id = Id::new();
     let created = id.created_at().date_naive();
     let mut fm =
-        Frontmatter::new(id, next_number, node_type, name, created, created, Origin::Planned);
+        Frontmatter::new(id, next_number, node_type, name, created, created, Origin::Authored);
     // Every odm-created node is stamped the current schema (`<type>/v1.0`, ODD-0020
     // V-2) — no new node is ever written unversioned.
     fm.stamp_schema();
     if let Some(parent_id) = parent_id {
         fm.edges_mut().part_of = Some(parent_id);
     }
-    let doc = Document::new(fm, format!("# {name}\n"));
+    if let Some(partial) = &partial {
+        if !partial.tags.is_empty() {
+            fm = fm.with_tags(partial.tags.clone());
+        }
+    }
+    // Authored, not migrated (ODD-0026 §2.1) — no external paths, ever.
+    fm = fm.with_source(Source::authored(Vec::new()));
+    if let Some(status) = partial.as_ref().and_then(|p| p.status.as_deref()) {
+        let gate_set = status_gate_set.as_ref().expect("gate-set loaded above when status is set");
+        fm.status_mut()
+            .set_gate(gate_set, status, None, Evidence::Asserted, created)
+            .expect("gate validated up front");
+    }
+
+    let body_content = body_text.unwrap_or_else(|| format!("# {name}\n"));
+    let doc = Document::new(fm, body_content);
 
     let parent_note = parent_id.map(|p| format!(" (part_of {p})")).unwrap_or_default();
     if dry_run {
+        if json {
+            writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&doc))?)?;
+            return Ok(());
+        }
         term::info(
             err,
             &format!(
@@ -341,10 +457,204 @@ pub fn new(
     }
 
     store.persist(&doc)?;
+    if json {
+        let gates = load_gate_config(root).ok().map(|(g, _)| g);
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&NodeJson::with_gates(&doc, gates.as_ref()))?
+        )?;
+        return Ok(());
+    }
     term::success(
         err,
         &format!("created {} #{next_number} {name:?} ({id}){parent_note}", node_type.as_str()),
     )?;
+    Ok(())
+}
+
+/// The author-owned fields `node set` may address — the same set the
+/// metadata partial carries (`part_of`/`tags`/`status`), plus `name`, which
+/// `node set` addresses directly rather than through `node rename` (kept as
+/// its own dedicated command for the common case; both end up setting the
+/// same field). Any other field name — including every odm-owned one
+/// (`id`/`number`/`path`/`source`) — is rejected before any write.
+const SETTABLE_FIELDS: [&str; 4] = ["name", "tags", "part_of", "status"];
+
+/// Arguments for [`set`] beyond `store`/`root` — grouped to stay under
+/// clippy's argument-count lint (arc-store-as-source slice03).
+pub struct SetArgs<'a> {
+    /// The node (id, number, or unique name prefix).
+    pub reference: &'a str,
+    /// The field to set — must be one of [`SETTABLE_FIELDS`].
+    pub field: &'a str,
+    /// The new value.
+    pub value: &'a str,
+    /// Show what would happen without writing.
+    pub dry_run: bool,
+    /// Emit JSON instead of a human confirmation line.
+    pub json: bool,
+}
+
+/// `set <ref> <field> <value>` — field-addressed author-owned metadata edit
+/// (arc-store-as-source slice03, ODD-0026 §2.5). The `---` block is never in
+/// the editable surface: `field` must be one of [`SETTABLE_FIELDS`], and the
+/// **body is left byte-identical** (the seam invariant — only the named
+/// field changes, verified by the fixtures at `odm-cli/tests/cli.rs`).
+///
+/// `field`:
+/// - `name` — the node's label (mirrors `node rename`).
+/// - `tags` — comma-separated; replaces the tag list wholesale.
+/// - `part_of` — a reference (id/number/name prefix); re-resolved and
+///   re-validated exactly like `node link … part_of` / `node new --parent`.
+/// - `status` — a gate name, recorded at `asserted` evidence via the same
+///   mechanism `node set-gate` uses (which remains the way to record a
+///   stronger evidence level, or to pass `--by`).
+///
+/// # Errors
+///
+/// Returns an error (before any write) if `reference` doesn't resolve,
+/// `field` is not one of [`SETTABLE_FIELDS`] (this is the author-vs-odm
+/// boundary enforcement — F-2), `part_of`'s value doesn't resolve, or
+/// `status`'s value isn't a gate in the node type's gate-set.
+pub fn set(
+    store: &Store,
+    root: &Path,
+    args: SetArgs<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let SetArgs { reference, field, value, dry_run, json } = args;
+    if !SETTABLE_FIELDS.contains(&field) {
+        bail!(
+            "field {field:?} is not author-settable; allowed: {} (odm owns id/number/path/source)",
+            SETTABLE_FIELDS.join(", ")
+        );
+    }
+
+    let mut doc = resolve(store, reference)?;
+    let (number, name) = (doc.frontmatter().number(), doc.frontmatter().name().to_string());
+
+    // Resolve/validate up front (before any write), same discipline as `new`.
+    let resolved_part_of =
+        if field == "part_of" { Some(resolve(store, value)?.frontmatter().id()) } else { None };
+    let status_gate_set = if field == "status" {
+        let (gates, _) = load_gate_config(root)?;
+        let node_type = doc.frontmatter().node_type();
+        let gate_set = gates
+            .for_type(node_type)
+            .ok_or_else(|| {
+                anyhow!(
+                    "no gate-set for type `{}`; add a `[gates.{}]` sequence to odm.toml",
+                    node_type.as_str(),
+                    node_type.as_str()
+                )
+            })?
+            .clone();
+        if !gate_set.contains(value) {
+            bail!(
+                "unknown gate {value:?} for type `{}`; allowed: {}",
+                node_type.as_str(),
+                gate_set.sequence().join(", ")
+            );
+        }
+        Some(gate_set)
+    } else {
+        None
+    };
+
+    if dry_run {
+        if json {
+            writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&doc))?)?;
+            return Ok(());
+        }
+        term::info(err, &format!("would set {field}={value:?} on #{number} {name:?}"))?;
+        return Ok(());
+    }
+
+    match field {
+        "name" => doc.frontmatter_mut().set_name(value),
+        "tags" => {
+            let tags: Vec<String> = value
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
+            doc = Document::new(doc.frontmatter().clone().with_tags(tags), doc.body().to_string());
+        }
+        "part_of" => {
+            doc.frontmatter_mut().edges_mut().part_of =
+                Some(resolved_part_of.expect("resolved above"));
+        }
+        "status" => {
+            let gate_set = status_gate_set.as_ref().expect("loaded above");
+            doc.frontmatter_mut()
+                .status_mut()
+                .set_gate(gate_set, value, None, Evidence::Asserted, today())
+                .expect("gate validated up front");
+        }
+        _ => unreachable!("field validated against SETTABLE_FIELDS above"),
+    }
+    doc.frontmatter_mut().set_updated(today());
+    store.persist(&doc)?;
+
+    if json {
+        let gates = load_gate_config(root).ok().map(|(g, _)| g);
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&NodeJson::with_gates(&doc, gates.as_ref()))?
+        )?;
+        return Ok(());
+    }
+    term::success(err, &format!("set {field}={value:?} on #{number} {name:?}"))?;
+    Ok(())
+}
+
+/// `set-body <ref> --from-file=<md>`/`--body=<str>` — replaces the whole body
+/// as pure markdown; odm re-attaches the **unchanged** frontmatter on write
+/// (arc-store-as-source slice03, ODD-0026 §2.5's seam invariant: only the
+/// body changes, verified by the fixtures at `odm-cli/tests/cli.rs`). The
+/// body is prose — never parsed, never a rejection source.
+///
+/// # Errors
+///
+/// Returns an error if `reference` doesn't resolve, or the body content
+/// can't be read (a file source).
+pub fn set_body(
+    store: &Store,
+    reference: &str,
+    body: BodySource<'_>,
+    dry_run: bool,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let new_body = body.read()?;
+    let doc = resolve(store, reference)?;
+    let (number, name) = (doc.frontmatter().number(), doc.frontmatter().name().to_string());
+
+    if dry_run {
+        let preview = Document::new(doc.frontmatter().clone(), new_body.clone());
+        if json {
+            writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&preview))?)?;
+            return Ok(());
+        }
+        term::info(err, &format!("would set-body on #{number} {name:?}"))?;
+        return Ok(());
+    }
+
+    let mut new_fm = doc.frontmatter().clone();
+    new_fm.set_updated(today());
+    let new_doc = Document::new(new_fm, new_body);
+    store.persist(&new_doc)?;
+
+    if json {
+        writeln!(out, "{}", serde_json::to_string_pretty(&NodeJson::from(&new_doc))?)?;
+        return Ok(());
+    }
+    term::success(err, &format!("set-body on #{number} {name:?}"))?;
     Ok(())
 }
 

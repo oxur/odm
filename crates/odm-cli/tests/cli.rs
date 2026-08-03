@@ -319,7 +319,10 @@ fn json_schema_crud_is_stable() {
     assert_eq!(obj["type"], "slice");
     assert_eq!(obj["number"], 1);
     assert_eq!(obj["name"], "Schema check");
-    assert_eq!(obj["origin"], "planned");
+    // arc-store-as-source slice03: `node new` now mints `origin: authored`
+    // (ODD-0026 §2.1/§2.5) — every node created via `./bin/odm` is store-owned
+    // from birth, never pulled from an external file.
+    assert_eq!(obj["origin"], "authored");
     assert_eq!(obj["reserved"], false);
     assert_eq!(obj["id"].as_str().unwrap().len(), 26);
 }
@@ -1850,4 +1853,361 @@ fn g2_a_tear_rationale_reaches_validate_and_show() {
     let json = run(dir.path(), &["node", "show", "2", "--json"]);
     let v: serde_json::Value = serde_json::from_str(&json.out).expect("valid JSON");
     assert_eq!(v["tears"][0]["because"], "B ships first");
+}
+
+// ----- arc-store-as-source slice03: native authoring (programmatic surface)
+// Ledger: docs/design-v1.0.0/arc-store-as-source/slice03-native-authoring/ledger.md
+
+/// A gate-configured store, for the `status` intent tests.
+fn gated_store() -> TempDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("odm.toml"), V2_TOML).unwrap();
+    dir
+}
+
+// F-1: the metadata partial loads identically from JSON and TOML.
+
+#[test]
+fn metadata_json_and_toml_partials_produce_equivalent_nodes() {
+    let same_shape = |dir: &Path, meta_path: &Path| {
+        run(
+            dir,
+            &["node", "new", "slice", "From metadata", "--metadata", meta_path.to_str().unwrap()],
+        )
+    };
+
+    let json_dir = TempDir::new().unwrap();
+    let json_meta = json_dir.path().join("meta.json");
+    std::fs::write(&json_meta, r#"{"tags": ["a", "b"], "status": "planned"}"#).unwrap();
+    std::fs::write(json_dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let r = same_shape(json_dir.path(), &json_meta);
+    assert!(r.ok, "{}", r.err);
+
+    let toml_dir = TempDir::new().unwrap();
+    let toml_meta = toml_dir.path().join("meta.toml");
+    std::fs::write(&toml_meta, "tags = [\"a\", \"b\"]\nstatus = \"planned\"\n").unwrap();
+    std::fs::write(toml_dir.path().join("odm.toml"), V2_TOML).unwrap();
+    let r = same_shape(toml_dir.path(), &toml_meta);
+    assert!(r.ok, "{}", r.err);
+
+    let from_json = run(json_dir.path(), &["node", "show", "1", "--json"]);
+    let from_toml = run(toml_dir.path(), &["node", "show", "1", "--json"]);
+    let vj: serde_json::Value = serde_json::from_str(&from_json.out).unwrap();
+    let vt: serde_json::Value = serde_json::from_str(&from_toml.out).unwrap();
+    // Same shape (id/number/created legitimately differ per store — irrelevant
+    // here since each store only has this one node, both landing at #1).
+    assert_eq!(vj["tags"], vt["tags"]);
+    assert_eq!(vj["tags"], serde_json::json!(["a", "b"]));
+    assert_eq!(vj["status"], vt["status"]);
+    assert_eq!(vj["status"], "planned");
+    assert_eq!(vj["origin"], "authored");
+    assert_eq!(vt["origin"], "authored");
+}
+
+// F-2: validate-before-write — odm-owned fields and schema-invalid partials
+// are rejected before any write.
+
+#[test]
+fn new_rejects_a_metadata_partial_setting_an_odm_owned_field() {
+    let dir = TempDir::new().unwrap();
+    let meta = dir.path().join("meta.json");
+    std::fs::write(&meta, r#"{"id": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}"#).unwrap();
+
+    let r = run(dir.path(), &["node", "new", "slice", "Bad", "--metadata", meta.to_str().unwrap()]);
+    assert!(!r.ok, "an odm-owned field must be rejected: {}", r.err);
+    assert_eq!(md_paths(dir.path()).len(), 0, "nothing written on rejection");
+}
+
+#[test]
+fn new_rejects_a_metadata_partial_with_an_unresolvable_part_of() {
+    let dir = TempDir::new().unwrap();
+    let meta = dir.path().join("meta.json");
+    std::fs::write(&meta, r#"{"part_of": "999"}"#).unwrap();
+
+    let r = run(dir.path(), &["node", "new", "slice", "Bad", "--metadata", meta.to_str().unwrap()]);
+    assert!(!r.ok && r.err.contains("no node with number 999"), "{}", r.err);
+    assert_eq!(md_paths(dir.path()).len(), 0, "nothing written on rejection");
+}
+
+#[test]
+fn new_rejects_a_status_intent_naming_an_unknown_gate() {
+    let dir = gated_store();
+    let meta = dir.path().join("meta.json");
+    std::fs::write(&meta, r#"{"status": "deployed"}"#).unwrap();
+
+    let r = run(dir.path(), &["node", "new", "slice", "Bad", "--metadata", meta.to_str().unwrap()]);
+    assert!(!r.ok && r.err.contains("unknown gate"), "{}", r.err);
+    assert_eq!(md_paths(dir.path()).len(), 0, "nothing written on rejection");
+}
+
+#[test]
+fn set_rejects_an_odm_owned_field_name() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    for field in ["id", "number", "source", "path"] {
+        let r = run(dir.path(), &["node", "set", "1", field, "whatever"]);
+        assert!(!r.ok, "{field} must be rejected: {}", r.err);
+        assert!(r.err.contains("not author-settable"), "{}", r.err);
+    }
+}
+
+// F-3: `node new --metadata --content` mints an authored node; check green;
+// reads back via `node show`.
+
+#[test]
+fn new_from_metadata_and_content_mints_an_authored_node_and_round_trips() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "project", "Root"]);
+    let meta = dir.path().join("meta.json");
+    std::fs::write(&meta, r#"{"part_of": "1", "tags": ["x"]}"#).unwrap();
+    let content = dir.path().join("body.md");
+    std::fs::write(&content, "# Arc — Authored\n\nReal content, verbatim.\n").unwrap();
+
+    let r = run(
+        dir.path(),
+        &[
+            "node",
+            "new",
+            "arc",
+            "Authored Arc",
+            "--metadata",
+            meta.to_str().unwrap(),
+            "--content",
+            content.to_str().unwrap(),
+        ],
+    );
+    assert!(r.ok, "{}", r.err);
+
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["origin"], "authored");
+    assert_eq!(v["tags"], serde_json::json!(["x"]));
+    assert_eq!(v["part_of"], id_of(dir.path(), 1));
+
+    let body_file = file_for(dir.path(), 2);
+    assert!(body_file.contains("Real content, verbatim."), "{body_file}");
+
+    let checked = run(dir.path(), &["check"]);
+    assert!(checked.ok, "check is green on an authored node: {}", checked.out);
+}
+
+#[test]
+fn new_from_file_alias_reads_the_same_way_as_content() {
+    let dir = TempDir::new().unwrap();
+    let content = dir.path().join("body.md");
+    std::fs::write(&content, "# Via from-file\n").unwrap();
+    let r = run(
+        dir.path(),
+        &["node", "new", "slice", "Aliased", "--from-file", content.to_str().unwrap()],
+    );
+    assert!(r.ok, "{}", r.err);
+    assert!(file_for(dir.path(), 1).contains("Via from-file"));
+}
+
+#[test]
+fn new_with_inline_body_writes_it_verbatim() {
+    let dir = TempDir::new().unwrap();
+    let r = run(dir.path(), &["node", "new", "slice", "Inline", "--body", "# Inline body\n"]);
+    assert!(r.ok, "{}", r.err);
+    assert!(file_for(dir.path(), 1).contains("Inline body"));
+}
+
+// F-4: a bare `node new` mints an authored stub.
+
+#[test]
+fn bare_new_mints_an_authored_stub() {
+    let dir = TempDir::new().unwrap();
+    let r = run(dir.path(), &["node", "new", "slice", "Stub"]);
+    assert!(r.ok, "{}", r.err);
+
+    let shown = run(dir.path(), &["node", "show", "1", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["origin"], "authored");
+    assert!(file_for(dir.path(), 1).contains("# Stub"));
+}
+
+// F-5: `node set` updates an author-owned field; body untouched.
+
+#[test]
+fn set_updates_author_owned_fields_and_leaves_the_body_untouched() {
+    let dir = gated_store();
+    run(dir.path(), &["node", "new", "slice", "A", "--body", "# A\n\nOriginal body.\n"]);
+    run(dir.path(), &["node", "new", "project", "P"]);
+
+    assert!(run(dir.path(), &["node", "set", "1", "name", "Renamed"]).ok);
+    assert!(run(dir.path(), &["node", "set", "1", "tags", "x, y"]).ok);
+    assert!(run(dir.path(), &["node", "set", "1", "part_of", "2"]).ok);
+    let r = run(dir.path(), &["node", "set", "1", "status", "built"]);
+    assert!(r.ok, "{}", r.err);
+
+    let shown = run(dir.path(), &["node", "show", "1", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["name"], "Renamed");
+    assert_eq!(v["tags"], serde_json::json!(["x", "y"]));
+    assert_eq!(v["part_of"], id_of(dir.path(), 2));
+    // `status` in `--json` is the *derived*, cross-type-comparable projection
+    // (F-19) — not the raw gate name; the raw ladder entry is what proves the
+    // gate was actually recorded.
+    assert_eq!(v["gates"][0]["gate"], "built");
+    assert_eq!(v["gates"][0]["evidence"], "asserted");
+
+    // The body is byte-identical throughout — `set` never touches it.
+    assert!(file_for(dir.path(), 1).contains("Original body."));
+}
+
+#[test]
+fn set_status_rejects_an_unknown_gate() {
+    let dir = gated_store();
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    let r = run(dir.path(), &["node", "set", "1", "status", "deployed"]);
+    assert!(!r.ok && r.err.contains("unknown gate"), "{}", r.err);
+}
+
+// F-6: `node set-body` replaces the whole body; the frontmatter's other
+// fields are untouched (the seam invariant — only `updated` legitimately
+// bumps, the same way every other mutator in this CLI stamps an edit).
+
+#[test]
+fn set_body_replaces_the_body_and_leaves_frontmatter_fields_untouched() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "slice", "A", "--body", "# A\n\nOriginal.\n"]);
+    let before = run(dir.path(), &["node", "show", "1", "--json"]);
+    let before: serde_json::Value = serde_json::from_str(&before.out).unwrap();
+
+    let new_content = dir.path().join("new-body.md");
+    std::fs::write(&new_content, "# A\n\nReplaced body, entirely different.\n").unwrap();
+    let r =
+        run(dir.path(), &["node", "set-body", "1", "--from-file", new_content.to_str().unwrap()]);
+    assert!(r.ok, "{}", r.err);
+
+    let after = run(dir.path(), &["node", "show", "1", "--json"]);
+    let after: serde_json::Value = serde_json::from_str(&after.out).unwrap();
+    // Identity, type, name, origin, tags, part_of — all untouched.
+    for field in ["id", "number", "type", "name", "origin", "tags", "part_of", "reserved"] {
+        assert_eq!(
+            before[field], after[field],
+            "field {field:?} must be untouched: {before} vs {after}"
+        );
+    }
+    assert!(file_for(dir.path(), 1).contains("Replaced body, entirely different."));
+    assert!(!file_for(dir.path(), 1).contains("Original."));
+}
+
+#[test]
+fn set_body_inline_also_replaces_the_body() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    let r = run(dir.path(), &["node", "set-body", "1", "--body", "# A\n\nInline replacement.\n"]);
+    assert!(r.ok, "{}", r.err);
+    assert!(file_for(dir.path(), 1).contains("Inline replacement."));
+}
+
+// F-7: SS-4 end-to-end — new (metadata+content) -> set -> set-body -> show,
+// no hand-edit, `check` green throughout.
+
+#[test]
+fn ss4_round_trip_new_set_set_body_show_no_hand_edit() {
+    let dir = gated_store();
+    run(dir.path(), &["node", "new", "project", "Root"]);
+
+    let meta = dir.path().join("meta.json");
+    std::fs::write(&meta, r#"{"part_of": "1", "tags": ["draft"]}"#).unwrap();
+    let content = dir.path().join("body.md");
+    std::fs::write(&content, "# Arc — SS-4\n\nInitial content.\n").unwrap();
+    let r = run(
+        dir.path(),
+        &[
+            "node",
+            "new",
+            "arc",
+            "SS-4 Arc",
+            "--metadata",
+            meta.to_str().unwrap(),
+            "--content",
+            content.to_str().unwrap(),
+        ],
+    );
+    assert!(r.ok, "{}", r.err);
+    assert!(run(dir.path(), &["check"]).ok, "check green after new");
+
+    assert!(run(dir.path(), &["node", "set", "2", "status", "in-progress"]).ok);
+    assert!(run(dir.path(), &["check"]).ok, "check green after set");
+
+    let updated = dir.path().join("updated.md");
+    std::fs::write(&updated, "# Arc — SS-4\n\nUpdated content via set-body.\n").unwrap();
+    assert!(
+        run(dir.path(), &["node", "set-body", "2", "--from-file", updated.to_str().unwrap()]).ok
+    );
+    assert!(run(dir.path(), &["check"]).ok, "check green after set-body");
+
+    let shown = run(dir.path(), &["node", "show", "2", "--json"]);
+    let v: serde_json::Value = serde_json::from_str(&shown.out).unwrap();
+    assert_eq!(v["origin"], "authored");
+    assert_eq!(v["gates"][0]["gate"], "in-progress");
+    assert!(file_for(dir.path(), 2).contains("Updated content via set-body."));
+}
+
+// F-8: `--dry-run` writes nothing; `--json` parses, on each verb.
+
+#[test]
+fn new_dry_run_writes_nothing_and_json_parses() {
+    let dir = TempDir::new().unwrap();
+    let r = run(dir.path(), &["node", "new", "slice", "DryRun", "--dry-run", "--json"]);
+    assert!(r.ok, "{}", r.err);
+    let _: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    assert_eq!(md_paths(dir.path()).len(), 0, "dry-run wrote nothing");
+}
+
+#[test]
+fn set_dry_run_writes_nothing_and_json_parses() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "slice", "A"]);
+    let r = run(dir.path(), &["node", "set", "1", "name", "Would-be", "--dry-run", "--json"]);
+    assert!(r.ok, "{}", r.err);
+    let _: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    let file = file_for(dir.path(), 1);
+    assert!(file.contains("name: A"), "dry-run wrote nothing: {file}");
+    assert!(!file.contains("Would-be"), "dry-run wrote nothing: {file}");
+}
+
+#[test]
+fn set_body_dry_run_writes_nothing_and_json_parses() {
+    let dir = TempDir::new().unwrap();
+    run(dir.path(), &["node", "new", "slice", "A", "--body", "# A\n\nOriginal.\n"]);
+    let new_content = dir.path().join("new.md");
+    std::fs::write(&new_content, "# A\n\nWould-be replacement.\n").unwrap();
+    let r = run(
+        dir.path(),
+        &[
+            "node",
+            "set-body",
+            "1",
+            "--from-file",
+            new_content.to_str().unwrap(),
+            "--dry-run",
+            "--json",
+        ],
+    );
+    assert!(r.ok, "{}", r.err);
+    let _: serde_json::Value = serde_json::from_str(&r.out).expect("valid JSON");
+    assert!(file_for(dir.path(), 1).contains("Original."), "dry-run wrote nothing");
+    assert!(!file_for(dir.path(), 1).contains("Would-be replacement."));
+}
+
+// F-9: created/edited authored nodes pass `check`; the boundary holds
+// end-to-end (covered structurally by the F-2 tests above; this proves the
+// positive path stays green through a realistic multi-step sequence).
+
+#[test]
+fn authored_nodes_stay_check_clean_through_a_multi_step_sequence() {
+    let dir = gated_store();
+    run(dir.path(), &["node", "new", "project", "Root"]);
+    run(dir.path(), &["node", "new", "arc", "An arc", "--parent", "1"]);
+    assert!(run(dir.path(), &["node", "set", "2", "tags", "a,b,c"]).ok);
+    assert!(
+        run(dir.path(), &["node", "set-body", "2", "--body", "# An arc\n\nGrown via set-body.\n"])
+            .ok
+    );
+    let checked = run(dir.path(), &["check"]);
+    assert!(checked.ok, "{}", checked.out);
 }

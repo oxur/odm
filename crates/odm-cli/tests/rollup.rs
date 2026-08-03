@@ -134,14 +134,19 @@ fn rollup_origin_view_groups_by_provenance() {
     let root = dir.path();
     write_config(root);
 
-    // One planned (via CLI), one discovered, one amendment (via seed).
-    run(root, &["node", "new", "slice", "Planned slice"]);
+    // One planned, one discovered, one amendment (via seed — `node new` no
+    // longer produces `Planned`, arc-store-as-source slice03: every node it
+    // mints is `Authored`, proven below via the real CLI path).
+    seed(root, || Document::new(fm(1, NodeType::Slice, "Planned slice", Origin::Planned), "# p\n"));
     seed(root, || {
         Document::new(fm(2, NodeType::Slice, "Found slice", Origin::Discovered), "# x\n")
     });
     seed(root, || {
         Document::new(fm(3, NodeType::Slice, "Amended slice", Origin::Amendment), "# y\n")
     });
+    // The fourth group, via the real command path (not a hand-built fixture):
+    // `node new` mints `origin: authored` (arc-store-as-source slice02/03).
+    run(root, &["node", "new", "slice", "Authored slice"]);
 
     assert!(run(root, &["rollup"]).ok);
     let md = read_rollup(root);
@@ -150,11 +155,14 @@ fn rollup_origin_view_groups_by_provenance() {
     let planned = prov.split("### Discovered").next().unwrap();
     let discovered =
         prov.split("### Discovered").nth(1).unwrap().split("### Amendment").next().unwrap();
-    let amendment = prov.split("### Amendment").nth(1).unwrap();
+    let amendment =
+        prov.split("### Amendment").nth(1).unwrap().split("### Authored").next().unwrap();
+    let authored = prov.split("### Authored").nth(1).unwrap();
 
     assert!(planned.contains("Planned slice"), "planned group:\n{md}");
     assert!(discovered.contains("Found slice"), "discovered group:\n{md}");
     assert!(amendment.contains("Amended slice"), "amendment group:\n{md}");
+    assert!(authored.contains("Authored slice"), "authored group:\n{md}");
 }
 
 // ----- S-3/S-4 (arc05 slice04): real drift in rollup; placeholder gone -------

@@ -43,9 +43,10 @@ fn body_only_edit(root: &Path, id: Id, new_body: &str) {
 }
 
 /// Persists a node file directly (bypassing `new`) so a test can pin its number,
-/// `origin`, parent, and body — `new` always mints `Origin::Planned` with a
-/// title-only body, but the slice06 views read `origin` (provenance) and the
-/// project body (vision), which we need to vary.
+/// `origin`, parent, and body — `new` always mints `Origin::Authored` (arc-
+/// store-as-source slice03) with a title-only body, but the slice06 views
+/// read `origin` (provenance) and the project body (vision), which we need
+/// to vary — incl. varying `origin` to values `new` itself never produces.
 fn persist(
     root: &Path,
     number: u32,

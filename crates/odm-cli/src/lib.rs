@@ -16,6 +16,7 @@ mod commands;
 mod context;
 mod json;
 mod listview;
+mod metadata;
 mod migrate;
 mod orient;
 mod reconcile;
@@ -289,17 +290,87 @@ enum StoreCommand {
 #[derive(Debug, Subcommand)]
 enum NodeCommand {
     /// Create a node (idempotent: re-running describes rather than duplicating).
+    ///
+    /// Mints `origin: authored` (arc-store-as-source slice02/03, ODD-0026 §2.1/
+    /// §2.5) — odm owns `id`/`number`/placement/`source`; the author supplies
+    /// only the body (pure markdown) and/or a metadata partial (author-owned
+    /// fields), never the fused `---`-plus-body file directly.
     New {
-        /// Node type: project|arc|slice|design|research|adr|note.
+        /// Node type: project|arc|slice|design|research|adr|note|artifact.
         node_type: String,
         /// Human-readable name.
         name: String,
         /// Set `part_of` to this parent (id, number, or unique name prefix).
+        /// Takes precedence over `--metadata`'s `part_of`, if both are given.
         #[arg(long)]
         parent: Option<String>,
+        /// The author-owned metadata partial (`part_of`/`tags`/`status`),
+        /// loaded from a `.json` or `.toml` file — see [`crate::metadata`].
+        #[arg(long)]
+        metadata: Option<String>,
+        /// The body, read verbatim from a markdown file.
+        #[arg(long, conflicts_with_all = ["body", "from_file"])]
+        content: Option<String>,
+        /// The body, read verbatim from a markdown file — an alias for
+        /// `--content` (ODD-0026 §2.5's own naming).
+        #[arg(long = "from-file", conflicts_with_all = ["content", "body"])]
+        from_file: Option<String>,
+        /// The body, as a literal inline string.
+        #[arg(long, conflicts_with_all = ["content", "from_file"])]
+        body: Option<String>,
         /// Show what would happen without writing.
         #[arg(long)]
         dry_run: bool,
+        /// Emit JSON (the created/would-be-created node).
+        #[arg(long)]
+        json: bool,
+        /// Proceed non-interactively (no confirmation prompt).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Set one author-owned metadata field (odm owns the `---` seam — this
+    /// never opens the fused file).
+    ///
+    /// Field-addressed, re-validated (schema + the author-vs-odm boundary)
+    /// before any write. Valid fields: `name`, `tags` (comma-separated,
+    /// replaces the list wholesale), `part_of` (a reference), `status` (a
+    /// gate name — recorded at `asserted` evidence via the same mechanism
+    /// `odm set-gate` uses; `set-gate` remains the way to record a stronger
+    /// evidence level).
+    Set {
+        /// The node (id, number, or unique name prefix).
+        reference: String,
+        /// The field to set: `name` | `tags` | `part_of` | `status`.
+        field: String,
+        /// The new value.
+        value: String,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit JSON (the updated node).
+        #[arg(long)]
+        json: bool,
+        /// Proceed non-interactively (no confirmation prompt).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Replace a node's whole body as pure markdown (odm re-attaches the
+    /// unchanged frontmatter — the seam invariant: only the body changes).
+    SetBody {
+        /// The node (id, number, or unique name prefix).
+        reference: String,
+        /// The new body, read verbatim from a markdown file.
+        #[arg(long, conflicts_with = "body")]
+        from_file: Option<String>,
+        /// The new body, as a literal inline string.
+        #[arg(long, conflicts_with = "from_file")]
+        body: Option<String>,
+        /// Show what would happen without writing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit JSON (the updated node).
+        #[arg(long)]
+        json: bool,
         /// Proceed non-interactively (no confirmation prompt).
         #[arg(long)]
         yes: bool,
@@ -907,8 +978,68 @@ pub fn dispatch(
             // Answering it properly (ODD-0023 §7) means help on stdout, exit 0.
             None => return group_help("node", out),
             Some(command) => match command {
-                NodeCommand::New { node_type, name, parent, dry_run, yes: _ } => {
-                    commands::new(&store, &node_type, &name, parent.as_deref(), dry_run, err)?;
+                NodeCommand::New {
+                    node_type,
+                    name,
+                    parent,
+                    metadata,
+                    content,
+                    from_file,
+                    body,
+                    dry_run,
+                    json,
+                    yes: _,
+                } => {
+                    // At most one of content/from_file/body is set — clap's
+                    // `conflicts_with_all` on each flag already enforces it.
+                    let content_path = content.as_deref().or(from_file.as_deref());
+                    let body_source = match (content_path, body.as_deref()) {
+                        (Some(path), _) => {
+                            Some(commands::BodySource::File(std::path::Path::new(path)))
+                        }
+                        (None, Some(inline)) => Some(commands::BodySource::Inline(inline)),
+                        (None, None) => None,
+                    };
+                    commands::new(
+                        &store,
+                        root,
+                        &node_type,
+                        &name,
+                        commands::NewOptions {
+                            parent: parent.as_deref(),
+                            metadata: metadata.as_deref().map(std::path::Path::new),
+                            body: body_source,
+                            dry_run,
+                            json,
+                        },
+                        out,
+                        err,
+                    )?;
+                }
+                NodeCommand::Set { reference, field, value, dry_run, json, yes: _ } => {
+                    commands::set(
+                        &store,
+                        root,
+                        commands::SetArgs {
+                            reference: &reference,
+                            field: &field,
+                            value: &value,
+                            dry_run,
+                            json,
+                        },
+                        out,
+                        err,
+                    )?;
+                }
+                NodeCommand::SetBody { reference, from_file, body, dry_run, json, yes: _ } => {
+                    let source = match (from_file.as_deref(), body.as_deref()) {
+                        (Some(path), _) => commands::BodySource::File(std::path::Path::new(path)),
+                        (None, Some(inline)) => commands::BodySource::Inline(inline),
+                        (None, None) => {
+                            anyhow::bail!("`node set-body` needs one of --from-file or --body")
+                        }
+                    };
+                    commands::set_body(&store, &reference, source, dry_run, json, out, err)?;
                 }
                 NodeCommand::List {
                     node_type,
