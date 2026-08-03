@@ -95,24 +95,30 @@ CDC (Cowork cloud-container sessions) generally cannot build `odm` from source
 cross-compiles a **fully static Linux binary** so CDC can run `odm` directly,
 no build required:
 
-- **Build it:** `make build-linux` — requires `cargo-zigbuild`, the `zig`
-  toolchain, and the `x86_64-unknown-linux-musl` rustup target (all installed
-  on the operator's machine already; `cargo install cargo-zigbuild` + `brew
-  install zig` + `rustup target add x86_64-unknown-linux-musl` if starting
-  fresh elsewhere). Runs `cargo zigbuild --release --target
+- **Built automatically on every fresh build.** `make build` / `make
+  build-release` detect a Darwin host and run `make build-linux` for you at
+  the end — no separate step to remember. If the cross toolchain isn't
+  installed yet, this **soft-skips with a warning** rather than failing the
+  primary macOS build. Run `make build-linux` directly for a standalone
+  cross-compile, or to see the setup requirements: `cargo-zigbuild`, the
+  `zig` toolchain, and the `x86_64-unknown-linux-musl` rustup target
+  (`cargo install cargo-zigbuild` + `brew install zig` + `rustup target add
+  x86_64-unknown-linux-musl`). Runs `cargo zigbuild --release --target
   x86_64-unknown-linux-musl -p oxur-odm`; does **not** touch or delete the
   native macOS binary at `bin/odm`.
 - **Where it lands:** `bin/odm-linux-x86_64-musl` — a build artifact
-  (`bin/` is gitignored, not committed; rebuild it after pulling new commits).
-  `file bin/odm-linux-x86_64-musl` should report "ELF 64-bit LSB executable,
-  x86-64, ..., statically linked".
+  (`bin/` is gitignored, not committed; rebuild it after pulling new commits,
+  which happens for free the next time `make build`/`make build-release` runs
+  on this machine). `file bin/odm-linux-x86_64-musl` should report "ELF
+  64-bit LSB executable, x86-64, ..., statically linked".
 - **Staging into a Cowork session:** transfer the binary from this worktree
   into the cloud container via the device bridge, then `chmod +x` and run
   directly (`--help`, `check`, `orient`, etc.) — no Rust toolchain needed
-  there. The exact transfer mechanism is whatever file-delivery tool the
-  Cowork session has available; this has not yet been reproduced end-to-end
-  by CDC (tracked as slice05 ledger row F-2 in
-  `docs/design-v1.0.0/arc-store-lifecycle/slice05-cdc-binary-access/`).
+  there. **CDC has already reproduced this end-to-end** in the actual Cowork
+  cloud container (slice05 ledger row F-2,
+  `docs/design-v1.0.0/arc-store-lifecycle/slice05-cdc-binary-access/`):
+  the full command surface (`--help`, `--version`, `check`, `orient`,
+  `validate`, `node show`, `store --help`, `--json` variants) ran clean.
 - **Architecture caveat:** the binary targets **x86_64**. If a given Cowork
   container (or the `device_bash` bridge VM) runs **aarch64 Linux** instead,
   this binary will fail with an exec-format error — check `uname -m` in that

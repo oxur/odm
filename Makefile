@@ -17,6 +17,13 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 RUST_VERSION := $(shell rustc --version 2>/dev/null || echo "unknown")
+UNAME_S := $(shell uname -s)
+
+# Cross-compilation: static Linux binary for environments without a Rust
+# toolchain (e.g. Claude Desktop Cowork's cloud sandbox/VM). Requires
+# cargo-zigbuild + zig + the x86_64-unknown-linux-musl rustup target.
+LINUX_TARGET := x86_64-unknown-linux-musl
+LINUX_BIN := $(BIN_DIR)/odm-linux-x86_64-musl
 
 # List of binaries to build and install
 BINARIES := odm
@@ -37,6 +44,10 @@ help:
 	@echo "  $(YELLOW)make build-release$(RESET)    - Build optimized release binaries"
 	@echo "  $(YELLOW)make build MODE=release$(RESET) - Build with custom mode"
 	@echo "  $(YELLOW)make build-linux$(RESET)      - Cross-compile a static Linux binary (x86_64-musl, via cargo-zigbuild)"
+	@echo "                          On a Darwin host, 'build'/'build-release' run this"
+	@echo "                          automatically too (skipped with a warning if the"
+	@echo "                          cross toolchain isn't installed) — every fresh macOS"
+	@echo "                          build also leaves a Cowork-sandbox-ready Linux binary."
 	@echo ""
 	@echo "$(GREEN)Testing & Quality:$(RESET)"
 	@echo "  $(YELLOW)make test$(RESET)             - Run all tests"
@@ -146,6 +157,7 @@ build: clean $(BIN_DIR)
 	done
 	@echo "$(GREEN)✓ Build complete$(RESET)"
 	@echo "$(CYAN)→ Binaries available in $(BIN_DIR)/$(RESET)"
+	@$(MAKE) cross-if-darwin
 
 .PHONY: build-release
 build-release: MODE = release
@@ -165,12 +177,7 @@ build-release: clean $(BIN_DIR)
 	done
 	@echo "$(GREEN)✓ Release build complete$(RESET)"
 	@echo "$(CYAN)→ Optimized binaries in $(BIN_DIR)/$(RESET)"
-
-# Cross-compilation: static Linux binary for environments without a Rust
-# toolchain (e.g. CDC's cloud container). Requires cargo-zigbuild + zig +
-# the x86_64-unknown-linux-musl rustup target.
-LINUX_TARGET := x86_64-unknown-linux-musl
-LINUX_BIN := $(BIN_DIR)/odm-linux-x86_64-musl
+	@$(MAKE) cross-if-darwin
 
 .PHONY: build-linux
 build-linux: $(BIN_DIR)
@@ -181,6 +188,22 @@ build-linux: $(BIN_DIR)
 	@cp ./target/$(LINUX_TARGET)/release/odm $(LINUX_BIN)
 	@echo "$(GREEN)✓$(RESET) $(LINUX_BIN) (size: $$(du -h $(LINUX_BIN) | cut -f1))"
 	@echo "$(CYAN)→ Static Linux binary at $(LINUX_BIN)$(RESET)"
+
+# Invoked automatically by `build`/`build-release` at the end of every run on
+# a Darwin host, so a fresh macOS build always leaves a Cowork-sandbox-ready
+# Linux binary alongside it too — no separate step to remember. Soft-skips
+# (warns, does not fail the primary build) when the cross toolchain isn't
+# installed yet, and is a no-op on any non-Darwin host.
+.PHONY: cross-if-darwin
+cross-if-darwin:
+	@if [ "$(UNAME_S)" = "Darwin" ]; then \
+		if command -v cargo-zigbuild >/dev/null 2>&1 && rustup target list --installed 2>/dev/null | grep -q '^$(LINUX_TARGET)$$'; then \
+			$(MAKE) build-linux; \
+		else \
+			echo "$(YELLOW)⚠ Skipping Linux cross-compile: cargo-zigbuild/$(LINUX_TARGET) not installed$(RESET)"; \
+			echo "  $(CYAN)→ run 'make build-linux' for setup instructions, or install cargo-zigbuild + rustup target add $(LINUX_TARGET)$(RESET)"; \
+		fi; \
+	fi
 
 # Cleaning targets
 .PHONY: clean
