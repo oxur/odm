@@ -81,7 +81,7 @@ const LABEL = {complete:'Complete', active:'Active', closed:'Closed · CI-green'
 
 // ── Data: edit here as the work moves. status ∈ complete|closed|planned|scoped|tentative
 const DATA = {
-  generated: "2026-08-02",
+  generated: "2026-08-04",
   groups: [
     { title: "v1.0.0 — MVP (A1–A3) + core (A4–A6)", arcs: [
       { id:"A1", name:"Substrate & node CRUD", status:"complete", deps:"—", crate:"odm-core, odm-store, odm-cli, oxur-odm",
@@ -132,10 +132,15 @@ const DATA = {
         done:16, total:16,
         note:"✅ CLOSED 2026-08-02 (arc-migration-fidelity/closing-report.md) — named arc, number-deferred; release-blocking, on the P-12 self-host DoD path; subsumed + cleared the L-8b pre-ship gate. ALL 16 slices delivered, s04–s16 CDC-verified PASS. ODD-0025 is the fidelity model (Accepted). ★ The arc-close FREEZE fired: the project-vision pair collapsed to ONE faithful 1:1 project node (#1000 re-cast, #1001 retired), all drift reconciled, artifacts minted-or-reconciled — corpus byte-faithful, 0 drift, `odm check` exit 0. The P-12 `orient` self-host demo runs CLEAN on the live corpus: a fresh session auto-orients to the single active project's vision (s16 fixed a retired-node leak in orient's project/READY/BLOCKED surfaces via a store.load-based check — CDC-verified PASS; a CDC-authored spec defect in the prompt was caught by CC's fixture discipline and disclosed). Store-side close landed 2026-08-02: arc node 58837400 → `complete` gate + decomposition affirmed (17 children), committed on the odm branch at 6225d1f and CDC-reproduced. Closed on BOTH doc and store. Forward carry: MF-4 → L-8 (CDC-ARC-1: 14 RH-era design nodes dropped source `version` → design-corpus migrate + a standing frontmatter-fidelity check, routed to the LLM arc). Git: off release/1.0.x; store @6225d1f. ✅ CI GREEN on release/1.0.x (2026-08-02, @e4e0a95) — s16 + arc-close code CI-reproduced (operator-attested)." },
 
-      { id:"SL", name:"Store Lifecycle — native store git verbs", status:"paused", deps:"arc-store-home · ODD-0022", crate:"odm-store; odm-cli",
-        cap:"Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: store commit (persist worktree node changes; auto-summary + -m; idempotent; --dry-run/--json), store status (pending node delta + ahead/behind), store sync (ff-only push/pull, divergence stops). Completes the ODD-0022 store-home promise.",
-        slices:[["01","store commit","done"],["02","store status","plan"],["03","store sync","plan"]],
-        note:"⏸ PAUSED 2026-08-02 after s01 (arc-store-lifecycle/arc-plan.md) — shaped 2026-08-01, surfaced by the Migration Fidelity freeze (no native verb to commit the store). SCOPED RUN by operator call: land s01 (`store commit`) only, then pause; s02 (status) / s03 (sync) deferred. ★ SL-1 DONE + CDC-verified PASS: `odm store commit` persists worktree node changes on the orphan branch — refuses without a [store] config, no-ops when clean, auto-summary or -m, --dry-run/--json; OBEYS .gitignore (gix-exclude-aware write_tree: .odm/index + .odm/drift excluded, .odm/context.json committed). Reused: tree_delta (HEAD vs worktree, no index touch) + a NodeDelta by-type tally (reusable for store status). It committed the Migration Fidelity freeze live at odm@41ace1f. Resumes only if/when the operator lifts the pause. Git: off release/1.0.x. ✅ CI GREEN on release/1.0.x (2026-08-02, @e4e0a95)." },
+      { id:"SL", name:"Store Lifecycle — native store git verbs", status:"active", deps:"arc-store-home · ODD-0022", crate:"odm-store; odm-cli",
+        cap:"Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: store commit, store status (pending node delta + ahead/behind), store sync (ff-only push/pull, divergence stops), store set-remote (configure sync target, auto-detect + first-push). Completes the ODD-0022 store-home promise.",
+        slices:[["01","store commit","done"],["04","index consistency","done"],["05","CDC binary access","done"],["02","store status","done"],["03","store sync","done"],["06","set-remote + first-push","done"]],
+        note:"▸ ACTIVE — all 6 slices done (resumed 2026-08-03; s06 CDC-verified 2026-08-04). s01 (store commit) + s04 (index consistency) CDC-verified 2026-08-02; s05 (CDC binary) CDC-verified 2026-08-03; s02 (status) + s03 (sync) CC-attested 2026-08-03; s06 (set-remote + first-push) CDC-verified 2026-08-04 — 16 fixtures reproduced in cloud container, including an unprompted rename.rs latent-bug fix caught by the compiler's exhaustive struct pattern. Arc-close composition rows SL-4/SL-5 remain planned. ★ The operator's store branch can now be pushed to GH via `store sync`." },
+
+      { id:"SaS", name:"Store-as-Source — native store authoring", status:"active", deps:"A6·s04 · ODD-0025/0026", crate:"odm-migrate; odm-cli; odm-core",
+        cap:"The store becomes the source of truth for planning: authored nodes (origin: authored, no external source); native creation/editing via odm commands; deterministic decomposition bookkeeping; ./docs freed for end-user documentation. ODD-0026 is the design basis.",
+        slices:[["05","decomposition bookkeeping","done"],["06","auto-extend decomposition","done"],["01","ODD-0026 model","done"],["02","self-sourced nodes","done"],["03","native authoring","done"],["04","cutover","plan"],["07","interactive authoring","plan"]],
+        note:"▸ ACTIVE (opened 2026-08-02). s05/s06 landed first (consistency fix + hands-off migrate, CDC-verified 2026-08-02); s01 ODD-0026 Accepted 2026-08-03; s02 (self-sourced nodes) + s03 (programmatic authoring surface) CDC-verified 2026-08-03. s04 (cutover: delete ./docs planning tree, switch to odm-native authoring) gated on operator go; s07 (interactive $EDITOR ergonomics) plan-late. The last arc authored the old way — after s04, all planning is odm-native." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
@@ -222,9 +227,9 @@ const summary = document.getElementById('summary');
 [['MVP','A1–A3 ✓','var(--done)'],
  ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
  ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
- ['Just closed', 'Migration Fidelity ✓','var(--closed)'],
+ ['Active', 'SL 6/6 · SaS 5/7','var(--active)'],
  ['Next', 'LLM surface · 0/10','var(--planned)'],
- ['Paused', 'A6 4/6 · Store-Lifecycle 1/3','var(--paused)']
+ ['Paused', 'A6 4/6','var(--paused)']
 ].forEach(([l,n,col])=>{
   const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
 });
