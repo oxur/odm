@@ -78,15 +78,17 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
 | **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **CLOSED 2026-07-27** — `arc-store-home/closing-report.md`; **SH-1…SH-5 done + SH-6 (dogfood cutover) delivered by RH C-5** — odm now dogfoods its own store (60 nodes on the orphan `odm` branch); an independent fresh-context arc-gate returned PASS-WITH-NOTES |
 | **Migration Fidelity** | Faithful, verifiable, repeatable migration: 1:1 verbatim bodies (**hard body-hash gate**), a `provenance` sub-map on every node, frontmatter-fidelity via schema-mapping, and a **doc-coverage** check (no file left behind). Repairs odm's own self-hosted corpus from skeleton (44 stub bodies, 6/11 arcs, ~211 uncovered docs, 0 provenance) to **100%**; general per project. Synthesis split out as a separate supersede step. | A6·s04; **ODD-0024** (G-1 closed → minting unfrozen) | **✅ CLOSED 2026-08-02 — MF-9 fidelity ACHIEVED.** All slices s04–s16 CDC-verified PASS (s16 2026-08-02); the **freeze fired** (project-vision pair collapsed, **0 drift**, `check` exit 0) and the **P-12 `orient` demo runs clean** on the live corpus (store committed `41ace1f`). Composition CDC-confirmed (`arc-migration-fidelity/closing-report.md`); **MF-4 → L-8** (CDC-ARC-1, design-corpus migrate + standing frontmatter-fidelity check). Store-side transition landed 2026-08-02 (arc node `58837400` → `complete` gate + decomposition affirmed, 17 children; `odm@6225d1f`, CDC-reproduced). **Closed on both doc and store; CI green on `release/1.0.x` (`e4e0a95`, 2026-08-02).** |
-| **Store Lifecycle** | Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: **`store commit`**, **`store status`** (pending node delta + ahead/behind), **`store sync`** (ff-only push/pull, divergence stops), **`store set-remote`** (configure sync target, auto-detect + first-push). Completes the ODD-0022 store-home promise. | arc-store-home; ODD-0022 | **all 6 slices done** — `arc-store-lifecycle/arc-plan.md`. Resumed 2026-08-03 (MF gate cleared); s01 (`store commit`) + s04 (index consistency) CDC-verified 2026-08-02; s05 (CDC binary access) CDC-verified 2026-08-03; s02/s03 CC-attested 2026-08-03; **s06 (`store set-remote` + first-push) CDC-verified 2026-08-04** (16 fixtures reproduced in cloud container). Arc-close composition rows SL-4/SL-5 remain planned. **The operator's store branch can now sync to GitHub.** |
-| **Store-as-Source** | The store becomes the source of truth for planning: authored nodes (`origin: authored`, no external source); native creation/editing via odm commands; deterministic decomposition bookkeeping; `./docs` freed for end-user documentation. **ODD-0026** (Accepted) is the design basis. | A6·s04; ODD-0025/0026 | **active (opened 2026-08-02)** — `arc-store-as-source/arc-plan.md`. s05/s06 (decomposition bookkeeping) CDC-verified 2026-08-02; s01 (ODD-0026) Accepted 2026-08-03; s02 (self-sourced nodes) + s03 (native authoring, programmatic surface) CDC-verified 2026-08-03. **5/7 slices done.** s04 (cutover: delete `./docs` planning tree) gated on operator go; s07 (interactive authoring) plan-late. The last arc authored the old way. |
+| **Store Lifecycle** | Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: **`store commit`** (persist the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent; `--dry-run`/`--json`), **`store status`** (pending node delta + ahead/behind), **`store sync`** (ff-only push/pull, divergence stops), **`store set-remote`** (configure sync target, auto-detect). Completes the ODD-0022 store-home promise. | arc-store-home; ODD-0022 | **✅ CLOSED 2026-08-04** — `arc-store-lifecycle/closing-report.md`. All 6 slices done (s01 commit, s02 status, s03 sync, s04 index-consistency, s05 CDC binary access, s06 set-remote); **SL-4 (no raw git) reproduced** (operator's 14-commit first push to `origin/odm-store` via `store sync`); **SL-5 (no model drift) attested** (cross-read). Arc scope doubled from 3 to 6 slices through live-surfaced gaps — all tracked. CDC binary access (`make build-linux`) is a reusable project asset. |
+| **Store-as-Source** | Transition from dual-track planning (docs + store) to store-only authoring: ODD-0026 (authored-node spec), self-sourced nodes, native authoring workflow, the cutover (delete `./docs` planning subtree), and interactive authoring. The store becomes the sole source of truth for planning artifacts. | arc-store-home; Migration Fidelity; Store Lifecycle | **active** — `arc-store-as-source/arc-plan.md`. 5/7 slices done (s05 decomposition bookkeeping, s06 auto-extend, s01 ODD-0026, s02 self-sourced nodes, s03 native authoring); **s04 (cutover)** and **s07 (interactive authoring)** remain. |
 
-**Sequencing (updated 2026-08-04):** Release Hardening **closed** → **Store Lifecycle**
-(all 6 slices done, arc-close pending) → **Store-as-Source** (5/7 slices done, s04 cutover
-next) → LLM command surface (**next** after SaS cutover, materially lighter — RH C-8
-delivered its blocking slice 01, L-1 status read-back; see that arc's v1.2) → **A6 resumes
-at slice05** (PM-skill) + slice06 (retire prose), so the skill and prose-retirement target
-the *settled* command surface. A6 is **paused after slice04**, not abandoned (§3).
+**Sequencing (updated 2026-08-04):** Release Hardening **closed** → Store Lifecycle
+**closed** (the store's git lifecycle is native) → Store-as-Source **active** (5/7 slices
+done; cutover s04 + interactive authoring s07 remain) → LLM command surface (**next** after
+SaS cutover, materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
+read-back; see that arc's v1.2) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
+so the skill and prose-retirement target the *settled* command surface. Both inserted
+arcs consume A6 slice04's self-hosted corpus; A6 is **paused after slice04**, not
+abandoned (§3).
 
 ## 3. Current status (2026-08-04)
 
@@ -143,6 +145,20 @@ the *settled* command surface. A6 is **paused after slice04**, not abandoned (§
   (command reorg → top-level verbs / `odm node` / `odm store`) drafted and the
   `odm-command-inventory.md` rewritten to it; the **UAT coverage audit** routed the four
   previously un-routed items (L-3/L-6/L-8/G-7). `arc-release-hardening/arc-plan.md`.
+- **Migration Fidelity — ✅ CLOSED 2026-08-02.** Named, number-deferred (§2a). All slices
+  s04–s16 CDC-verified PASS; freeze fired, P-12 `orient` demo clean, composition
+  CDC-confirmed. Store committed at `41ace1f` (`arc-migration-fidelity/closing-report.md`).
+- **Store Lifecycle — ✅ CLOSED 2026-08-04.** Named, number-deferred (§2a). All 6 slices
+  done (s01 commit, s02 status, s03 sync, s04 index-consistency, s05 CDC binary access,
+  s06 set-remote); composition rows SL-4 (no raw git) and SL-5 (no model drift) verified.
+  The operator's 14-commit `store sync` push to `origin/odm-store` is the end-to-end proof.
+  CDC binary access (`make build-linux`) is now a reusable project asset.
+  `arc-store-lifecycle/closing-report.md`.
+- **Store-as-Source — ▸ ACTIVE (5/7 slices done).** Named, number-deferred (§2a). s05
+  (decomposition bookkeeping), s06 (auto-extend), s01 (ODD-0026), s02 (self-sourced nodes),
+  s03 (native authoring) done. **s04 (cutover)** and **s07 (interactive authoring)** remain.
+  The cutover is the transition from dual-track (docs + store) to store-only authoring.
+  `arc-store-as-source/arc-plan.md`.
 - **LLM command surface — ◆ NEXT (shaped, not started).** Named, number-deferred (§2a).
   Shaped 2026-07-25 from the pass-2 LLM UAT; 10 slices closing the LLM situational-awareness
   gaps, reconciled against `odm-command-inventory.md` (the command-surface authority). Runs
@@ -156,38 +172,16 @@ the *settled* command surface. A6 is **paused after slice04**, not abandoned (§
   slices + the cutover, all fixed, sharing one through-line (a path unexercised in its authoring
   environment, or success and failure looking identical). `arc-store-home/closing-report.md`.
   *(Durable CI-`reproduced` rides the push.)*
-- **Migration Fidelity — ✅ CLOSED 2026-08-02.** Named, number-deferred (§2a; **ODD-0024/0025**).
-  All 16 slices delivered, s04–s16 CDC-verified PASS. The freeze fired (0 drift, `check` exit 0);
-  the P-12 `orient` self-host demo runs clean on the live corpus. Store-side close landed
-  2026-08-02. Forward carry: **MF-4 → L-8** (CDC-ARC-1). CI green on `release/1.0.x`
-  (`e4e0a95`, 2026-08-02).
-- **Store Lifecycle — ▸ ACTIVE, all 6 slices done.** Named, number-deferred (§2a;
-  **ODD-0022**). Shaped 2026-08-01, surfaced by the MF freeze; scoped to s01 only, then
-  **resumed 2026-08-03** (MF gate cleared). Six slices: s01 (`store commit`) + s04 (index
-  consistency) CDC-verified 2026-08-02; s05 (CDC binary access) CDC-verified 2026-08-03;
-  s02 (`store status`) + s03 (`store sync`) CC-attested 2026-08-03; **s06 (`store set-remote`
-  + first-push) CDC-verified 2026-08-04** — 16 fixtures reproduced in a cloud container build,
-  including an unprompted `rename.rs` latent-bug fix (compiler-caught exhaustive struct pattern).
-  Arc-close composition rows SL-4/SL-5 remain planned. **★ The operator's store branch can now
-  be pushed to GH via `store sync`.** `arc-store-lifecycle/arc-plan.md`.
-- **Store-as-Source — ▸ ACTIVE (5/7 slices done).** Named, number-deferred (§2a;
-  **ODD-0026**, Accepted). Opened 2026-08-02 when the `./docs`-as-source-of-truth model was
-  identified as the last "training wheels." s05/s06 (decomposition bookkeeping consistency +
-  auto-extend) landed first, CDC-verified 2026-08-02; s01 (ODD-0026 model) Accepted 2026-08-03;
-  s02 (self-sourced nodes) + s03 (native authoring, programmatic surface) CDC-verified 2026-08-03.
-  **s04 (cutover: delete `./docs` planning tree)** gated on operator go; s07 (interactive
-  authoring ergonomics) plan-late. The last arc authored the old way — after s04, all planning
-  is odm-native. `arc-store-as-source/arc-plan.md`.
 
 **Next-arc sequencing — RESOLVED** *(was "open — operator's call" at v1.0–1.6, when A4/A5/A6
 were free to order and a case was floated for taking A6 next to realize self-hosting
 early).* The order taken was **A4 → A5 → A6**: A4 and A5 are closed, A6 is in progress and
-self-hosts. The remaining v1.0.0 path is **Store Lifecycle (all slices done, arc-close pending)
-→ Store-as-Source (s04 cutover next, gated on operator go) → LLM command surface (next after
-SaS cutover — materially lighter, since RH C-8 already delivered its blocking slice L-1) →
-resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5). ~~Two standing pre-ship gates:
-**G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**~~ **G-1 is CLOSED
-(2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted).**
+self-hosts. The remaining v1.0.0 path is **Release Hardening (✅ closed 2026-07-27) → arc-store-home (✅ closed;
+SH-6 delivered by RH C-5) → Store Lifecycle (✅ closed 2026-08-04) → Store-as-Source (active, 5/7 — cutover
+s04 + interactive s07 remain) → LLM command surface (next after SaS cutover — materially lighter, since
+RH C-8 already delivered its blocking slice L-1) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5).
+~~Two standing pre-ship gates: **G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**~~
+**G-1 is CLOSED (2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted).**
 One standing pre-ship gate remains: **L-8b** (reconcile the four state-drifted ODDs).
 
 ## 4. Post-MVP extension roadmap (v1.0.0+)
@@ -327,30 +321,28 @@ tree, not this file.
 
 ## Version History
 
-### v1.22 — 2026-08-04 — Store Lifecycle 6/6 done; Store-as-Source added to §2a; dashboard + §3 brought current
+### v1.22 — 2026-08-04 — Store Lifecycle arc CLOSED; Store-as-Source added to §2a
 
-**Store Lifecycle → all 6 slices done** in §2a/§3 (was "shaped; scoped run — s01 only, then pause").
-The arc resumed 2026-08-03 (MF gate cleared); s02 (`store status`) and s03 (`store sync`) CC-attested
-2026-08-03; s05 (CDC binary access) CDC-verified 2026-08-03; **s06 (`store set-remote` + first-push)
-CDC-verified 2026-08-04** — 16 fixtures reproduced by CDC in a cloud container build (patched local
-commits onto a shallow clone), including an unprompted `rename.rs` latent-bug fix caught by the
-compiler's exhaustive struct pattern. Arc-close composition rows SL-4/SL-5 remain planned; the arc
-is not formally closed. **The operator's store branch can now sync to GitHub.**
+**Store Lifecycle → CLOSED** in §2a. The arc's 6 slices are all done (s01 commit,
+s02 status, s03 sync, s04 index-consistency, s05 CDC binary access, s06 set-remote);
+composition rows SL-4 (no raw git for normal operation) and SL-5 (no model drift)
+verified at arc close (`arc-store-lifecycle/closing-report.md`). The arc delivered its
+specified capability — the store's full git lifecycle is native `odm` — and more: CDC
+binary access (`make build-linux`) is now a reusable project asset, and `store set-remote`
+closes the remote-configuration gap. The arc doubled from 3 to 6 slices through
+live-surfaced gaps; all tracked. Capability column updated to include `store set-remote`.
 
-**Store-as-Source added to §2a** — a named, number-deferred arc (`arc-store-as-source/arc-plan.md`)
-that existed since 2026-08-02 (mentioned in v1.18's status update) but had no §2a row. 7 slices,
-5 done: s05/s06 (decomposition bookkeeping) CDC-verified 2026-08-02; s01 (ODD-0026) Accepted
-2026-08-03; s02/s03 (self-sourced nodes + programmatic authoring) CDC-verified 2026-08-03. s04
-(cutover) gated on operator go; s07 (interactive authoring) plan-late.
+**Store-as-Source added to §2a.** The arc existed as a directory
+(`arc-store-as-source/arc-plan.md`) with 5/7 slices done but had no §2a row — a gap
+that surfaced during the SL arc-close when checking what comes next. Added with its
+capability, dependencies, and status.
 
-**§3 brought current** (was 2026-07-27): added Store Lifecycle and Store-as-Source bullets; updated
-Migration Fidelity bullet (was only in §2a); updated LLM command surface's slice count (7→10, per
-v1.4 of that arc-plan) and sequencing (runs after SaS cutover); updated the next-arc sequencing
-paragraph. **Dashboard** (`project-status.html`) regenerated: SL card updated (paused 1/3 → active
-6/6); SaS card added; summary stats updated (Active chip replaces Just-closed chip; Paused drops
-SL). Generated date 2026-08-04.
+**§3 updated** — SL bullet added (CLOSED), SaS bullet added (ACTIVE 5/7), LLM slice
+count corrected (7→10, per the arc-plan's actual content), LLM sequencing updated to
+"after Store-as-Source cutover." Next-arc sequencing paragraph updated to include SL
+(closed) and SaS (active) in the remaining path.
 
-Surfaced by: the s06 CDC verification session completing the Store Lifecycle arc's slice work.
+**Surfaced by:** the SL arc-close bubble-up (CDC, this session).
 
 ### v1.21 -- 2026-08-03 -- FTS elevated to 1.0.0 hard gate (operator call)
 **FTS** status in §4a changed from "near-term / elevated — hard-gate vs.
