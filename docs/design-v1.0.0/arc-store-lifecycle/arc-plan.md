@@ -79,7 +79,7 @@ raw-git footnote.
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
 | SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | **done — CDC-verified 2026-08-03** (`slice05-cdc-binary-access/cdc-verification.md`; CC-attested `closing-report.md`) |
-| SL-8 | `store set-remote` configures the sync remote (explicit or auto-detect); `sync` reads the configured remote (fallback "origin") and handles the **first-push** case (remote reachable, branch never pushed → push); `store init` auto-sets the remote when exactly one exists; `--json` | `set-remote origin` → odm.toml updated; `init → set-remote → commit → sync` pushes on first run; sync falls back to "origin" when no remote configured | serious (unblocks the operator's first push to GH) | **done — CC-attested PASS 2026-08-04** (`slice06-store-set-remote/closing-report.md`; 16 fixtures against real bare-repo remotes; a real `rename.rs` remote-preservation defect found and fixed in the process, see F-7's Notes) |
+| SL-8 | `store set-remote` configures the sync remote (explicit or auto-detect); `sync` reads the configured remote (fallback "origin") and handles the **first-push** case (remote reachable, branch never pushed → push); `store init` auto-sets the remote when exactly one exists; `--json` | `set-remote origin` → odm.toml updated; `init → set-remote → commit → sync` pushes on first run; sync falls back to "origin" when no remote configured | serious (unblocks the operator's first push to GH) | **done — CDC-verified PASS 2026-08-04** (`slice06-store-set-remote/cdc-verification.md`; CC-attested `closing-report.md`; 16 fixtures reproduced in cloud container; `rename.rs` remote-preservation bug found and fixed) |
 | SL-6 | After `store commit`, the git **index** matches the new HEAD — a raw `git status` is **clean** (no stale-index staged-deletions), without changing the commit content, the `.odm/` exclusion, or the odm-aware delta | fixture: `store commit` → `git status --porcelain` empty; SL-1 tests still green | serious (SL-1 remediation; underpins SL-4) | **done — CDC-verified PASS 2026-08-02** (`slice04-commit-index-consistency/cdc-verification.md`, code `e8e69de`); real leg = operator's next `store commit` on the rebuilt binary |
 
 ## Exit criteria (arc acceptance)
@@ -97,23 +97,29 @@ do worktree/branch/commit ops for `init`) — the capability is largely *exposin
 
 ## Version History
 
-### 2026-08-04 — s06 (`store set-remote`) closed; bubble-up
+### 2026-08-04 — s06 (`store set-remote`) closed; CDC-verified PASS
 
-`slice06-store-set-remote` closed — CC-attested (`closing-report.md`): `store set-remote`
-(explicit + auto-detect, D-1) configures `[store].remote` in `odm.toml`; `sync` reads it (falling
-back to `DEFAULT_REMOTE` for old stores) and treats a successful fetch with no upstream ref as a
-**first-push** (D-4) rather than "nothing to sync" — closing the exact gap the operator hit live.
-`store init` auto-sets the remote when the repo has exactly one (D-3). 16 fixtures against real
-bare-repo remotes, including one that configures only a non-`"origin"` remote to prove `sync`
-actually reads the config rather than merely not failing.
+`slice06-store-set-remote` closed — CC-attested (`closing-report.md`), **CDC-verified PASS
+2026-08-04** (`cdc-verification.md`): all 8 ledger rows reproduced independently. CDC built the
+codebase in a cloud container (patched local-only commits onto a shallow clone), ran `cargo test
+--test store_set_remote` (16/16 pass), full workspace `cargo test` (~770 pass, zero regressions —
+2 pre-existing `edge_cases` failures confirmed root→UID 0), and `cargo clippy -p odm-store -p
+odm-cli` (clean).
 
-Two flagged deviations from the cc-prompt's sketch: **D-5** used `toml_edit::DocumentMut` (already
-a dependency, already used for exactly this purpose elsewhere in `odm-cli`) instead of the
-suggested `toml::Value` round-trip, preserving `odm.toml`'s comments/formatting for free. And
-**a second, unprompted `odm-store` fix**: adding the `remote` field to `StoreLocation` surfaced
-that `rename.rs`'s location-builders and its own `write_locator` never carried the field through —
-a real `store rename` would have silently dropped a configured remote. Fixed; `odm-store`'s full
-test suite (49 tests, incl. every `rename::tests` case) stays green.
+`store set-remote` (explicit + auto-detect, D-1) configures `[store].remote` in `odm.toml`; `sync`
+reads it (falling back to `DEFAULT_REMOTE` for old stores) and treats a successful fetch with no
+upstream ref as a **first-push** (D-4) rather than "nothing to sync" — closing the exact gap the
+operator hit live. `store init` auto-sets the remote when the repo has exactly one (D-3). 16
+fixtures against real bare-repo remotes, including one that configures only a non-`"origin"` remote
+to prove `sync` actually reads the config rather than merely not failing.
+
+Three flagged deviations from the cc-prompt, all improvements: **D-5** used `toml_edit::DocumentMut`
+(already a dependency) instead of the suggested `toml::Value` round-trip, preserving `odm.toml`'s
+comments/formatting. **F-5** chose the "simpler alternative" for `init`'s `write_locator` (inline
+`write!`, correct since `init` writes a new `[store]` from scratch). And **an unprompted `odm-store`
+fix**: adding `remote` to `StoreLocation` surfaced that `rename.rs`'s location-builders silently
+dropped the field — a real `store rename` would have lost a configured remote. Fixed; compiler's
+exhaustive struct pattern caught it.
 
 SL-8 done. **The operator's blocked first `store sync` against GitHub is unblocked** —
 `init → set-remote → commit → sync` (or, for single-remote repos, `init` alone) now pushes on the
