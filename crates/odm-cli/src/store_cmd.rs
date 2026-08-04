@@ -688,3 +688,204 @@ pub(crate) fn status(
     }
     Ok(())
 }
+
+/// The `--json` shape for `store sync` (F-6): the action taken — or, under
+/// `--dry-run`, the action the ancestry calls for — plus the upstream state.
+#[derive(Serialize)]
+struct SyncJson {
+    /// `pushed` | `pulled` | `up-to-date` | `diverged` | `no-upstream`.
+    action: &'static str,
+    /// Whether this was a preview rather than a real push/pull.
+    dry_run: bool,
+    /// The orphan branch this acted on.
+    branch: String,
+    /// The store's root directory.
+    store_root: String,
+    /// The upstream compared/synced against, or `None` when there is none.
+    upstream: Option<SyncUpstreamJson>,
+}
+
+/// The upstream half of [`SyncJson`].
+#[derive(Serialize)]
+struct SyncUpstreamJson {
+    /// The upstream ref, e.g. `origin/odm-store`.
+    #[serde(rename = "ref")]
+    reference: String,
+    /// Commits local has that upstream lacks, after this run — or, under
+    /// `--dry-run`, unchanged from before it (nothing was pushed).
+    ahead: usize,
+    /// Commits upstream has that local lacks, after this run — or, under
+    /// `--dry-run`, unchanged from before it (nothing was pulled).
+    behind: usize,
+}
+
+/// `store sync`'s action for a [`SyncAction`] classification: what happened,
+/// or — under `--dry-run` — what the classification calls for. Distinct
+/// vocabulary from `status`'s [`action_str`]: `status` describes a state
+/// (`upstream-ahead`), `sync` describes an outcome (`pulled`).
+fn sync_action_str(action: &SyncAction) -> &'static str {
+    match action {
+        SyncAction::FastForward => "pulled",
+        SyncAction::LocalAhead(_) => "pushed",
+        SyncAction::UpToDate => "up-to-date",
+        SyncAction::Diverged => "diverged",
+        SyncAction::NoUpstream => "no-upstream",
+    }
+}
+
+/// Runs `odm store sync`: pushes or pulls the orphan-branch store to/from its
+/// remote (arc-store-lifecycle s03) — the last leg of the lifecycle, closing
+/// the gap that otherwise forces raw git.
+///
+/// A single bidirectional verb: the action follows from the ancestry, fetched
+/// first — **always, even under `--dry-run`** (D-2) — so the preview matches
+/// what a real run would do; a preview against a stale remote-tracking ref
+/// could show "up to date" when a real run would pull, which is worse than no
+/// preview. Fetching only updates remote-tracking refs; it never moves the
+/// local branch or writes into the worktree.
+///
+/// Upstream ahead **fast-forwards** — never a merge commit. Local ahead
+/// **pushes** — never `--force`. **Diverged stops and changes nothing**
+/// (ODD-0022 §6): odm never resolves a shared branch's diverged history on
+/// someone's behalf.
+///
+/// **D-3:** a dirty worktree does not block a push (it only sends committed
+/// work), but does block a pull — `git merge --ff-only` against uncommitted
+/// changes is exactly the kind of surprising git error odm exists to avoid,
+/// so a fast-forward first checks [`Repo::is_clean`] and refuses with
+/// guidance instead of letting git's own error surface.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if there is no store worktree to sync,
+/// the worktree is dirty ahead of a fast-forward, or a git operation fails.
+pub(crate) fn sync_cmd(
+    root: &Path,
+    dry_run: bool,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let Some(location) = home.location.clone() else {
+        anyhow::bail!(
+            "no `[store]` in {} — there is no store worktree to sync; the store is the repo \
+             root. Run `odm store init` first.",
+            home.repo_root.join("odm.toml").display()
+        )
+    };
+    let branch = location.branch_name.clone();
+    let store_root = home.store_root.clone();
+    let repo_root = home.repo_root.clone();
+
+    // D-2: fetch always, even under --dry-run. A failure (no remote, no
+    // network) is not fatal — it leaves no upstream to compare, which the
+    // NoUpstream arm below already handles.
+    let _ = worktree::fetch(&repo_root, init::DEFAULT_REMOTE);
+
+    let upstream_ref = format!("{}/{branch}", init::DEFAULT_REMOTE);
+    let local = worktree::rev_parse(&repo_root, &branch)?;
+    let upstream = worktree::rev_parse(&repo_root, &upstream_ref)?;
+
+    let (action, mut ahead, mut behind) = match (&local, &upstream) {
+        (Some(l), Some(u)) => {
+            let ahead = worktree::count_commits(&repo_root, &format!("{u}..{l}"))?;
+            let behind = worktree::count_commits(&repo_root, &format!("{l}..{u}"))?;
+            let ancestry = init::Ancestry {
+                local_is_ancestor: worktree::is_ancestor(&repo_root, l, u)?,
+                upstream_is_ancestor: worktree::is_ancestor(&repo_root, u, l)?,
+                local_ahead: ahead,
+            };
+            (init::sync_action(Some(ancestry)), ahead, behind)
+        }
+        _ => (init::sync_action(None), 0, 0),
+    };
+
+    if !dry_run {
+        match &action {
+            SyncAction::FastForward => {
+                let repo = Repo::open(&store_root).with_context(|| {
+                    format!(
+                        "opening the store worktree at {} — has `odm store init` run?",
+                        store_root.display()
+                    )
+                })?;
+                if !repo.is_clean()? {
+                    anyhow::bail!(
+                        "store sync: {branch:?} has uncommitted changes — a fast-forward pull \
+                         would conflict with them. Commit first (`odm store commit`), then \
+                         retry."
+                    );
+                }
+                worktree::merge_ff_only(&store_root, &upstream_ref)?;
+                behind = 0;
+            }
+            SyncAction::LocalAhead(_) => {
+                worktree::push(&repo_root, init::DEFAULT_REMOTE, &branch)?;
+                ahead = 0;
+            }
+            SyncAction::UpToDate | SyncAction::Diverged | SyncAction::NoUpstream => {}
+        }
+    }
+
+    if json {
+        let view = SyncJson {
+            action: sync_action_str(&action),
+            dry_run,
+            branch,
+            store_root: store_root.display().to_string(),
+            upstream: (action != SyncAction::NoUpstream).then(|| SyncUpstreamJson {
+                reference: upstream_ref.clone(),
+                ahead,
+                behind,
+            }),
+        };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    let prefix = if dry_run { "store sync (dry-run)" } else { "store sync" };
+    match &action {
+        SyncAction::FastForward if dry_run => term::info(
+            err,
+            &format!(
+                "{prefix}: would fast-forward {branch:?} to {upstream_ref} — nothing written \
+                 (the upstream was fetched so this preview matches the real run; \
+                 remote-tracking refs are all that moved)"
+            ),
+        )?,
+        SyncAction::FastForward => term::success(
+            err,
+            &format!("{prefix}: fast-forwarded {branch:?} to {upstream_ref} — the store is fresh"),
+        )?,
+        SyncAction::LocalAhead(n) if dry_run => term::info(
+            err,
+            &format!("{prefix}: would push {n} commit(s) to {upstream_ref} — nothing written"),
+        )?,
+        SyncAction::LocalAhead(n) => {
+            term::success(err, &format!("{prefix}: pushed {n} commit(s) to {upstream_ref}"))?
+        }
+        SyncAction::UpToDate => term::success(
+            err,
+            &format!("{prefix}: {branch:?} is already up to date with {upstream_ref}"),
+        )?,
+        SyncAction::Diverged => term::warning(
+            err,
+            &format!(
+                "{prefix}: {branch:?} and {upstream_ref} have diverged — each has commits the \
+                 other lacks ({ahead} ahead, {behind} behind). Nothing was changed. odm will not \
+                 merge or rebase a shared branch for you: that rewrites history other clones \
+                 already have. Reconcile them in {}, then re-run.",
+                store_root.display()
+            ),
+        )?,
+        SyncAction::NoUpstream => term::warning(
+            err,
+            &format!(
+                "{prefix}: nothing to sync — {branch:?} has no upstream (no remote, or it does \
+                 not carry the branch). The local store is untouched and fine."
+            ),
+        )?,
+    }
+    Ok(())
+}

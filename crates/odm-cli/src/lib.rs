@@ -297,6 +297,25 @@ enum StoreCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Push or pull the orphan-branch store to/from its remote — the last
+    /// leg of the lifecycle, closing the gap that otherwise forces raw git.
+    ///
+    /// A single bidirectional verb, not separate push/pull commands: the
+    /// action follows from the ancestry (fetched first, always, even under
+    /// `--dry-run` — a preview against a stale remote-tracking ref would be a
+    /// lie). Upstream ahead **fast-forwards** (never a merge commit); local
+    /// ahead **pushes** (never `--force`); already level is a no-op;
+    /// **divergence stops** and changes nothing — odm never rewrites history
+    /// another clone already holds (ODD-0022 §6). No upstream configured is
+    /// reported, not an error.
+    Sync {
+        /// Report what would happen; fetch, but never merge or push.
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit JSON describing the outcome.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// The `odm node …` operations — node entity management (ODD-0023 §4).
@@ -937,6 +956,9 @@ pub fn dispatch(
                 }
                 StoreCommand::Status { json } => {
                     store_cmd::status(root, json, out, err)?;
+                }
+                StoreCommand::Sync { dry_run, json } => {
+                    store_cmd::sync_cmd(root, dry_run, json, out, err)?;
                 }
             },
         },

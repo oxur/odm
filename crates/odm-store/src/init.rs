@@ -576,7 +576,7 @@ pub fn sync(plan: &Plan) -> Result<Synced> {
 
     // Only the fast-forward changes anything, and only outside a dry run.
     if action == SyncAction::FastForward && !plan.dry_run {
-        worktree::merge_ff_only(&store_root)?;
+        worktree::merge_ff_only(&store_root, &upstream_ref)?;
     }
 
     Ok(Synced {

@@ -15,13 +15,15 @@
 //! exists at `init` and never during ordinary use. If `gix` grows worktree
 //! support, this module is the only thing to delete.
 //!
-//! **Scope widened deliberately, twice.** §5 originally ratified the exception
-//! for *creating* a worktree. Attach and ff-sync (slice 03) added
-//! `worktree add <dir> <branch>`, `fetch` and `merge --ff-only`; rename (slice
-//! 04) adds `worktree move` and `branch -m`, both named in §5. They live here
-//! rather than anywhere else so the boundary stays one module wide, and the
-//! invariant that matters is unchanged: **setup-time only (`init`/`rename`),
-//! steady state on `gix`**.
+//! **Scope widened deliberately, three times.** §5 originally ratified the
+//! exception for *creating* a worktree. Attach and ff-sync (arc-store-home
+//! slice 03) added `worktree add <dir> <branch>`, `fetch` and `merge
+//! --ff-only`; rename (arc-store-home slice 04) added `worktree move` and
+//! `branch -m`, both named in §5. `push` (arc-store-lifecycle slice 03) adds
+//! the last leg `store sync` needs — `git push <remote> <branch>`, never
+//! `--force`. They live here rather than anywhere else so the boundary stays
+//! one module wide, and the invariant that matters is unchanged: **setup- and
+//! sync-time only (`init`/`rename`/`store sync`), steady state on `gix`**.
 //!
 //! ## The two paths
 //!
@@ -225,16 +227,43 @@ pub fn fetch(repo_root: &Path, remote: &str) -> Result<()> {
     run(repo_root, &["fetch".into(), remote.into()])
 }
 
-/// Fast-forwards the branch checked out in `worktree_dir`.
+/// Pushes `branch` to `remote` — a plain push, never `--force`.
+///
+/// **Never rewrites remote history.** A `store sync` push only runs from the
+/// `LocalAhead` arm of the sync decision table — local strictly ahead of
+/// upstream — so a fast-forwarding push is always possible; if the remote has
+/// moved in the meantime, a plain push fails loudly rather than forcing over
+/// it, which is exactly the ODD-0022 §6 discipline (divergence stops, it is
+/// never resolved on someone else's behalf).
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if the push fails (no network, no such remote, or the
+/// remote has diverged since the last fetch).
+pub fn push(repo_root: &Path, remote: &str, branch: &str) -> Result<()> {
+    run(repo_root, &["push".into(), remote.into(), branch.into()])
+}
+
+/// Fast-forwards the branch checked out in `worktree_dir` to `upstream_ref`.
 ///
 /// `--ff-only` is the whole point: it fails rather than creating a merge
 /// commit, so a sync can never rewrite or merge a published branch.
 ///
+/// **Takes `upstream_ref` explicitly** (e.g. `origin/odm-store`) rather than
+/// relying on `git merge --ff-only`'s no-argument form, which merges from the
+/// branch's configured upstream-tracking ref (`branch.<name>.merge`) — a
+/// config value nothing in this module ever sets (neither `store init`'s
+/// bootstrap/attach arms nor a plain `git push` without `-u`). Without an
+/// explicit ref, a merge on an untracked branch fails outright with "No
+/// remote for the current branch", regardless of whether a fast-forward is
+/// actually available — found via arc-store-lifecycle slice 03's fixtures,
+/// the first end-to-end test of this call.
+///
 /// # Errors
 ///
 /// [`StoreError::Git`] if the merge is not a fast-forward, or git fails.
-pub fn merge_ff_only(worktree_dir: &Path) -> Result<()> {
-    run(worktree_dir, &["merge".into(), "--ff-only".into()])
+pub fn merge_ff_only(worktree_dir: &Path, upstream_ref: &str) -> Result<()> {
+    run(worktree_dir, &["merge".into(), "--ff-only".into(), upstream_ref.into()])
 }
 
 /// Resolves `rev` to a commit id, or `None` when it does not exist.
