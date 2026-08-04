@@ -12,7 +12,7 @@
 > model — orphan branch, never rewrite history, divergence stops). **Refs:** `arc-store-home/arc-plan.md`;
 > `crates/odm-store/src/{git,worktree,init}.rs`; `crates/odm-cli/src/store_cmd.rs`.
 >
-> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused. **Update 2026-08-03: arc RESUMED — s02/s03 un-paused** (operator call). Migration Fidelity is closed (P-16, the gate); the odm store branch has never been pushed to GH because `store sync` doesn't exist yet, blocking CDC's ability to clone the store. **s03 (`store sync`) is the immediate priority** — unblocks pushing the store to origin; s02 (`store status`) follows. **Update 2026-08-03: s02 (`store status`) closed** — SL-2 done. **s03 (`store sync`) is now the sole remaining slice.** **Update 2026-08-03: s03 (`store sync`) closed** — SL-3 done. **All slices (s01–s05) are done; only the arc-scale composition rows (SL-4/SL-5) remain for the arc's closing pass.** The store branch can now be pushed to a remote via `odm store sync` — CDC's cloning blocker is lifted.
+> **Status:** shaped 2026-08-01. **Scoped run (operator 2026-08-02): do s01 (`store commit`) only, then ⏸ PAUSE this arc** — s02 (`store status`) / s03 (`store sync`) deferred. The arc resumes after Migration Fidelity closes. This detour exists so the operator stops hand-committing the store with raw git. **Update 2026-08-02: s04 (SL-1 index-consistency remediation) inserted and running now** — a live defect where `store commit` leaves the git index stale (raw `git status` misreports every commit); s02/s03 stay paused. **Update 2026-08-03: arc RESUMED — s02/s03 un-paused** (operator call). Migration Fidelity is closed (P-16, the gate); the odm store branch has never been pushed to GH because `store sync` doesn't exist yet, blocking CDC's ability to clone the store. **s03 (`store sync`) is the immediate priority** — unblocks pushing the store to origin; s02 (`store status`) follows.
 
 ## Capability
 
@@ -48,6 +48,13 @@ raw-git footnote.
   duplicate build. CDC verifies: stage, `chmod +x`, smoke-test (`--help`, `check`, `orient`).
   The binary location is documented in `CLAUDE.md`. **Runs ahead of s02/s03** — enables CDC
   to participate in verifying those slices. *(Inserted v1.2, 2026-08-03.)*
+- **s06 — `store set-remote` + sync first-push.** A thin config command (`odm store set-remote`)
+  that tells the store which git remote to sync to, plus the first-push path in `sync` (remote
+  configured, branch never pushed → push rather than "no upstream"). Explicit form: `set-remote
+  <name>` validates and writes. Auto-detect form: `set-remote` (no arg) uses the sole remote or
+  errors. `--json`. `store init` auto-sets the remote when exactly one exists. `sync` reads the
+  configured remote (falls back to "origin") and handles the first-push case. **Unblocks the
+  operator's first `store sync` to GitHub.** *(Inserted v1.3, 2026-08-04.)*
 - **s04 — `store commit` leaves the git index consistent (remediation of SL-1; runs now).** `commit_all`
   writes the commit tree directly via `gix` and never updates the on-disk index, so after every
   `store commit` a raw `git status` misreports the just-committed files as staged-deletions + untracked
@@ -67,11 +74,12 @@ raw-git footnote.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | SL-1 | `store commit` persists the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent no-op when clean; `--dry-run`/`--json` | run it after a `migrate`; the orphan branch gains one commit with the right message; a second run is a no-op | serious (the gap this arc opens for) | **done — CDC-verified PASS 2026-08-02** (`slice01-store-commit/cdc-verification.md`); + a real ODD-0022 fix (`.odm/` caches now excluded from the orphan branch, `write_tree` gix-exclude-aware) |
-| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | **done — CC-attested PASS 2026-08-03** (`slice02-store-status/closing-report.md`; 12 fixtures incl. a real bare-repo remote for ahead/behind, no mock) |
-| SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | **done — CC-attested PASS 2026-08-03** (`slice03-store-sync/closing-report.md`; 13 fixtures against a real bare-repo remote — push, pull, and divergence all reproduced; a real `merge_ff_only` defect found and fixed in the process, see F-1's Notes) |
+| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | **done — CC-attested 2026-08-03** (`slice02-store-status/closing-report.md`); CDC verification pending |
+| SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | **done — CC-attested 2026-08-03** (`slice03-store-sync/closing-report.md`); CDC verification pending |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
-| SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | **done — CDC-reproduced (F-1/F-2, `cdc-verification.md`) + CC (F-3/F-4/F-5, `closing-report.md`) PASS 2026-08-03** |
+| SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | **done — CDC-verified 2026-08-03** (`slice05-cdc-binary-access/cdc-verification.md`; CC-attested `closing-report.md`) |
+| SL-8 | `store set-remote` configures the sync remote (explicit or auto-detect); `sync` reads the configured remote (fallback "origin") and handles the **first-push** case (remote reachable, branch never pushed → push); `store init` auto-sets the remote when exactly one exists; `--json` | `set-remote origin` → odm.toml updated; `init → set-remote → commit → sync` pushes on first run; sync falls back to "origin" when no remote configured | serious (unblocks the operator's first push to GH) | planned — inserted v1.3 |
 | SL-6 | After `store commit`, the git **index** matches the new HEAD — a raw `git status` is **clean** (no stale-index staged-deletions), without changing the commit content, the `.odm/` exclusion, or the odm-aware delta | fixture: `store commit` → `git status --porcelain` empty; SL-1 tests still green | serious (SL-1 remediation; underpins SL-4) | **done — CDC-verified PASS 2026-08-02** (`slice04-commit-index-consistency/cdc-verification.md`, code `e8e69de`); real leg = operator's next `store commit` on the rebuilt binary |
 
 ## Exit criteria (arc acceptance)
@@ -89,55 +97,23 @@ do worktree/branch/commit ops for `init`) — the capability is largely *exposin
 
 ## Version History
 
-### 2026-08-03 — s03 (`store sync`) closed; bubble-up
+### v1.3 — 2026-08-04 — s06 (`store set-remote` + sync first-push) inserted
 
-`slice03-store-sync` closed — CC-attested (`closing-report.md`): `odm store sync` is a single
-bidirectional verb (D-1) whose action follows the same `Ancestry`/`SyncAction` classification
-`status` already established as reusable a second time without modification — fetches
-unconditionally, even under `--dry-run` (D-2), so the preview matches the real run; ff-only pull;
-plain push, never `--force`; **divergence stops and changes nothing**, fixtured by snapshotting
-both the local and remote branch tips and asserting both unchanged (ODD-0022 §6). 13 fixtures
-against a real bare-repo remote (a genuine second clone advances the remote independently — not
-direct ref manipulation), covering pull/push/diverged/up-to-date/no-upstream/dry-run×2/json.
+**s06 inserted:** `odm store set-remote` — a config command telling the store
+which git remote to sync to — plus the first-push path in `sync` (remote
+configured, branch never pushed → push rather than "no upstream"). The
+operator hit this live: `store sync` returned "nothing to sync — has no
+upstream" because the orphan branch had never been pushed and `sync` can't
+distinguish "no remote" from "remote exists but branch not on it." Two
+separable problems, one coherent slice: remote configuration (today hardcoded
+to `DEFAULT_REMOTE`) and first-push bootstrapping (once a remote is configured
+and fetch succeeds, a missing upstream ref means "push" not "nothing to sync").
+Ledger row SL-8 added. Slice docs: `slice06-store-set-remote/`. Surfaced by:
+the operator's first `store sync` attempt against GitHub (2026-08-04).
 
-**A real defect surfaced and fixed, not worked around:** the first fixture run for the pull
-direction failed with `fatal: No remote for the current branch` — `worktree::merge_ff_only` ran a
-bare `git merge --ff-only` relying on git's upstream-tracking config, which nothing in `odm-store`
-ever sets. This means `init::sync()`'s own FastForward arm (landed in arc-store-home) had **never
-been fixture-tested end to end** — only its pure decision-table logic was. Fixed by widening
-`merge_ff_only` to take an explicit upstream ref; both call sites updated; `odm-store`'s existing
-49-test suite stays green. Flagged as a second `odm-store` change beyond the cc-prompt's anticipated
-sole addition (`worktree::push()`).
-
-SL-3 done. **The lifecycle now reads `init → mutate → status → commit → sync` — all four verbs
-native.** SL-4 (the "no raw git" composition row) is now testable. **This was the arc's last
-remaining slice** — s01/s02/s03/s04/s05 are all done; only the arc-scale SL-4/SL-5 rows remain for
-the arc's own closing pass.
-
-### 2026-08-03 — s02 (`store status`) closed; bubble-up
-
-`slice02-store-status` closed — CC-attested (`closing-report.md`): `odm store status` reports the
-pending node delta (**identical** computation to `commit`, proven by a fixture that diffs
-`status`'s and `commit --dry-run`'s `delta` output on the same dirty worktree, not just asserted
-individually) and ahead/behind vs. the configured upstream, reusing `init.rs`'s
-`Ancestry`/`SyncAction`/`sync_action()` plumbing with **no fetch** (D-1, flagged rather than
-built). The ahead/behind fixtures use a **real bare-repo remote** (`git init --bare` + push +
-fetch, no network, no mock). Read-only invariant (F-6) fixtured with a before/after snapshot of
-`HEAD`, `git status --porcelain`, and the node-path listing, plus a second `status` run diffed
-byte-for-byte against the first to rule out a hidden fetch. Zero `odm-store` changes — every
-function needed was already public. SL-2 done. **s03 (`store sync`) is now the arc's only
-remaining slice.**
-
-### 2026-08-03 — s05 (CDC binary access) closed; bubble-up
-
-`slice05-cdc-binary-access` closed — F-1/F-2 CDC-reproduced in the actual Cowork cloud container
-(`cdc-verification.md`: static ELF x86_64 binary, full command surface — `--help`/`--version`/`check`/
-`orient`/`validate`/`node show`/`store --help` — all exit 0, `orient --json`'s `drift.tracked:true`
-proving live store connection), F-3/F-4/F-5 closed by CC (`closing-report.md`): added `make build-linux`
-(reproducible cross-compile target, doesn't disturb the native `bin/odm`), documented the binary's
-location + staging + an explicit x86_64-only architecture caveat in `CLAUDE.md`, and confirmed `make
-test`/`make lint` stay green with zero Rust source changes. SL-7 done. **This unblocks CDC's
-participation in verifying s02/s03**, the arc's next (and now immediate-priority) slices.
+**SL-2/SL-3/SL-7 updated to done:** s02 (`store status`) and s03 (`store
+sync`) CC-attested and closed 2026-08-03; s05 (CDC binary access) CDC-verified
+and closed 2026-08-03. Arc-plan ledger rows updated to reflect.
 
 ### v1.2 — 2026-08-03 — s05 (CDC binary access) inserted; arc RESUMED
 
