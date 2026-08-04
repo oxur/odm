@@ -316,6 +316,25 @@ enum StoreCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Configure which git remote the store syncs to.
+    ///
+    /// **Explicit:** `odm store set-remote <name>` — validates the named
+    /// remote exists (`git remote get-url`), writes `remote = "<name>"` to
+    /// `[store]` in `odm.toml`, and reports. Re-running with a different
+    /// name overwrites.
+    ///
+    /// **Auto-detect:** `odm store set-remote` (no argument) — if exactly
+    /// one remote is configured, uses it; zero or multiple remotes error
+    /// with a clear message listing the available names. No interactive
+    /// prompt.
+    SetRemote {
+        /// The remote to use. Omit to auto-detect (exactly one must exist).
+        #[arg(value_name = "REMOTE")]
+        remote: Option<String>,
+        /// Emit JSON describing the result.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// The `odm node …` operations — node entity management (ODD-0023 §4).
@@ -959,6 +978,9 @@ pub fn dispatch(
                 }
                 StoreCommand::Sync { dry_run, json } => {
                     store_cmd::sync_cmd(root, dry_run, json, out, err)?;
+                }
+                StoreCommand::SetRemote { remote, json } => {
+                    store_cmd::set_remote(root, remote.as_deref(), json, out, err)?;
                 }
             },
         },

@@ -156,6 +156,7 @@ impl RenamePlan {
                 .new_branch
                 .clone()
                 .unwrap_or_else(|| self.current.branch_name.clone()),
+            remote: self.current.remote.clone(),
         }
     }
 }
@@ -319,6 +320,7 @@ fn observed_location(current: &StoreLocation, root: &Path, branch: &str) -> Stor
         worktree_base: current.worktree_base.clone(),
         worktree_name,
         branch_name: branch.to_string(),
+        remote: current.remote.clone(),
     }
 }
 
@@ -364,6 +366,11 @@ fn write_locator(repo_root: &Path, location: &StoreLocation) -> Result<()> {
          branch_name = {:?}\n",
         location.worktree_base, location.worktree_name, location.branch_name
     ));
+    // Preserve `remote` across a rename — dropping it here would silently
+    // un-configure `store sync`'s target the next time the store moves.
+    if let Some(remote) = &location.remote {
+        text.push_str(&format!("remote = {remote:?}\n"));
+    }
     std::fs::write(&path, text).map_err(|e| StoreError::io(&path, e))
 }
 
@@ -377,6 +384,7 @@ mod tests {
             worktree_base: ".worktrees".to_string(),
             worktree_name: worktree.to_string(),
             branch_name: branch.to_string(),
+            remote: None,
         }
     }
 

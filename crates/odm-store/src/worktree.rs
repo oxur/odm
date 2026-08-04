@@ -15,15 +15,19 @@
 //! exists at `init` and never during ordinary use. If `gix` grows worktree
 //! support, this module is the only thing to delete.
 //!
-//! **Scope widened deliberately, three times.** §5 originally ratified the
+//! **Scope widened deliberately, four times.** §5 originally ratified the
 //! exception for *creating* a worktree. Attach and ff-sync (arc-store-home
 //! slice 03) added `worktree add <dir> <branch>`, `fetch` and `merge
 //! --ff-only`; rename (arc-store-home slice 04) added `worktree move` and
-//! `branch -m`, both named in §5. `push` (arc-store-lifecycle slice 03) adds
-//! the last leg `store sync` needs — `git push <remote> <branch>`, never
-//! `--force`. They live here rather than anywhere else so the boundary stays
-//! one module wide, and the invariant that matters is unchanged: **setup- and
-//! sync-time only (`init`/`rename`/`store sync`), steady state on `gix`**.
+//! `branch -m`, both named in §5. `push` (arc-store-lifecycle slice 03) added
+//! the leg `store sync` needs — `git push <remote> <branch>`, never
+//! `--force`. `list_remotes`/`remote_url` (arc-store-lifecycle slice 06) add
+//! read-only `git remote` / `git remote get-url`, so `store set-remote` can
+//! discover and validate remotes without a second git-access path. They live
+//! here rather than anywhere else so the boundary stays one module wide, and
+//! the invariant that matters is unchanged: **setup- and sync-time only
+//! (`init`/`rename`/`store sync`/`store set-remote`), steady state on
+//! `gix`**.
 //!
 //! ## The two paths
 //!
@@ -242,6 +246,35 @@ pub fn fetch(repo_root: &Path, remote: &str) -> Result<()> {
 /// remote has diverged since the last fetch).
 pub fn push(repo_root: &Path, remote: &str, branch: &str) -> Result<()> {
     run(repo_root, &["push".into(), remote.into(), branch.into()])
+}
+
+/// Lists the repository's configured remotes (`git remote`).
+///
+/// Returns an empty `Vec` when there are none — not an error, since a
+/// local-only repo is a valid state.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn list_remotes(repo_root: &Path) -> Result<Vec<String>> {
+    let out = capture(repo_root, &["remote".into()])?;
+    Ok(out
+        .map(|t| t.lines().map(str::to_string).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default())
+}
+
+/// The URL configured for `remote` (`git remote get-url`), or `None` when
+/// the remote does not exist.
+///
+/// Used by `set-remote` to validate that a named remote is real before
+/// writing it to the config.
+///
+/// # Errors
+///
+/// [`StoreError::Git`] if git cannot be run.
+pub fn remote_url(repo_root: &Path, remote: &str) -> Result<Option<String>> {
+    let out = capture(repo_root, &["remote".into(), "get-url".into(), remote.into()])?;
+    Ok(out.map(|t| t.trim().to_string()).filter(|u| !u.is_empty()))
 }
 
 /// Fast-forwards the branch checked out in `worktree_dir` to `upstream_ref`.

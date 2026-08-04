@@ -642,7 +642,11 @@ pub(crate) fn status(
 
     // Same remote-tracking plumbing `init`'s sync arm uses, but with no fetch
     // (D-1) — `status` reports against whatever the last fetch left behind.
-    let upstream_ref = format!("{}/{branch}", init::DEFAULT_REMOTE);
+    // Reads the configured remote (slice 06), same fallback `sync` uses, so
+    // the two commands never disagree about which remote "ahead/behind"
+    // means.
+    let remote = location.remote.as_deref().unwrap_or(init::DEFAULT_REMOTE);
+    let upstream_ref = format!("{remote}/{branch}");
     let local = worktree::rev_parse(&repo_root, &branch)?;
     let upstream = worktree::rev_parse(&repo_root, &upstream_ref)?;
 
@@ -733,6 +737,128 @@ fn sync_action_str(action: &SyncAction) -> &'static str {
     }
 }
 
+/// The `--json` shape for `store set-remote` (F-6).
+#[derive(Serialize)]
+struct SetRemoteJson {
+    /// The remote name now configured.
+    remote: String,
+    /// Its URL.
+    url: String,
+    /// Whether it was auto-detected (no argument given).
+    auto_detected: bool,
+    /// The store branch.
+    branch: String,
+    /// The store root path.
+    store_root: String,
+}
+
+/// Sets `remote = "<name>"` in the code branch's `odm.toml` `[store]`
+/// section, preserving every other key and every comment (D-5).
+///
+/// Edits with `toml_edit::DocumentMut`, the same approach
+/// `write_additional_paths` uses for the operational config: `odm.toml` is a
+/// short, hand-editable file, and a `toml::Value` round-trip through
+/// `to_string_pretty` would silently discard its one comment (and any a user
+/// adds later) — `toml_edit` touches only the key this function owns.
+/// `[store]` is assumed already present (`set_remote` bails earlier when it
+/// isn't), so no auto-vivify guard is needed here.
+///
+/// # Errors
+///
+/// Returns an error if `odm.toml` cannot be read, parsed, or written.
+fn write_remote_to_locator(repo_root: &Path, remote: &str) -> anyhow::Result<()> {
+    let path = repo_root.join("odm.toml");
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let mut doc = text
+        .parse::<toml_edit::DocumentMut>()
+        .with_context(|| format!("parsing {} as TOML", path.display()))?;
+    doc["store"]["remote"] = toml_edit::value(remote);
+    std::fs::write(&path, doc.to_string()).with_context(|| format!("writing {}", path.display()))
+}
+
+/// Runs `odm store set-remote`: configures which git remote `store sync`
+/// targets (arc-store-lifecycle s06).
+///
+/// **Explicit** (`set-remote <name>`): validates the remote exists
+/// (`git remote get-url`) before writing it — a typo should fail here, not
+/// silently at the next `sync`. **Auto-detect** (`set-remote`, no argument,
+/// D-1): exactly one configured remote is used without a prompt; zero or
+/// multiple remotes is a clear error naming what's available. Re-running
+/// with a different name overwrites — this is a config pointer, not a
+/// destructive action.
+///
+/// # Errors
+///
+/// Returns an error (exit code `2`) if there is no store worktree, the named
+/// remote doesn't exist, auto-detection finds zero or multiple remotes, or
+/// the locator cannot be updated.
+pub(crate) fn set_remote(
+    root: &Path,
+    remote: Option<&str>,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let home = StoreHome::resolve(root);
+    let Some(location) = home.location.clone() else {
+        anyhow::bail!(
+            "no `[store]` in {} — there is no store to configure a remote for. Run `odm store \
+             init` first.",
+            home.repo_root.join("odm.toml").display()
+        )
+    };
+    let repo_root = home.repo_root.clone();
+
+    let (chosen, auto_detected) = match remote {
+        Some(name) => {
+            if worktree::remote_url(&repo_root, name)?.is_none() {
+                let available = worktree::list_remotes(&repo_root)?;
+                anyhow::bail!(
+                    "remote {name:?} does not exist — available remotes: {}",
+                    if available.is_empty() {
+                        "(none configured)".to_string()
+                    } else {
+                        available.join(", ")
+                    }
+                );
+            }
+            (name.to_string(), false)
+        }
+        None => {
+            let remotes = worktree::list_remotes(&repo_root)?;
+            match remotes.len() {
+                0 => anyhow::bail!("no remotes configured for this repository"),
+                1 => (remotes[0].clone(), true),
+                _ => anyhow::bail!(
+                    "multiple remotes configured — specify one: {}",
+                    remotes.join(", ")
+                ),
+            }
+        }
+    };
+    let url = worktree::remote_url(&repo_root, &chosen)?
+        .ok_or_else(|| anyhow::anyhow!("remote {chosen:?} vanished between validation and use"))?;
+
+    write_remote_to_locator(&repo_root, &chosen)?;
+
+    if json {
+        let view = SetRemoteJson {
+            remote: chosen,
+            url,
+            auto_detected,
+            branch: location.branch_name.clone(),
+            store_root: home.store_root.display().to_string(),
+        };
+        writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        return Ok(());
+    }
+
+    let suffix = if auto_detected { " (auto-detected)" } else { "" };
+    term::success(err, &format!("store set-remote: using {chosen:?} ({url}){suffix}"))?;
+    Ok(())
+}
+
 /// Runs `odm store sync`: pushes or pulls the orphan-branch store to/from its
 /// remote (arc-store-lifecycle s03) — the last leg of the lifecycle, closing
 /// the gap that otherwise forces raw git.
@@ -777,13 +903,18 @@ pub(crate) fn sync_cmd(
     let branch = location.branch_name.clone();
     let store_root = home.store_root.clone();
     let repo_root = home.repo_root.clone();
+    // Slice 06: read the configured sync remote, falling back to
+    // DEFAULT_REMOTE for stores created before `set-remote` existed.
+    let remote = location.remote.clone().unwrap_or_else(|| init::DEFAULT_REMOTE.to_string());
 
     // D-2: fetch always, even under --dry-run. A failure (no remote, no
     // network) is not fatal — it leaves no upstream to compare, which the
-    // NoUpstream arm below already handles.
-    let _ = worktree::fetch(&repo_root, init::DEFAULT_REMOTE);
+    // NoUpstream arm below already handles. Tracked (not just discarded)
+    // because a *successful* fetch is what distinguishes "remote doesn't
+    // carry this branch yet" (first-push, D-4) from "no remote at all".
+    let fetch_ok = worktree::fetch(&repo_root, &remote).is_ok();
 
-    let upstream_ref = format!("{}/{branch}", init::DEFAULT_REMOTE);
+    let upstream_ref = format!("{remote}/{branch}");
     let local = worktree::rev_parse(&repo_root, &branch)?;
     let upstream = worktree::rev_parse(&repo_root, &upstream_ref)?;
 
@@ -797,6 +928,15 @@ pub(crate) fn sync_cmd(
                 local_ahead: ahead,
             };
             (init::sync_action(Some(ancestry)), ahead, behind)
+        }
+        // D-4: the remote is reachable (fetch succeeded) but doesn't carry
+        // this branch yet — a first-push, not "no upstream". Reuse
+        // `LocalAhead` so the existing push arm below handles it unchanged;
+        // the count is every commit on the branch (there is nothing on the
+        // remote yet to diff against).
+        (Some(_local), None) if fetch_ok => {
+            let count = worktree::count_commits(&repo_root, &branch)?.max(1);
+            (SyncAction::LocalAhead(count), count, 0)
         }
         _ => (init::sync_action(None), 0, 0),
     };
@@ -821,7 +961,7 @@ pub(crate) fn sync_cmd(
                 behind = 0;
             }
             SyncAction::LocalAhead(_) => {
-                worktree::push(&repo_root, init::DEFAULT_REMOTE, &branch)?;
+                worktree::push(&repo_root, &remote, &branch)?;
                 ahead = 0;
             }
             SyncAction::UpToDate | SyncAction::Diverged | SyncAction::NoUpstream => {}

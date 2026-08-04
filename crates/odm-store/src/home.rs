@@ -61,6 +61,12 @@ pub struct StoreLocation {
     /// disagree.
     #[serde(default = "default_store_name")]
     pub branch_name: String,
+    /// The git remote the store syncs to. Written by `set-remote` or
+    /// auto-detected by `init` when exactly one remote exists. Absent in
+    /// stores created before this field existed; `sync` falls back to
+    /// `DEFAULT_REMOTE` ("origin") when `None`.
+    #[serde(default)]
+    pub remote: Option<String>,
 }
 
 fn default_worktree_base() -> String {
@@ -77,6 +83,7 @@ impl Default for StoreLocation {
             worktree_base: default_worktree_base(),
             worktree_name: default_store_name(),
             branch_name: default_store_name(),
+            remote: None,
         }
     }
 }

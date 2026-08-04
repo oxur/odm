@@ -268,6 +268,7 @@ impl Plan {
                 worktree_base: DEFAULT_WORKTREE_BASE.to_string(),
                 worktree_name: name,
                 branch_name: branch.unwrap_or(DEFAULT_STORE_NAME).to_string(),
+                remote: None,
             },
             dry_run: false,
         }
@@ -321,8 +322,20 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
     }
     let git_version = worktree::create(&plan.repo_root, &store_root, &plan.location.branch_name)?;
 
+    // 1a. Auto-set the sync remote when the repo has exactly one (D-3,
+    //     arc-store-lifecycle slice 06) — makes `store sync` work out of the
+    //     box for the common case. Multi-remote repos need explicit
+    //     `store set-remote`; a caller-supplied remote is never overridden.
+    let mut location = plan.location.clone();
+    if location.remote.is_none() {
+        let remotes = worktree::list_remotes(&plan.repo_root)?;
+        if remotes.len() == 1 {
+            location.remote = Some(remotes[0].clone());
+        }
+    }
+
     // 2. The locator — now that there is something to point at.
-    write_locator(&plan.repo_root, &plan.location)?;
+    write_locator(&plan.repo_root, &location)?;
 
     // 3. The store's own config + an empty `nodes/` — the defaults, plus a
     //    `[legacy]` block if step 0 found pre-split settings worth
@@ -347,8 +360,8 @@ pub fn bootstrap(plan: &Plan) -> Result<Bootstrapped> {
 
     Ok(Bootstrapped {
         store_root,
-        branch: plan.location.branch_name.clone(),
-        location: plan.location.clone(),
+        branch: location.branch_name.clone(),
+        location,
         git_version: Some(git_version),
     })
 }
@@ -446,6 +459,9 @@ fn write_locator(repo_root: &Path, location: &StoreLocation) -> Result<()> {
          branch_name = {:?}\n",
         location.worktree_base, location.worktree_name, location.branch_name
     ));
+    if let Some(remote) = &location.remote {
+        text.push_str(&format!("remote = {remote:?}\n"));
+    }
     std::fs::write(&path, text).map_err(|e| StoreError::io(&path, e))
 }
 
@@ -543,7 +559,8 @@ pub fn attach(plan: &Plan, remote_only: Option<&str>) -> Result<Attached> {
 pub fn sync(plan: &Plan) -> Result<Synced> {
     let store_root = plan.store_root();
     let branch = plan.location.branch_name.clone();
-    let upstream_ref = format!("{DEFAULT_REMOTE}/{branch}");
+    let remote = plan.location.remote.as_deref().unwrap_or(DEFAULT_REMOTE);
+    let upstream_ref = format!("{remote}/{branch}");
 
     // Fetch first, so the comparison is against a current upstream rather than
     // a stale one — otherwise "up to date" could be a lie. A fetch failure (no
@@ -559,7 +576,7 @@ pub fn sync(plan: &Plan) -> Result<Synced> {
     // remote-tracking refs only, moves no branch, and writes no file in the
     // worktree. Recorded in the slice's closing report rather than done
     // silently, since the prompt's wording was "touch nothing".
-    let _ = worktree::fetch(&plan.repo_root, DEFAULT_REMOTE);
+    let _ = worktree::fetch(&plan.repo_root, remote);
 
     let local = worktree::rev_parse(&plan.repo_root, &branch)?;
     let upstream = worktree::rev_parse(&plan.repo_root, &upstream_ref)?;
