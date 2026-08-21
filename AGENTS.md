@@ -1,23 +1,25 @@
 # AGENTS.md
 
 > **Resuming work? Read
-> [`docs/design-v1.0.0/CDC-SESSION-BOOTSTRAP.md`](docs/design-v1.0.0/CDC-SESSION-BOOTSTRAP.md)
+> [`CDC-SESSION-BOOTSTRAP.md`](CDC-SESSION-BOOTSTRAP.md)
 > first** — §0 is the dated resume (last: 2026-07-26, UAT phase). Then run
 > `odm orient` (build: `cargo build --release -p oxur-odm` → `target/release/odm`;
-> verified 2m54s from a clean container). The command-surface authority is
-> `docs/design-v1.0.0/odm-command-inventory.md`. **Do not mint new nodes before
-> the G-1 (ID scheme) decision** — see the workflow-gap review in
-> `arc-release-hardening/`.
+> verified 2m54s from a clean container). Use `odm --help` / subcommand
+> `--help` for the live command surface; historical command-inventory context is
+> now in the `odm-store` corpus.
 >
 > **The corpus is no longer in this working tree.** Since the RH C-5 cutover
 > (2026-07-26) odm's own nodes live on the orphan **`odm-store` branch** (renamed
 > from `odm` on 2026-08-03), checked out at **`.worktrees/odm/`** — `odm.toml`
 > here is only a locator pointing at it, and the operational config (gate-sets,
-> display) is `.worktrees/odm/config.toml`. Run `odm` commands from the repo
-> root as before; resolution follows the locator. To read a node file directly,
-> look under `.worktrees/odm/nodes/`, not `nodes/`. **Commit corpus changes on
-> the `odm-store` branch** (`git -C .worktrees/odm …`) — they are a separate
-> history from the code, and `/.worktrees/` is gitignored here on purpose.
+> display) is `.worktrees/odm/config.toml`. The legacy `docs/design*` and
+> `docs/dev` planning corpora were deleted in the Store-as-Source Slice 04
+> cutover; use `odm` store/node commands for corpus work. Run `odm` commands
+> from the repo root as before; resolution follows the locator. To read a node
+> file directly, look under `.worktrees/odm/nodes/`, not `nodes/`. **Commit
+> corpus changes on the `odm-store` branch** (`git -C .worktrees/odm …`) — they
+> are a separate history from the code, and `/.worktrees/` is gitignored here on
+> purpose.
 
 
 Guidance for Claude Code (claude.ai/code) when working in this repository.

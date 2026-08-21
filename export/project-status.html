@@ -1,0 +1,239 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>odm — project status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --ink:#e6edf3; --muted:#8b949e;
+    --line:#2a313c; --accent:#58a6ff;
+    --done:#3fb950; --closed:#3fb950; --planned:#d29922; --scoped:#a371f7; --tentative:#6e7681;
+    --active:#58a6ff; --paused:#db6d28;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#f6f8fa; --panel:#fff; --panel2:#f0f3f6; --ink:#1f2328; --muted:#636c76;
+           --line:#d0d7de; --accent:#0969da; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:28px 20px 60px}
+  header h1{margin:0 0 4px;font-size:22px;letter-spacing:.2px}
+  header h1 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}
+  header .sub{color:var(--muted);font-size:13.5px}
+  .summary{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:10px 14px;min-width:120px}
+  .stat .n{font-size:22px;font-weight:600}
+  .stat .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 22px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .group-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);
+               margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .card{background:var(--panel);border:1px solid var(--line);border-left-width:4px;
+        border-radius:12px;padding:16px 18px;margin:12px 0}
+  .card .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .card .id{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:15px}
+  .card .name{font-weight:600;font-size:16px}
+  .badge{margin-left:auto;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:20px;
+         text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+  .cap{color:var(--muted);font-size:13.5px;margin:8px 0 10px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-bottom:10px}
+  .meta b{color:var(--ink);font-weight:600}
+  .bar{height:7px;border-radius:6px;background:var(--panel2);overflow:hidden;margin:2px 0 10px}
+  .bar > i{display:block;height:100%}
+  .slices{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11.5px;padding:3px 8px;border-radius:6px;background:var(--panel2);
+        border:1px solid var(--line);color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+  .chip.done{color:var(--ink)}
+  .chip .s{font-family:ui-monospace,Menlo,monospace;opacity:.7}
+  .note{font-size:12px;color:var(--muted);margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+  footer{margin-top:34px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span class="mono">odm</span> — project status <span style="color:var(--muted);font-weight:400">· design-v1.0.0</span></h1>
+    <div class="sub">ODD Document Manager — markdown/git-native planning substrate. Arcs shown in design (dependency) order.</div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--done)"></i>complete · merged, CI-green</span>
+    <span><i class="dot" style="background:var(--active)"></i>active · in progress now</span>
+    <span><i class="dot" style="background:var(--closed)"></i>closed · arc-composed, CI-green (release/1.0.x)</span>
+    <span><i class="dot" style="background:var(--planned)"></i>planned · arc-plan drafted</span>
+    <span><i class="dot" style="background:var(--scoped)"></i>scoped · extension arc</span>
+    <span><i class="dot" style="background:var(--tentative)"></i>tentative · roadmap-only</span>
+  </div>
+
+  <div id="board"></div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const C = {complete:'var(--done)', active:'var(--active)', closed:'var(--closed)', planned:'var(--planned)',
+           scoped:'var(--scoped)', tentative:'var(--tentative)', paused:'var(--paused)'};
+const LABEL = {complete:'Complete', active:'Active', closed:'Closed · CI-green', planned:'Planned',
+               scoped:'Scoped', tentative:'Tentative', paused:'Paused'};
+
+// ── Data: edit here as the work moves. status ∈ complete|closed|planned|scoped|tentative
+const DATA = {
+  generated: "2026-08-21",
+  groups: [
+    { title: "v1.0.0 — MVP (A1–A3) + core (A4–A6)", arcs: [
+      { id:"A1", name:"Substrate & node CRUD", status:"complete", deps:"—", crate:"odm-core, odm-store, odm-cli, oxur-odm",
+        cap:"Workspace + crates; ULID identity; node types; frontmatter schema; nodes/YYYY/MM/<ULID>.md store; gix; odm.toml; CRUD + use/context; check v1.",
+        done:6, total:6, note:"Merged to main, CI-green. (Predates the v2.0 formal arc-close — composed-in-fact; disclosed gap.)" },
+
+      { id:"A2", name:"Graph, gates & derived order", status:"complete", deps:"A1", crate:"odm-graph, odm-core",
+        cap:"Typed edges; petgraph DAG; cycles + tears; multi-gate status w/ evidence; evidence-leveled satisfaction; next/blocked/path/topo; staleness; recomposition integrity; check v2.",
+        done:8, total:8, note:"Merged to main, CI-green. odm is self-host-usable: build + advance a graph via the CLI alone." },
+
+      { id:"A3", name:"Rollup & orient", status:"complete", deps:"A2", crate:"odm-core, odm-cli", mvp:true,
+        cap:"Generated ROLLUP.md (+--json); orient/brief (vision → focus → ready/blocked → integrity → drift); provenance view; errors-as-affordances; bare-odm orients.",
+        slices:[["01","Arc02 cleanup","done"],["02","rollup generation","done"],["03","orient/brief + bare-odm","done"],["04","--json + polish","done"]],
+        note:"★ MVP (A1–A3) COMPLETE. Arc-close passed, no silent drops. Merged." },
+
+      { id:"A4", name:"Index & cache", status:"complete", deps:"A3", crate:"odm-index",
+        cap:"Incremental, DB-/FTS-free stat-cache under .odm/; replaces full-scan in list/orient/graph-build/check/rollup; racy-git-correct; self-healing; 100k benchmark.",
+        slices:[["01","record + persistence","done"],["02","cold-path build","done"],["03","warm-path racy-correct","done"],["04","enrich + maps + wire list","done"],
+                ["05","graph adapter + derived readers","done"],["06","enrich origin/decomposed + wire check/rollup/orient","done"],["07","early-cutoff invalidation","done"],["08","100k benchmark","done"]],
+        note:"✅ Arc-close done; independent gate PASS-WITH-NOTES; CI green 2026-06-30 → all rows reproduced (P-4 done). ODD-0014 [P]→[E]." },
+
+      { id:"A5", name:"Reconciliation", status:"complete", deps:"A2, A3", crate:"odm-reconcile",
+        cap:"desired_facts + Probe trait (shell/file); reconcile on demand; drift folded into rollup/orient; affects edge + stale-doc check; deferred surfacing + re-entry; incremental freshness on every command (ODD-0019).",
+        slices:[["01","desired_facts + Probe trait + shell probe","done"],["02","file probe + probe-runner","done"],["03","odm reconcile (on demand)","done"],["04","drift in rollup/orient","done"],
+                ["05","affects edge + stale-doc check","done"],["06","deferred surfacing + re-entry","done"],["07","probes-as-rules: inputs/volatile + drift snapshot","done"],["08","freshness-on-every-command + honest staleness","done"]],
+        note:"✅ CLOSED (composed; CI-green on release/1.0.x 2026-07-06). All 8 slices CDC-verified; arc-close composition check passed + independent arc-gate review (PASS-WITH-NOTES) — arc05-reconciliation/closing-report.md. The marquee state-drift killer (ODD-0001 C2) lands, and ODD-0019 makes it incremental on every command: bare `odm` runs ZERO volatile probes, honest 'last checked Xm ago', drift-aware ROLLUP cutoff, `next` stays graph-pure. Zero index change across ALL 8 slices (the slice02 store-vs-index boundary held the whole arc). Ledger reconciled at close: slice08 appended as stable A-14 (not a renumber). Carried to A6: two-reads optimization + AGENTS.md instruction drift cleanup." },
+
+      { id:"A6", name:"Migrate, self-host & PM-skill", status:"paused", deps:"A1, A3", crate:"odm-migrate; ai-engineering",
+        cap:"migrate importer (idempotent, --dry-run, supersede-not-delete); run on odm's own docs; versioned per-type schemas (ODD-0020); self-host the plan; PM skill from ODD-0001; retire redundant framework prose.",
+        slices:[["01","migrate importer core","done"],["02","migrate odm's own docs","done"],["03","schema versioning (ODD-0020)","done"],["04","self-host cutover","done"],["05","FTS core (tantivy)","plan"],["06","mini-UAT","plan"],["07","PM-skill population","plan"],["08","retire framework prose","plan"]],
+        note:"⏸ PAUSED after slice04 while Store-as-Source cutover and the LLM-command-surface arc settle the live workflow. A6 resumes at slice05 (FTS core), then slice06 mini-UAT, then slice07 PM-skill and slice08 retire prose. ★★ THE LOOP CLOSED: odm SELF-HOSTS (slice04). slices 01–04 CDC-verified. 01–02: importer + `odm migrate`; 12 ODDs → 12 design nodes, check GREEN, 3 flags no-amendment. 03 SCHEMA-VERSIONING (ODD-0020): per-type `schema:<type>/vN.N`, absent⇒v0.1, new nodes stamp v1.0, per-type field-validity a check Error, forward-compat; real backfill → 13 nodes all design/v1.0. 04 SELF-HOST CUTOVER: new `odm self-host` + odm-migrate::selfhost; the design-v1.0.0 plan-set → 45 WORK NODES (1 project + 6 arcs + 38 slices) under nodes/, each <type>/v1.0, in a containment tree; `odm check` GREEN on 58 nodes and `odm rollup`/`orient` reproduce the real state. v1.10 inserts FTS as a 1.0.0 hard gate and mini-UAT as the acceptance gate before PM-skill/prose retirement." },
+      { id:"RH", name:"Release Hardening — CLI, types, naming & output (UAT)", status:"closed", deps:"A6·s04", crate:"odm-cli; odm-core; odm-migrate; oxur-term",
+        cap:"UAT-driven v1.0.0 hardening of the self-hosted CLI: themed/coloured output via a shared styling crate (extracted from oxur-cli); type taxonomy odd→design + new research; tree-structured de-numbered `list`; command renames (context→project, path→chain, quiet `new`, format-agnostic `rollup`); fold `self-host` into `migrate`. Feedback triaged surface (cc-prompt) vs model (ODD-0013/0020 amendment / ADR).",
+        slices:[["C1","styling/table crate","done"],["C2","type taxonomy (design+research)","done"],["C3","`list` overhaul (tree/date/status/width)","done"],["C4","command surface + ODD-0023 reorg","done"],["C5","cutover: fold+dates+names+vision+SH-6","done"],["C6","check-hardening (G-2+G-3+L-3b)","done"],["C8","normalized status (F-19)","done"]],
+        note:"▣ CLOSED 2026-07-27 (arc-release-hardening/closing-report.md) — named arc, number DEFERRED. Extracted from A6 (v1.9) when UAT batch 1 (14 findings) proved arc-sized + model-level; ran feedback → triage → chunked cc-prompts → re-run `odm self-host` to validate. ALL chunks done (C-1…C-6, C-8; C-7 retired into C-5): C-1 theming via the re-extracted upstream `oxur-term` crate (tabled+colored; oxur-cli shed); C-2 type taxonomy odd→design + research (ODD-0013 v2.0 / ODD-0020 v1.1; corpus re-stamped to 60 nodes, zero odd); C-3 `list` overhaul (DATE|TYPE|STATUS|NAME-tree|ID, de-numbered, retired excluded by default; index FORMAT_VERSION 3→4); C-4 the ODD-0023 three-tier surface (top-level / `odm node` / `odm store`) + renames + the validate/check split (`validate` = pure static, `check` = validate-then-reconcile); C-5 the dogfood cutover (closed arc-store-home SH-6); C-8 normalized status (F-19); C-6 check-hardening (G-2 tear + G-3 + L-3b). RH-6 compose reproduced, RH-7 reflexive reproduced (`validate` exit 0 at 60 nodes), RH-8 dispositioned. 21 findings → 18 done, 3 carried (F-16 upstream oxur-term, F-17 a decision, F-21 → LLM arc); the reusable lesson recorded: check the brief's facts before implementing them (4 of 10 self-found defects came from reading the corpus / running the binary first). ✅ CI GREEN on release/1.0.x (2026-08-02, @e4e0a95)." },
+      { id:"LLM", name:"LLM command surface", status:"planned", deps:"RH · A1–A3", crate:"odm-cli; odm-core",
+        cap:"Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did — WITHOUT reading planning prose. That is the project DoD ('a fresh session reaches full situational awareness from odm orient alone'), which the pass-2 LLM UAT found is not yet met.",
+        slices:[["01","read-back status vector (+F-21 json dates)","plan"],["07","info (self-doc)","plan"],["08","surface-wide ULID cutover (B2-2)","plan"],["02","fix+reshape next: ready frontier + typed/grouped/tree (B2-1) + readiness explain + F-22","plan"],["03","search + flat rollup","plan"],
+                ["04","history + diff (resume cmd)","plan"],["09","frontmatter-fidelity check + design-corpus repair (L-8)","plan"],["10","name/title de-redundancy — restore ODD-0013 §2.1 (B2-3)","plan"],["05","export","plan"],["06","viz (ascii-dag)","plan"]],
+        note:"◆ NEXT after Store-as-Source cutover — frontier arc, reconciled for start (arc-plan v1.4). Release Hardening, Migration Fidelity, and Store Lifecycle are closed; Store-as-Source cutover runs first so future slices can be authored in odm-native form. Re-grounded 60→400 nodes (CDC direct-read of .worktrees/odm/nodes/, 2026-08-02) — read-command outputs are materially bigger than the traces the slices quote. Batch-2 UAT (2026-08-01) + MF carry-ins folded in: B2-1 upgrades `next` (return the READY FRONTIER, not every unblocked node, + typed/grouped/tree) → slice 02; B2-2 retires numeric handles from display AND input surface-wide + ULID-prefix resolution → NEW slice 08; B2-3 name/title redundancy → NEW slice 10; F-21 (`--json` created/updated) → slice 01; F-22 (retired nodes leak into next/orient READY) → slice 02; CDC-ARC-1/L-8 (frontmatter-fidelity check + 14-node design-corpus repair) → NEW slice 09. Critical path now 01(+07)→08→02→03." },
+      { id:"SH", name:"Store Home & init", status:"closed", deps:"A1–A3 · ODD-0022", crate:"odm-store; odm-cli",
+        cap:"Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + `init` (bootstrap/attach/ff-sync), the two-config split (odm.toml locator + in-store config.toml), and the store-resolution rework. Decouples the planning DB from code branches (ODD-0022).",
+        slices:[["01","store resolution + two-config","done"],["02","git plumbing + init bootstrap","done"],["03","init attach + ff-sync","done"],["04","rename (store)","done"]],
+        note:"▣ CLOSED — named arc, number-deferred (ODD-0022). v1.0.x, EXPANDED the v1.0.0 DoD. ★ ALL 4 SLICES DONE (SH-1…SH-4) + SH-5 composed + **SH-6 (dogfood cutover) DONE via RH C-5** — odm now lives in its own store: 60 nodes on the orphan `odm` branch, `odm.toml` reduced to a locator, `nodes/` gone from the working branch. CDC-reproduced on git 2.43; an independent fresh-context **arc-gate returned PASS-WITH-NOTES** (the one note, a ledger-reconciliation gap, fixed). 01: store resolution + two-config split (odm.toml locator + in-store config.toml; back-compat). 02: `odm store init` bootstrap via a scoped `git` shell-out (gix 0.66 can't create worktrees; ratified Q-2 exception) — ⚠ shipped a modern-git `--orphan` argv bug caught by CDC in an independent git-2.43 env (6/8 tests failed there; CC's local git 2.39 only ran the fallback), fixed + a CI two-arm git matrix added. 03: `init` attach + ff-sync (ff-only; warns+stops on divergence, never rebasing the shared branch). 04: `odm store rename` (rewrites the locator from OBSERVED state; caught + pinned a green-check-over-invisible-corpus bug). Across its four slices + the cutover the arc found FOUR bugs sharing one through-line: a path unexercised in its authoring environment, or success and failure looking identical — each fixed by asserting BOTH halves. ✅ CI GREEN on release/1.0.x (2026-08-02, @e4e0a95)." },
+
+      { id:"MF", name:"Migration Fidelity — faithful, verifiable, repeatable migration", status:"closed", deps:"A6·s04 · ODD-0024", crate:"odm-migrate; odm-cli; odm-store",
+        cap:"Faithful, verifiable, repeatable migration: 1:1 verbatim bodies (hard body-hash gate), a source/provenance sub-map on every node, frontmatter-fidelity via schema-mapping, and a doc-coverage check (no file left behind). Repairs odm's own corpus from skeleton (44 stub bodies, 6/11 arcs, ~211 uncovered docs) to 100%; general per project.",
+        done:16, total:16,
+        note:"✅ CLOSED 2026-08-02 (arc-migration-fidelity/closing-report.md) — named arc, number-deferred; release-blocking, on the P-12 self-host DoD path; subsumed + cleared the L-8b pre-ship gate. ALL 16 slices delivered, s04–s16 CDC-verified PASS. ODD-0025 is the fidelity model (Accepted). ★ The arc-close FREEZE fired: the project-vision pair collapsed to ONE faithful 1:1 project node (#1000 re-cast, #1001 retired), all drift reconciled, artifacts minted-or-reconciled — corpus byte-faithful, 0 drift, `odm check` exit 0. The P-12 `orient` self-host demo runs CLEAN on the live corpus: a fresh session auto-orients to the single active project's vision (s16 fixed a retired-node leak in orient's project/READY/BLOCKED surfaces via a store.load-based check — CDC-verified PASS; a CDC-authored spec defect in the prompt was caught by CC's fixture discipline and disclosed). Store-side close landed 2026-08-02: arc node 58837400 → `complete` gate + decomposition affirmed (17 children), committed on the odm branch at 6225d1f and CDC-reproduced. Closed on BOTH doc and store. Forward carry: MF-4 → L-8 (CDC-ARC-1: 14 RH-era design nodes dropped source `version` → design-corpus migrate + a standing frontmatter-fidelity check, routed to the LLM arc). Git: off release/1.0.x; store @6225d1f. ✅ CI GREEN on release/1.0.x (2026-08-02, @e4e0a95) — s16 + arc-close code CI-reproduced (operator-attested)." },
+
+      { id:"SL", name:"Store Lifecycle — native store git verbs", status:"closed", deps:"arc-store-home · ODD-0022", crate:"odm-store; odm-cli",
+        cap:"Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: store commit, store status, store sync, store set-remote. Completes the ODD-0022 store-home promise.",
+        slices:[["01","store commit","done"],["02","store status","done"],["03","store sync","done"],["04","commit index consistency","done"],["05","CDC binary access","done"],["06","store set-remote","done"]],
+        note:"✅ CLOSED 2026-08-04 (arc-store-lifecycle/closing-report.md) — all 6 slices done; s02 `store status` and s03 `store sync` formal CDC verification backfilled PASS on 2026-08-21. SL-4 (no raw git needed) REPRODUCED: the operator's 14-commit first push to origin/odm-store via `store sync` is the end-to-end proof. SL-5 (no model drift) ATTESTED (cross-read). Arc scope doubled from 3→6 slices through live-surfaced gaps (index consistency, CDC binary access, set-remote) — all tracked. CDC binary access (`make build-linux`) is a reusable project asset." },
+
+      { id:"SaS", name:"Store-as-Source — store-only authoring", status:"active", deps:"arc-store-home · Migration Fidelity · Store Lifecycle", crate:"odm-store; odm-cli",
+        cap:"Transition from dual-track planning (docs + store) to store-only authoring: ODD-0026 (authored-node spec), self-sourced nodes, native authoring workflow, the cutover (delete ./docs planning subtree), and interactive authoring.",
+        slices:[["05","decomposition bookkeeping","done"],["06","auto-extend","done"],["01","ODD-0026","done"],["02","self-sourced nodes","done"],["03","native authoring","done"],["04","cutover","done"],["07","interactive authoring","plan"]],
+        note:"▣ ACTIVE — 6/7 slices done. s04 (cutover) CLOSED 2026-08-21: reconciled the mirror, converted 85 work nodes to authored store source, deleted the legacy `docs/design-v1.0.0`, `docs/design`, and `docs/dev` planning corpus after operator GO, moved the bootstrap/dashboard out of `docs`, retired the legacy docs coverage/config boundary, and proved SS-6 with new authored arc #798832901 + slice #798832902 via `odm node` commands. s07 (interactive authoring) follows." },
+    ]},
+
+    { title: "Post-MVP extensions (v1.0.0+)", arcs: [
+      { id:"A7", name:"Two-clock telemetry", status:"scoped", deps:"A2, A3 (matures w/ A5)", crate:"odm-telemetry",
+        cap:"Event log from gates+git; two-clock split (active-work vs inter-slice latency); language-agnostic covariates + structured CDC-verification emission; status×gate evidence matrix. Collect + describe — no forecasting.",
+        slices:[["01","telemetry schema + slice↔git linkage","plan"],["02","event-log derivation","plan"],["03","structured CDC-verification emission","plan"],
+                ["04","two-clock decomposition","plan"],["05","covariate collection & annotation","plan"],["06","evidence matrix + surfacing","plan"]],
+        note:"Independently valuable; builds post-A6 / self-host. 2026-07-25 (arc-plan v1.2): slice05 gains the ODD-0021 Tier-1 compression-covariate kit (change_info / change_density / change_displacement NCD / change_scatter_H / spec_info — the leading prose-spec signal); format-agnostic (code + prose), zero new deps beyond a pinned compressor. No arc09 — complexity is a covariate feed, decision of record in ODD-0021." },
+
+      { id:"A8", name:"Forecasting", status:"scoped", deps:"A7, A2", crate:"odm-forecast",
+        cap:"Monte-Carlo over the real DAG with censoring-corrected node-time distributions; Bayesian hierarchical reference classes; two-clock control experiment; honest widening ranges, never dates.",
+        slices:[["01","reference classes + distribution fitting","plan"],["02","Monte-Carlo DAG engine","plan"],["03","two-clock experiment + calibration","plan"],["04","forecast surfacing + export","plan"]],
+        note:"Research-gated by ODD-0018 + companion ODD-0021 (complexity covariates; arc-plan v1.2). The ODD-0021 retro-scoring pilot (Tier-1 over closed A1–A6 slices vs iterations-used) runs as research-gate work — needs only git history + ledgers, not A7. Metadata never targets; team/process never per-actor (Goodhart)." },
+
+      { id:"—", name:"Interop — export (out)", status:"tentative", deps:"A3", crate:"ODD-0017 Part A",
+        cap:"One-way, honestly-lossy projection of the rollup into another team's vocabulary; also the evangelism engine." },
+      { id:"—", name:"Interop — reference-and-reconcile (in)", status:"tentative", deps:"A5", crate:"ODD-0017 Part B",
+        cap:"external node type + cross-team edges; status reconciled, never authored; evidence-leveled." },
+      { id:"—", name:"Visualization", status:"tentative", deps:"A3, A7", crate:"ascii-dag",
+        cap:"On-demand DAG render + roadmap-as-projection; a renderer over the rollup + the A7 matrix." },
+      { id:"—", name:"Advisory priority", status:"tentative", deps:"A2", crate:"—",
+        cap:"Optional, non-authoritative ranking on top of the derived order — never the order itself." },
+    ]},
+  ]
+};
+
+// ── Render
+function el(t, c, html){ const e=document.createElement(t); if(c) e.className=c; if(html!=null) e.innerHTML=html; return e; }
+
+function arcCard(a){
+  const card = el('div','card'); card.style.borderLeftColor = C[a.status];
+  const top = el('div','top');
+  top.append(el('span','id', a.id==='—'?'·':a.id), el('span','name', a.name));
+  const badge = el('span','badge', LABEL[a.status]);
+  badge.style.background = C[a.status];
+  badge.style.color = (a.status==='complete'||a.status==='closed'||a.status==='active') ? '#06121a' : '#1a1206';
+  if(a.status==='tentative'||a.status==='planned'||a.status==='scoped') badge.style.color='#fff';
+  top.append(badge);
+  card.append(top, el('div','cap', a.cap));
+
+  const meta = el('div','meta',
+    `<span><b>depends on:</b> ${a.deps}</span><span><b>crate:</b> ${a.crate}</span>` +
+    (a.mvp?'<span style="color:var(--done)"><b>★ MVP capstone</b></span>':''));
+  card.append(meta);
+
+  const total = a.total ?? (a.slices?a.slices.length:0);
+  const done  = a.done  ?? (a.slices?a.slices.filter(s=>s[2]==='done').length:0);
+  if(total){
+    const pct = Math.round(done/total*100);
+    const bar = el('div','bar'); const fill = el('i'); fill.style.width = pct+'%';
+    fill.style.background = C[a.status]; bar.append(fill);
+    const cnt = el('div','meta', `<span><b>slices:</b> ${done}/${total} delivered</span>`);
+    card.append(cnt, bar);
+  }
+  if(a.slices){
+    const sl = el('div','slices');
+    a.slices.forEach(([n,nm,st])=>{
+      const mark = st==='done'?'✓' : st==='wip'?'●' : n;
+      const ch = el('span','chip'+(st==='done'||st==='wip'?' done':''),
+        `<span class="s">${mark}</span>${nm}`);
+      if(st==='done') ch.style.borderColor = C[a.status];
+      if(st==='wip'){ ch.style.borderColor = 'var(--active)'; ch.style.color='var(--active)'; }
+      sl.append(ch);
+    });
+    card.append(sl);
+  }
+  if(a.note) card.append(el('div','note', a.note));
+  return card;
+}
+
+const board = document.getElementById('board');
+let arcsClosed=0, arcsTotal=0, slicesDone=0, slicesTotal=0;
+DATA.groups.forEach(g=>{
+  board.append(el('div','group-title', g.title));
+  g.arcs.forEach(a=>{
+    board.append(arcCard(a));
+    if(a.id!=='—'){ arcsTotal++; if(a.status==='complete'||a.status==='closed') arcsClosed++; }
+    const t=a.total??(a.slices?a.slices.length:0), d=a.done??(a.slices?a.slices.filter(s=>s[2]==='done').length:0);
+    slicesTotal+=t; slicesDone+=d;
+  });
+});
+
+const summary = document.getElementById('summary');
+[['MVP','A1–A3 ✓','var(--done)'],
+ ['Arcs landed', arcsClosed+' / '+arcsTotal, 'var(--closed)'],
+ ['Slices delivered', slicesDone+' / '+slicesTotal, 'var(--accent)'],
+ ['Active', 'SaS 5/7','var(--active)'],
+ ['Next', 'LLM surface · 0/10','var(--planned)'],
+ ['Paused', 'A6 4/8','var(--paused)']
+].forEach(([l,n,col])=>{
+  const s=el('div','stat'); const nn=el('div','n',n); nn.style.color=col; s.append(nn, el('div','l',l)); summary.append(s);
+});
+
+document.getElementById('foot').textContent =
+  `Snapshot generated ${DATA.generated} from docs/design-v1.0.0/ (project-plan + arc-plans). Static view — regenerate when status moves.`;
+</script>

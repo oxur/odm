@@ -1,7 +1,7 @@
 # odm locator for the odm repository (ODD-0022 §4.2).
 #
 # This file says *where the store is*, and nothing else. The operational half —
-# gate-sets, display, docs_directory, author — lives in `config.toml` **inside**
+# gate-sets, display, and author — lives in `config.toml` **inside**
 # the store, so it is versioned with the data it governs and cannot drift from
 # it. Both halves were in this file until the RH C-5 cutover; the store's
 # `config.toml` records where each key went.
@@ -10,7 +10,3 @@
 worktree_base = ".."
 worktree_name = "odm"
 branch_name = "odm-store"
-
-[legacy]
-docs_directory = "./docs"
-dev_directory = "./docs/dev"
