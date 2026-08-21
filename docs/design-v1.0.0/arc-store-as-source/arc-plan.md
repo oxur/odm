@@ -2,7 +2,7 @@
 
 <!-- Name/title carries no document-role metadata, per ODD-0013 §2.1. -->
 
-**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 CDC-verified PASS; slice 03 (native authoring -- programmatic surface) CDC-verified PASS (2026-08-03); slice 04 (cutover) next ·
+**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 CDC-verified PASS; slice 03 (native authoring -- programmatic surface) CDC-verified PASS (2026-08-03); slice 04 (cutover) OPEN (2026-08-21) ·
 **Unnumbered**, per the `arc-release-hardening` / `arc-migration-fidelity` /
 `arc-llm-command-surface` precedent (the numbering scheme is under review in RH).
 
@@ -162,6 +162,19 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.14 -- 2026-08-21 (slice 04 open set drawn: dry-run-first cutover)
+
+Slice 04's open set is drawn (`slice04-cutover/`). The slice is explicitly gated: final
+`migrate --all`/`check` first, then `migrate --to-authored --dry-run`, then a deletion/keep/relocate
+manifest, then an operator **GO** before any destructive deletion. The manifest makes the ODD-0026
+delete scope concrete (`docs/design-v1.0.0/**` and `docs/design/**`) and treats `docs/dev/**` as a
+classification item because the legacy config still names it. The slice also carries the config
+boundary surfaced while planning: after cutover, `[coverage] scan_root`, `docs_directory`, and
+`dev_directory` must no longer make future conventional `./docs` content look like planning corpus.
+SS-6/SS-7 remain open until the live cutover proves store-only authoring and green commands with the
+legacy docs gone. Surfaced by: slice 04 planning + ODD-0026 sec. 2.3/2.4 + project-plan sec. 4a.
+**Next:** CC runs Phase A and stops for operator GO.
 
 ### v1.13 -- 2026-08-03 (slice 03 CDC-verified PASS)
 

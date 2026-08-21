@@ -81,7 +81,7 @@ const LABEL = {complete:'Complete', active:'Active', closed:'Closed · CI-green'
 
 // ── Data: edit here as the work moves. status ∈ complete|closed|planned|scoped|tentative
 const DATA = {
-  generated: "2026-08-04",
+  generated: "2026-08-21",
   groups: [
     { title: "v1.0.0 — MVP (A1–A3) + core (A4–A6)", arcs: [
       { id:"A1", name:"Substrate & node CRUD", status:"complete", deps:"—", crate:"odm-core, odm-store, odm-cli, oxur-odm",
@@ -139,8 +139,8 @@ const DATA = {
 
       { id:"SaS", name:"Store-as-Source — store-only authoring", status:"active", deps:"arc-store-home · Migration Fidelity · Store Lifecycle", crate:"odm-store; odm-cli",
         cap:"Transition from dual-track planning (docs + store) to store-only authoring: ODD-0026 (authored-node spec), self-sourced nodes, native authoring workflow, the cutover (delete ./docs planning subtree), and interactive authoring.",
-        slices:[["05","decomposition bookkeeping","done"],["06","auto-extend","done"],["01","ODD-0026","done"],["02","self-sourced nodes","done"],["03","native authoring","done"],["04","cutover","plan"],["07","interactive authoring","plan"]],
-        note:"▸ ACTIVE — 5/7 slices done (arc-store-as-source/arc-plan.md). s04 (cutover) is the transition from dual-track (docs+store) to store-only: final safety migrate --all + green check, delete ./docs planning subtree, choose export dir, relocate dashboard, update project memory + AGENTS.md. s07 (interactive authoring) follows. Gated on explicit operator go." },
+        slices:[["05","decomposition bookkeeping","done"],["06","auto-extend","done"],["01","ODD-0026","done"],["02","self-sourced nodes","done"],["03","native authoring","done"],["04","cutover","wip"],["07","interactive authoring","plan"]],
+        note:"▸ ACTIVE — 5/7 slices done (arc-store-as-source/arc-plan.md). s04 (cutover) is OPEN: dry-run-first `migrate --to-authored`, final safety `migrate --all` + green check, deletion/relocation manifest, config boundary for future end-user `./docs`, then explicit operator GO before deleting the legacy planning/design docs. s07 (interactive authoring) follows." },
     ]},
 
     { title: "Post-MVP extensions (v1.0.0+)", arcs: [
