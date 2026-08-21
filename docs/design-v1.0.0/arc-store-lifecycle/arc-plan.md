@@ -74,8 +74,8 @@ raw-git footnote.
 | ID | Criterion | Verify | Significance | Status |
 |----|-----------|--------|--------------|--------|
 | SL-1 | `store commit` persists the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent no-op when clean; `--dry-run`/`--json` | run it after a `migrate`; the orphan branch gains one commit with the right message; a second run is a no-op | serious (the gap this arc opens for) | **done — CDC-verified PASS 2026-08-02** (`slice01-store-commit/cdc-verification.md`); + a real ODD-0022 fix (`.odm/` caches now excluded from the orphan branch, `write_tree` gix-exclude-aware) |
-| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status → the delta shows; clean → "nothing to commit"; upstream ahead/behind correct | serious | **done — CC-attested 2026-08-03** (`slice02-store-status/closing-report.md`); CDC verification pending |
-| SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | **done — CC-attested 2026-08-03** (`slice03-store-sync/closing-report.md`); CDC verification pending |
+| SL-2 | `store status` reports the pending node delta + ahead/behind, odm-aware, `--json` | dirty a node, run status -> the delta shows; clean -> "nothing to commit"; upstream ahead/behind correct | serious | **done — CDC-verified PASS 2026-08-21** (`slice02-store-status/cdc-verification.md`; backfills the 2026-08-03 CC close) |
+| SL-3 | `store sync` push/pull, ff-only, divergence stops (never rewrites history) | round-trip against a remote; a diverged branch stops with an affordance, not a merge/rebase | serious (ODD-0022 discipline) | **done — CDC-verified PASS 2026-08-21** (`slice03-store-sync/cdc-verification.md`; backfills the 2026-08-03 CC close) |
 | SL-4 | **No raw git needed** for the normal lifecycle (`init → mutate → status → commit → sync`); each command idempotent + `--dry-run`/`--json`; the freeze flow is end-to-end odm | reproduce the arc-migration-fidelity freeze-commit step with `store commit` instead of raw git | serious (the composition) | planned |
 | SL-5 | No model drift: no node-schema change; store discipline (orphan/history/divergence) unchanged; ODD-0022 amended only if a line is needed | cross-read: CLI + odm-store git plumbing only; ODD cited if touched | correctness | planned |
 | SL-7 | CDC can run odm **without building from source**: a static `x86_64-unknown-linux-musl` binary, cross-compiled by the operator via cargo-zigbuild, is staged from the worktree and runs in the cloud container (`--help`, `check`, `orient` exit 0); the workflow is documented | CDC stages + smoke-tests the binary in a Cowork session; a fresh session finds the binary location from `CLAUDE.md` | serious (enables CDC verification of s02/s03) | **done — CDC-verified 2026-08-03** (`slice05-cdc-binary-access/cdc-verification.md`; CC-attested `closing-report.md`) |
@@ -96,6 +96,16 @@ s02/s03 follow. Mostly CLI wiring over `odm-store`'s existing git plumbing (`git
 do worktree/branch/commit ops for `init`) — the capability is largely *exposing* what init already uses.
 
 ## Version History
+
+### 2026-08-21 — s02/s03 CDC verification backfilled
+
+Backfilled the missing formal CDC verification files for s02 (`store status`) and
+s03 (`store sync`), the only Store Lifecycle slices that had closed with
+CC-attested evidence but no `cdc-verification.md`. Targeted fixtures reproduced
+on the current checkout: `cargo test --test store_status --test store_sync` ->
+12/12 `store_status` and 13/13 `store_sync` passing. SL-2 and SL-3 now read
+CDC-verified PASS; this is a verification-surface repair, not new implementation
+scope.
 
 ### 2026-08-04 — s06 (`store set-remote`) closed; CDC-verified PASS
 

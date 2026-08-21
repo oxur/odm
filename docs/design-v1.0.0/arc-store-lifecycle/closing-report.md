@@ -35,8 +35,8 @@ log in section 4).
 | Slice | Scope | Outcome | Ledger rows | Verification |
 |-------|-------|---------|-------------|--------------|
 | **s01** — `store commit` | Persist the worktree's node changes on the orphan branch; auto-summary; `-m` override; idempotent no-op; `--dry-run`/`--json` | **Delivered.** Also caught + fixed a real ODD-0022 gap: `write_tree` wasn't honoring the store's `.gitignore`, so `.odm/` caches would have baked into the orphan branch. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested + **CDC-verified PASS** 2026-08-02 |
-| **s02** — `store status` | Read-only view: pending node delta (identical to what `commit` would write) + ahead/behind vs. upstream; `--json` | **Delivered.** Reused `Ancestry`/`SyncAction` plumbing from `init.rs` without modification — confirmed reusable a second time. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested 2026-08-03; **no CDC verification** (see note A) |
-| **s03** — `store sync` | Push/pull the orphan branch, ff-only pull, divergence stops; `--dry-run`/`--json` | **Delivered.** Found and fixed `merge_ff_only` — a dormant real bug in `init.rs` where the ff-only pull path had never been exercised against a real remote. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested 2026-08-03; **no CDC verification** (see note A) |
+| **s02** — `store status` | Read-only view: pending node delta (identical to what `commit` would write) + ahead/behind vs. upstream; `--json` | **Delivered.** Reused `Ancestry`/`SyncAction` plumbing from `init.rs` without modification — confirmed reusable a second time. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested 2026-08-03; **CDC-verified PASS backfill 2026-08-21** |
+| **s03** — `store sync` | Push/pull the orphan branch, ff-only pull, divergence stops; `--dry-run`/`--json` | **Delivered.** Found and fixed `merge_ff_only` — a dormant real bug in `init.rs` where the ff-only pull path had never been exercised against a real remote. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested 2026-08-03; **CDC-verified PASS backfill 2026-08-21** |
 | **s04** — commit index consistency | After `store commit`, sync the git index to HEAD so raw `git status` is clean; regression test | **Delivered.** Root-caused the recurring "phantom staged-deletion" scare — the commit was always correct; only the stale index misled. | F-1…F-6 done (0 deferred, 0 no-op) | CC-attested + **CDC-verified PASS** 2026-08-02 |
 | **s05** — CDC binary access | `cargo-zigbuild` cross-compilation producing a static `x86_64-unknown-linux-musl` binary; `make build-linux`; documented in `CLAUDE.md` | **Delivered.** CDC staged, smoked (`--help`, `check`, `orient`, `validate`, `node show`, `store --help`), confirmed static. | F-1…F-5 done (0 deferred, 0 no-op) | **CDC-verified** (F-1/F-2) + CC-attested (F-3/F-4/F-5) 2026-08-03 |
 | **s06** — `store set-remote` + sync first-push | Config command to set the sync remote (explicit or auto-detect); `store init` auto-sets when unambiguous; `sync` handles first-push; `--json` | **Delivered.** Also caught a `rename.rs` bug via compiler-enforced exhaustive struct pattern — `store rename` would have silently dropped a configured remote. | F-1…F-8 done (0 deferred, 0 no-op) | CC-attested + **CDC-verified PASS** 2026-08-04 |
@@ -47,11 +47,19 @@ breakdown was 3 slices (s01–s03); three more were inserted during the run
 insertions were tracked in the arc-plan's version history with the event that
 surfaced them.
 
-### Note A — missing CDC verifications for s02 and s03
+### Note A — s02/s03 CDC verification backfilled
 
 Slices 02 and 03 were implemented and CC-attested on 2026-08-03, after the arc
-resumed from its Migration Fidelity gate. No `cdc-verification.md` was written
-for either. Mitigating evidence:
+resumed from its Migration Fidelity gate. At original arc close, no
+`cdc-verification.md` had been written for either. That formal gap was closed on
+2026-08-21:
+
+- `slice02-store-status/cdc-verification.md` — PASS.
+- `slice03-store-sync/cdc-verification.md` — PASS.
+- Reproduced command: `cargo test --test store_status --test store_sync` (12/12
+  `store_status`, 13/13 `store_sync`).
+
+The original mitigating evidence still stands:
 
 - The operator used both commands live and confirmed correct behavior.
 - `store sync`'s 14-commit first push to `origin/odm-store` is a real-world
@@ -62,11 +70,11 @@ for either. Mitigating evidence:
   existing sync arm that s03 lifts from).
 - All fixture tests pass on CI (`release/1.0.x`).
 
-**Assessment:** the gap is real but the risk is low. The commands' core logic
-was CDC-verified in neighboring slices; the operator's live use exercises the
-integration paths that fixtures don't cover. The missing verifications are noted
-here, not buried — per the framework's discipline, a disclosed gap is not a
-silent drop.
+**Assessment:** the former gap is now closed. The commands' core logic was
+CDC-verified in neighboring slices, operator live use exercised the integration
+paths, and the missing per-slice verification files now exist with reproduced
+targeted tests. The original gap remains named here as history, not as an open
+defect.
 
 ## 3. Composition check
 
