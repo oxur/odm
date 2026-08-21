@@ -5,7 +5,7 @@ type: project
 schema: project/v1.1
 name: odm v1.0.0 — Project Plan (arc roadmap)
 created: 2026-06-26
-updated: 2026-08-02
+updated: 2026-08-04
 origin: planned
 reserved: false
 source:
@@ -14,7 +14,7 @@ source:
   class: project-plan
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-03
+  migrated_on: 2026-08-21
 ---
 # odm v1.0.0 — Project Plan (arc roadmap)
 
@@ -96,16 +96,19 @@ forced as "next" by the graph — their order is a sequencing *choice*, recorded
 | **LLM command surface** | Make the CLI sufficient for an LLM to regain situational awareness, decide what's next, and verify what it did **without reading planning prose** — the stated DoD (§1). Slices: read-back status vector, `info`, explain-readiness + ordered `next`, `search` + flat rollup, `history`/`diff`, `export`, `viz`. | RH, A1–A3 | **next** (shaped, not started) — `arc-llm-command-surface/arc-plan.md`; reconciled against `odm-command-inventory.md` |
 | **Store Home & `init`** | Dedicated store home — orphan `odm` branch in a `.worktrees/odm` git worktree — + the `init` command (bootstrap / attach / ff-sync), the two-config split (`odm.toml` locator + in-store `config.toml`), and the store-resolution rework. Decouples the planning DB from the code branches (ODD-0022). | A1–A3; ODD-0022 | **CLOSED 2026-07-27** — `arc-store-home/closing-report.md`; **SH-1…SH-5 done + SH-6 (dogfood cutover) delivered by RH C-5** — odm now dogfoods its own store (60 nodes on the orphan `odm` branch); an independent fresh-context arc-gate returned PASS-WITH-NOTES |
 | **Migration Fidelity** | Faithful, verifiable, repeatable migration: 1:1 verbatim bodies (**hard body-hash gate**), a `provenance` sub-map on every node, frontmatter-fidelity via schema-mapping, and a **doc-coverage** check (no file left behind). Repairs odm's own self-hosted corpus from skeleton (44 stub bodies, 6/11 arcs, ~211 uncovered docs, 0 provenance) to **100%**; general per project. Synthesis split out as a separate supersede step. | A6·s04; **ODD-0024** (G-1 closed → minting unfrozen) | **✅ CLOSED 2026-08-02 — MF-9 fidelity ACHIEVED.** All slices s04–s16 CDC-verified PASS (s16 2026-08-02); the **freeze fired** (project-vision pair collapsed, **0 drift**, `check` exit 0) and the **P-12 `orient` demo runs clean** on the live corpus (store committed `41ace1f`). Composition CDC-confirmed (`arc-migration-fidelity/closing-report.md`); **MF-4 → L-8** (CDC-ARC-1, design-corpus migrate + standing frontmatter-fidelity check). Store-side transition landed 2026-08-02 (arc node `58837400` → `complete` gate + decomposition affirmed, 17 children; `odm@6225d1f`, CDC-reproduced). **Closed on both doc and store; CI green on `release/1.0.x` (`e4e0a95`, 2026-08-02).** |
-| **Store Lifecycle** | Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: **`store commit`** (persist the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent; `--dry-run`/`--json`), **`store status`** (pending node delta + ahead/behind), **`store sync`** (ff-only push/pull, divergence stops). Completes the ODD-0022 store-home promise. | arc-store-home; ODD-0022 | **shaped 2026-08-01; scoped run 2026-08-02** — `arc-store-lifecycle/arc-plan.md`. **Do s01 (`store commit`) only, then ⏸ pause** (s02 status / s03 sync deferred); then resume + close Migration Fidelity. Surfaced by the MF freeze (no verb to commit the store). |
+| **Store Lifecycle** | Complete the store's git lifecycle as native, odm-aware commands so the operator never drops to raw git: **`store commit`** (persist the worktree's node changes on the orphan branch; auto-summary + `-m`; idempotent; `--dry-run`/`--json`), **`store status`** (pending node delta + ahead/behind), **`store sync`** (ff-only push/pull, divergence stops), **`store set-remote`** (configure sync target, auto-detect). Completes the ODD-0022 store-home promise. | arc-store-home; ODD-0022 | **✅ CLOSED 2026-08-04** — `arc-store-lifecycle/closing-report.md`. All 6 slices done (s01 commit, s02 status, s03 sync, s04 index-consistency, s05 CDC binary access, s06 set-remote); **SL-4 (no raw git) reproduced** (operator's 14-commit first push to `origin/odm-store` via `store sync`); **SL-5 (no model drift) attested** (cross-read). Arc scope doubled from 3 to 6 slices through live-surfaced gaps — all tracked. CDC binary access (`make build-linux`) is a reusable project asset. |
+| **Store-as-Source** | Transition from dual-track planning (docs + store) to store-only authoring: ODD-0026 (authored-node spec), self-sourced nodes, native authoring workflow, the cutover (delete `./docs` planning subtree), and interactive authoring. The store becomes the sole source of truth for planning artifacts. | arc-store-home; Migration Fidelity; Store Lifecycle | **active** — `arc-store-as-source/arc-plan.md`. 5/7 slices done (s05 decomposition bookkeeping, s06 auto-extend, s01 ODD-0026, s02 self-sourced nodes, s03 native authoring); **s04 (cutover)** and **s07 (interactive authoring)** remain. |
 
-**Sequencing (updated 2026-07-27):** Release Hardening **closed** → LLM command surface
-(**next**, and materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
+**Sequencing (updated 2026-08-04):** Release Hardening **closed** → Store Lifecycle
+**closed** (the store's git lifecycle is native) → Store-as-Source **active** (5/7 slices
+done; cutover s04 + interactive authoring s07 remain) → LLM command surface (**next** after
+SaS cutover, materially lighter — RH C-8 delivered its blocking slice 01, L-1 status
 read-back; see that arc's v1.2) → **A6 resumes at slice05** (PM-skill) + slice06 (retire prose),
 so the skill and prose-retirement target the *settled* command surface. Both inserted
 arcs consume A6 slice04's self-hosted corpus; A6 is **paused after slice04**, not
 abandoned (§3).
 
-## 3. Current status (2026-07-27)
+## 3. Current status (2026-08-04)
 
 - **A1 — COMPLETE.** Merged to `main`, CI-green.
 - **A2 — COMPLETE.** Merged to `main`, CI-green.
@@ -160,10 +163,24 @@ abandoned (§3).
   (command reorg → top-level verbs / `odm node` / `odm store`) drafted and the
   `odm-command-inventory.md` rewritten to it; the **UAT coverage audit** routed the four
   previously un-routed items (L-3/L-6/L-8/G-7). `arc-release-hardening/arc-plan.md`.
+- **Migration Fidelity — ✅ CLOSED 2026-08-02.** Named, number-deferred (§2a). All slices
+  s04–s16 CDC-verified PASS; freeze fired, P-12 `orient` demo clean, composition
+  CDC-confirmed. Store committed at `41ace1f` (`arc-migration-fidelity/closing-report.md`).
+- **Store Lifecycle — ✅ CLOSED 2026-08-04.** Named, number-deferred (§2a). All 6 slices
+  done (s01 commit, s02 status, s03 sync, s04 index-consistency, s05 CDC binary access,
+  s06 set-remote); composition rows SL-4 (no raw git) and SL-5 (no model drift) verified.
+  The operator's 14-commit `store sync` push to `origin/odm-store` is the end-to-end proof.
+  CDC binary access (`make build-linux`) is now a reusable project asset.
+  `arc-store-lifecycle/closing-report.md`.
+- **Store-as-Source — ▸ ACTIVE (5/7 slices done).** Named, number-deferred (§2a). s05
+  (decomposition bookkeeping), s06 (auto-extend), s01 (ODD-0026), s02 (self-sourced nodes),
+  s03 (native authoring) done. **s04 (cutover)** and **s07 (interactive authoring)** remain.
+  The cutover is the transition from dual-track (docs + store) to store-only authoring.
+  `arc-store-as-source/arc-plan.md`.
 - **LLM command surface — ◆ NEXT (shaped, not started).** Named, number-deferred (§2a).
-  Shaped 2026-07-25 from the pass-2 LLM UAT; 7 slices closing the LLM situational-awareness
+  Shaped 2026-07-25 from the pass-2 LLM UAT; 10 slices closing the LLM situational-awareness
   gaps, reconciled against `odm-command-inventory.md` (the command-surface authority). Runs
-  after Release Hardening, before A6 resumes.
+  after Store-as-Source cutover, before A6 resumes.
 - **Store Home & `init` — ✅ CLOSED 2026-07-27.** Named, number-deferred (§2a; **ODD-0022**,
   Accepted). Four slices done (SH-1…SH-4), SH-5 composed, and **SH-6 (the dogfood cutover)
   delivered by RH C-5** — `odm store init`/`rename` stand up the orphan-branch store home
@@ -178,10 +195,12 @@ abandoned (§3).
 were free to order and a case was floated for taking A6 next to realize self-hosting
 early).* The order taken was **A4 → A5 → A6**: A4 and A5 are closed, A6 is in progress and
 self-hosts. The remaining v1.0.0 path is **Release Hardening (✅ closed 2026-07-27) → arc-store-home (✅ closed;
-SH-6 delivered by RH C-5) → LLM command surface (next — materially lighter, since RH C-8 already
-delivered its blocking slice L-1) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5). ~~Two
-standing pre-ship gates: **G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**~~ **G-1 is CLOSED (2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted).** One standing pre-ship gate remains: **L-8b**
-(reconcile the four state-drifted ODDs).
+SH-6 delivered by RH C-5) → Store Lifecycle (✅ closed 2026-08-04) → Store-as-Source (active, 5/7 — cutover
+s04 + interactive s07 remain) → LLM command surface (next after SaS cutover — materially lighter, since
+RH C-8 already delivered its blocking slice L-1) → resume A6 slice05–06 → A6 arc-close → v1.0.0 DoD** (§5).
+~~Two standing pre-ship gates: **G-1** (the id-scheme ODD — gates minting any new node) and **L-8b**~~
+**G-1 is CLOSED (2026-07-27 — ODD-0024: ULID retained, register-style rejected, minting freeze lifted).**
+One standing pre-ship gate remains: **L-8b** (reconcile the four state-drifted ODDs).
 
 ## 4. Post-MVP extension roadmap (v1.0.0+)
 
@@ -216,6 +235,36 @@ tree, or stay in this one, is unsettled — flagged in Version History.
 **metadata, never targets; team/process, never per-actor** (Goodhart); the two-clock
 split is a *hypothesis* tested against the total-cycle control (ODD-0018), not assumed.
 Proposed new crates: `odm-telemetry` (A7), then `odm-forecast` (A8).
+
+## 4a. Near-term usability + the 1.1.x feature set (added 2026-08-03)
+
+> **Added in v1.19 (2026-08-03, planning session w/ Duncan).** These items
+> surfaced *after* the v1.2 consolidation and had lived only in the ephemeral CDC
+> bootstrap agenda (see the bootstrap's NEXT-SESSION AGENDA) -- never in a durable
+> plan. Consolidated here so the plan, not the resume note, is their source of
+> truth. The export/serve arcs are being worked out in separate in-progress
+> threads and will be expanded here (plan late, plan deep). Housekeeping/cutover
+> items (delete `./docs`, choose an export dir, relocate the dashboard + move the
+> bootstrap out of the store) are **not** here -- they are active
+> `arc-store-as-source` slice-04 work.
+
+Because **1.0.0 goes full-odm (no legacy `./docs` planning dir)**, the tool must
+be usable by both the operator and CDC to *find* things in the store -- which
+makes **full-text search a usability minimum**, not a nicety. Semantic search and
+graph traversal are richer and can wait for 1.1.x.
+
+| Item | Capability | `depends_on` | Status |
+|------|-----------|--------------|--------|
+| **Full-text search (FTS)** | Content search over the store corpus (tantivy). The minimum retrieval surface once `./docs` is gone -- both operator and CDC must find nodes by content, not by `grep` across worktrees. | A4 (index) | **1.0.0 HARD GATE (operator call 2026-08-03) -- A6 slice05; must land before A6 arc close** |
+| **Static HTML export** | One of >=2 export/serve arcs: static projection of the rollup to **HTML + JSON + Markdown** (`rollup --format=html` first); the hand-built `project-status.html` dashboard becomes derivable. Extends ODD-0017, which today names JSON+Markdown only (HTML is not yet a target there). | A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
+| **Embedded HTTP server (`odm serve`)** | Dynamic pages served locally via **minijinja** templating; the `render(Rollup)->Html` seam. Local-only. (See project memory `odm-html-views-stack`.) | HTML export / A3 | **post-MVP -- its own arc; details in-progress (separate thread)** |
+| **Semantic search** | Embedding / vector search over the store (lancedb). | FTS, A4 | **1.1.x** |
+| **In-memory graph traversal / graphdb** | Richer graph queries over an in-memory graph (petgraph -- already a dep of `odm-graph`). | A2 | **1.1.x** |
+| **Binary distribution (GH Actions release workflow)** | Cross-compiled static binaries (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`) built by a CI matrix on tag-push, attached to GH releases. Solves three problems: (1) CDC/Cowork sessions get a static Linux binary without needing the Rust toolchain (~50% of new instances refuse to build); (2) non-developer end users get a download-and-run install path; (3) operator can also grab a release binary instead of building from source. Tooling: `cargo-zigbuild` or `cross` for the musl targets. | — | **1.0.0-adjacent — release-blocking for CDC usability; own slice or part of the release cut** |
+
+*(HTML export + the `odm serve` HTTP server are the "two (or more) arcs" of the
+same post-MVP HTTP/render line; their arc breakdown lands once the in-progress
+threads settle.)*
 
 ## 5. Project Ledger
 
@@ -269,7 +318,87 @@ gate** (go / adjust / kill against the DoD, reviewed by the operator + an indepe
 context). A failed DoD row spawns a **remediation arc** or a roadmap re-scope, not an
 unbounded grind.
 
+## 6. Related projects (peers -- framework-governed)
+
+**bitubardos** is a **peer repository project**, not an odm arc and not a
+sub-part of any odm release. It stands on its own and falls under the **full
+collaboration-framework workflow** -- its own project -> arcs -> slices ->
+ledgers, planned and closed like any project. It lives on its own branch/worktree
+(`.worktrees/bitubardos`).
+
+Merge policy (operator, 2026-08-03): bitubardos is **peer to the 1.0.x release
+work and will be peer to the 1.1.x release work**. **Nothing from bitubardos
+lands in `main` until after the 1.0.0 release is cut.** The expected path is
+**incremental forward-merge / rebase of bitubardos features into the 1.1.x
+line**; `main` sees none of it until the **first 1.1.0 release**.
+
+This entry is definitional: it exists so a reader learns *here* that bitubardos
+is a peer project (governed by the framework in full), rather than mistaking it
+for an odm feature branch or an easter-egg. Its plan-of-record lives in its own
+tree, not this file.
+
 ## Version History
+
+### v1.22 — 2026-08-04 — Store Lifecycle arc CLOSED; Store-as-Source added to §2a
+
+**Store Lifecycle → CLOSED** in §2a. The arc's 6 slices are all done (s01 commit,
+s02 status, s03 sync, s04 index-consistency, s05 CDC binary access, s06 set-remote);
+composition rows SL-4 (no raw git for normal operation) and SL-5 (no model drift)
+verified at arc close (`arc-store-lifecycle/closing-report.md`). The arc delivered its
+specified capability — the store's full git lifecycle is native `odm` — and more: CDC
+binary access (`make build-linux`) is now a reusable project asset, and `store set-remote`
+closes the remote-configuration gap. The arc doubled from 3 to 6 slices through
+live-surfaced gaps; all tracked. Capability column updated to include `store set-remote`.
+
+**Store-as-Source added to §2a.** The arc existed as a directory
+(`arc-store-as-source/arc-plan.md`) with 5/7 slices done but had no §2a row — a gap
+that surfaced during the SL arc-close when checking what comes next. Added with its
+capability, dependencies, and status.
+
+**§3 updated** — SL bullet added (CLOSED), SaS bullet added (ACTIVE 5/7), LLM slice
+count corrected (7→10, per the arc-plan's actual content), LLM sequencing updated to
+"after Store-as-Source cutover." Next-arc sequencing paragraph updated to include SL
+(closed) and SaS (active) in the remaining path.
+
+**Surfaced by:** the SL arc-close bubble-up (CDC, this session).
+
+### v1.21 -- 2026-08-03 -- FTS elevated to 1.0.0 hard gate (operator call)
+**FTS** status in §4a changed from "near-term / elevated — hard-gate vs.
+fast-follow: OPEN" to **1.0.0 HARD GATE — A6 slice05**. The operator's
+2026-08-03 call resolves the open question: FTS must land before A6 arc close
+(both operator and CDC need content search to work in the self-hosted store
+before the PM skill can document it and the prose can retire). Companion
+updates: A6 arc-plan v1.10 (FTS + mini-UAT slices inserted, PM-skill and
+retire-prose renumbered); SL arc-plan resumed (s02/s03 un-paused). Pure status
+change in §4a — no other sections affected. **Surfaced by:** the 2026-08-03
+dev-workflow/tooling planning session (operator + CDC).
+
+### v1.20 -- 2026-08-03 -- binary distribution added to §4a
+
+Added **binary distribution (GH Actions release workflow)** to §4a: cross-compiled
+static binaries for Linux (x86_64/aarch64 musl) + macOS (x86_64/aarch64), built
+by CI on tag-push, attached to GH releases. Marked **1.0.0-adjacent /
+release-blocking for CDC usability** -- ~50% of new CDC instances refuse to
+build Rust, and non-developer end users need a download-and-run path. Tooling:
+`cargo-zigbuild` or `cross` for the musl static targets. Pure expansion of §4a
+-- no other sections changed. **Surfaced by:** the 2026-08-03 dev-workflow
+discussion (operator + CDC, this session).
+
+### v1.19 -- 2026-08-03 -- newer post-MVP items consolidated (§4a) + bitubardos defined as a peer project (§6)
+Added **§4a** (near-term usability + the 1.1.x feature set) and **§6** (related
+peer projects). §4a folds the newer wishlist -- **FTS** (elevated: minimum for
+full-odm usability), **static HTML export** + **`odm serve`** HTTP server (>=2
+post-MVP arcs, details in-progress in separate threads), and **semantic search** +
+**graph traversal** (1.1.x) -- into the plan; these had lived only in the
+ephemeral CDC bootstrap agenda. §6 defines **bitubardos** as a framework-governed
+**peer project** with an explicit merge policy (no `main` before 1.0.0;
+forward-merge into 1.1.x). Pure expansion -- §§1-5 unchanged; no DoD/ledger rows
+added (extension/peer scope, not v1.0.0 DoD). **Surfaced by:** the 2026-08-03
+operator planning session (consolidation of the un-persisted agenda + the
+bitubardos clarification); companions written to project memory (`bitubardos`,
+`odm-html-views-stack`) and both odm `CLAUDE.md`s.
+
+
 
 ### v1.18 — 2026-08-02 — closed arcs recorded **done (100%)**; CI-green at `e8e69de`
 

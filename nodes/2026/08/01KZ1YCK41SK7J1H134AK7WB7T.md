@@ -5,7 +5,7 @@ type: arc
 schema: arc/v1.1
 name: Arc — Store-as-source-of-truth & native authoring
 created: 2026-08-02
-updated: 2026-08-03
+updated: 2026-08-21
 origin: planned
 reserved: false
 source:
@@ -14,7 +14,7 @@ source:
   class: arc-plan
   normalization: trim+lf
   migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-03
+  migrated_on: 2026-08-21
 edges:
   part_of: 01KYSX4RGCZT9H1N83TJFX8XFB
 status:
@@ -33,7 +33,7 @@ status:
 
 <!-- Name/title carries no document-role metadata, per ODD-0013 §2.1. -->
 
-**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 CDC-verified PASS; slice 03 (native authoring -- programmatic surface) CDC-verified PASS (2026-08-03); slice 04 (cutover) next ·
+**Opened:** 2026-08-02 · **Status:** slice 01 CLOSED -- ODD-0026 Accepted (2026-08-03); slice 02 CDC-verified PASS; slice 03 (native authoring -- programmatic surface) CDC-verified PASS (2026-08-03); slice 04 (cutover) OPEN (2026-08-21) ·
 **Unnumbered**, per the `arc-release-hardening` / `arc-migration-fidelity` /
 `arc-llm-command-surface` precedent (the numbering scheme is under review in RH).
 
@@ -155,7 +155,7 @@ class-(c) bubble-up rows accrue as slices close.
 | **SS-1** | ODD-0026 accepted, recording the model + the fate of `source.paths` and the body-hash gate for planning nodes | `docs/design/04-accepted/0026-*.md` present, status Accepted | serious | **done** (2026-08-03, slice 01) |
 | **SS-2** | A planning node with **no external source** passes `check` (no `undeveloped-stub` / missing-source / body-hash error) | fixture: an authored node, `check` clean | serious | **done — fixture + real end-to-end CLI test** (slice 02, 2026-08-03) |
 | **SS-3** | Existing planning nodes converted to self-sourced per ODD-0026; a full `migrate --all` + `check` is green with the `./docs` plan tree still present | `migrate --all` then `check` exit 0 | serious | mechanism **done**, fixture-proven; **real-corpus leg deferred to CDC** (slice 02 — `.worktrees/odm` not checked out in the implementation worktree) |
-| **SS-4** | A node body can be **created and updated via `./bin/odm`** (no hand-edit of store files required) | `node new --from-file` + `node edit` demonstrated; the created/edited body reads back via `node show` | serious | **done (programmatic surface) — fixture + real end-to-end CLI round-trip** (slice 03, 2026-08-03); real-corpus leg deferred to CDC |
+| **SS-4** | A node body can be **created and updated via `./bin/odm`** (no hand-edit of store files required) | `node new --from-file` + `node edit` demonstrated; the created/edited body reads back via `node show` | serious | **done (programmatic surface) — fixture + real end-to-end CLI round-trip** (slice 03, 2026-08-03); **real-corpus leg CLOSED 2026-08-03** -- live `node set-body` on bootstrap #543468700, `store commit` 701668b, `check` 0 errors |
 | **SS-5** | The body-hash fidelity gate **still applies to genuinely-migrated content** (end-user/legacy docs with an external source) — no regression | fixture: a migrated node with a corrupted body still fails `check` | correctness | **done — regression-fixtured** (slice 02, 2026-08-03) |
 | **SS-6** | **DoD — reproduced at arc scale:** a fresh context authors a new arc + slice end-to-end using only `./bin/odm`, with no `./docs` planning tree and no hand-edited store files | demonstration transcript | **serious** | open |
 | **SS-7** | With the `./docs` planning subtree deleted, `check` / `orient` / `list` / `rollup` are green and unchanged; end-user `./docs` is untouched | delete on a branch, `check` exit 0 | serious | open |
@@ -193,6 +193,19 @@ is listed only to make the cutover scope explicit.
   store.
 
 ## Version History
+
+### v1.14 -- 2026-08-21 (slice 04 open set drawn: dry-run-first cutover)
+
+Slice 04's open set is drawn (`slice04-cutover/`). The slice is explicitly gated: final
+`migrate --all`/`check` first, then `migrate --to-authored --dry-run`, then a deletion/keep/relocate
+manifest, then an operator **GO** before any destructive deletion. The manifest makes the ODD-0026
+delete scope concrete (`docs/design-v1.0.0/**` and `docs/design/**`) and treats `docs/dev/**` as a
+classification item because the legacy config still names it. The slice also carries the config
+boundary surfaced while planning: after cutover, `[coverage] scan_root`, `docs_directory`, and
+`dev_directory` must no longer make future conventional `./docs` content look like planning corpus.
+SS-6/SS-7 remain open until the live cutover proves store-only authoring and green commands with the
+legacy docs gone. Surfaced by: slice 04 planning + ODD-0026 sec. 2.3/2.4 + project-plan sec. 4a.
+**Next:** CC runs Phase A and stops for operator GO.
 
 ### v1.13 -- 2026-08-03 (slice 03 CDC-verified PASS)
 
