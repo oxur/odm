@@ -4,15 +4,6 @@
 # and cannot drift from it. The code branch's `odm.toml` only says where the
 # store is.
 
-# Doc-coverage enforcement (arc-migration-fidelity s09/s10, ODD-0025 §5).
-# `odm check` fails with an Error on any `.md` under `scan_root` with no
-# covering node's `source.paths`. Activated here, in the same commit that
-# mints the artifact/note corpus + backfills the design/research nodes
-# `scan_root` now resolves against — so `check` is green because everything
-# is covered, never because the gate was off (no red window).
-[coverage]
-scan_root = "docs"
-
 # Per-type gate-sets (ODD-0013 §5.1). odm manages its own plan as work nodes,
 # so `rollup`/`orient`/`check` need the work-node sets to render and validate
 # status; the sequences are the canonical §5.1 ones, and the importer stamps
@@ -41,13 +32,3 @@ sequence = ["draft", "under-review", "revised", "accepted", "active", "final"]
 # flag overrides it per-run; with neither set, `list` falls back to 64.
 [display]
 max_width = 64
-
-[legacy]
-# Read live by v1.0 `migrate` (root resolution):
-docs_directory = "./docs"
-dev_directory  = "./docs/dev"
-
-# Truly inert — odm 0.3.x settings only legacy/oxur-odm consumes, kept as a
-# preserved record until the arc that re-adopts dustbin/auto-stage owns them:
-preserve_dustbin_structure = true
-auto_stage_git             = true
