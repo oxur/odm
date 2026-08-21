@@ -14,6 +14,12 @@ source:
   - docs/design-v1.0.0/arc-store-as-source/slice04-cutover/slice-doc.md
 edges:
   part_of: 01KZ1YCK41SK7J1H134AK7WB7T
+status:
+  tested:
+    reached: 2026-08-21
+    evidence: asserted
+    evidence_dates:
+      asserted: 2026-08-21
 ---
 # Slice 04 -- cutover
 
