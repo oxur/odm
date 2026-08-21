@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Evidence-transition dates
 created: 2026-06-24
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc02-graph-gates-derived-order/slice05.1-evidence-transition-dates/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTKTMGY8EJV5TAEY7S0
 status:

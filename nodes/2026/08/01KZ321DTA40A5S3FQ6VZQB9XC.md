@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Slice 03 -- native authoring commands (programmatic surface)
 created: 2026-08-02
-updated: 2026-08-02
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc-store-as-source/slice03-native-authoring/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-03
 edges:
   part_of: 01KZ1YCK41SK7J1H134AK7WB7T
 status:

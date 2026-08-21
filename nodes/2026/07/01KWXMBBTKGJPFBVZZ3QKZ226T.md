@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: '`check` v1 + link-integrity'
 created: 2026-06-22
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc01-substrate-node-crud/slice06-check-v1/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTKKTRXE1DF6WYSG5JB
 status:

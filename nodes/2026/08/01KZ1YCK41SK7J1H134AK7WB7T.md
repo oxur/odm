@@ -6,15 +6,12 @@ schema: arc/v1.1
 name: Arc — Store-as-source-of-truth & native authoring
 created: 2026-08-02
 updated: 2026-08-21
-origin: planned
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc-store-as-source/arc-plan.md
-  class: arc-plan
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-21
 edges:
   part_of: 01KYSX4RGCZT9H1N83TJFX8XFB
 status:

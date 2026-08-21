@@ -5,16 +5,13 @@ type: project
 schema: project/v1.1
 name: odm v1.0.0 — Project Plan (arc roadmap)
 created: 2026-06-26
-updated: 2026-08-04
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/project-plan.md
-  class: project-plan
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-21
 ---
 # odm v1.0.0 — Project Plan (arc roadmap)
 

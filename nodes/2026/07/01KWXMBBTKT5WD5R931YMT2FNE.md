@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: freshness on every command + honest staleness (the arc capstone)
 created: 2026-07-06
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc05-reconciliation/slice08-freshness-wiring/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTKQ3QE7FGTM80MYNDH
 status:

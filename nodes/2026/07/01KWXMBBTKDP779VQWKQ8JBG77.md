@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: migrate odm's own docs
 created: 2026-07-06
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc06-migrate-self-host/slice02-migrate-odm-docs/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTKNA3A0QC3SWPHBNAX
 status:

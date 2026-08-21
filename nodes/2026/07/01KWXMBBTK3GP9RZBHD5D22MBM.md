@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Cycle detection + tears
 created: 2026-06-22
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc02-graph-gates-derived-order/slice02-cycles-and-tears/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTKTMGY8EJV5TAEY7S0
 status:

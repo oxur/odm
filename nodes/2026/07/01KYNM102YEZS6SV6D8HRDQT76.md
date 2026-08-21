@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Slice 08 (Migration Fidelity) — Source-path portability (plan-of-record)
 created: 2026-07-29
-updated: 2026-07-29
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc-migration-fidelity/slice08-source-path-portability/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-29
 edges:
   part_of: 01KYNDTQ6SVSRZMRH0E07YJMEP
 ---

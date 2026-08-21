@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Slice 01 (Store Lifecycle) — `store commit`
 created: 2026-08-02
-updated: 2026-08-02
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc-store-lifecycle/slice01-store-commit/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-08-02
 edges:
   part_of: 01KZ1YCK41VQ1DYXJ308N0SQSX
 status:

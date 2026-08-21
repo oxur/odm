@@ -5,16 +5,13 @@ type: arc
 schema: arc/v1.1
 name: Index & cache
 created: 2026-06-26
-updated: 2026-07-28
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc04-index-cache/arc-plan.md
-  class: arc-plan
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-28
 edges:
   part_of: 01KWXMBBTJCJ30F3TE4BJJV2CB
 status:

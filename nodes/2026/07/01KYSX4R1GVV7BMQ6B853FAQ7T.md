@@ -5,16 +5,13 @@ type: slice
 schema: slice/v1.1
 name: Slice 13 (Migration Fidelity) — Live reconcile + vision mint (plan-of-record)
 created: 2026-07-30
-updated: 2026-07-30
-origin: planned
+updated: 2026-08-21
+origin: authored
 reserved: false
 source:
-  paths:
+  class: authored
+  migrated_from:
   - docs/design-v1.0.0/arc-migration-fidelity/slice13-live-reconcile/slice-doc.md
-  class: slice-doc
-  normalization: trim+lf
-  migrated_by: odm-migrate/1.0.0
-  migrated_on: 2026-07-30
 edges:
   part_of: 01KYNDTQ6SVSRZMRH0E07YJMEP
 ---
