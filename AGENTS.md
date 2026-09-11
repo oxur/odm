@@ -2,8 +2,8 @@
 
 > **Resuming work? Read
 > [`CDC-SESSION-BOOTSTRAP.md`](CDC-SESSION-BOOTSTRAP.md)
-> first** — §0 is the dated resume (last: 2026-07-26, UAT phase). Then run
-> `odm orient` (build: `cargo build --release -p oxur-odm` → `target/release/odm`;
+> first** — §0h is the dated resume (last: 2026-08-21, store-native cutover). Then run
+> `./bin/odm orient` (build: `make build`, which writes `./bin/odm`;
 > verified 2m54s from a clean container). Use `odm --help` / subcommand
 > `--help` for the live command surface; historical command-inventory context is
 > now in the `odm-store` corpus.
@@ -16,10 +16,62 @@
 > `docs/dev` planning corpora were deleted in the Store-as-Source Slice 04
 > cutover; use `odm` store/node commands for corpus work. Run `odm` commands
 > from the repo root as before; resolution follows the locator. To read a node
-> file directly, look under `.worktrees/odm/nodes/`, not `nodes/`. **Commit
-> corpus changes on the `odm-store` branch** (`git -C .worktrees/odm …`) — they
-> are a separate history from the code, and `/.worktrees/` is gitignored here on
-> purpose.
+> file directly, look under `.worktrees/odm/nodes/`, not `nodes/`. **Persist
+> corpus changes with `./bin/odm store commit`**; use raw `git -C .worktrees/odm`
+> only for inspection or an explicitly approved recovery step. Store history is
+> separate from code history, and `/.worktrees/` is gitignored here on purpose.
+
+## Store-native planning workflow
+
+Planning artifacts are now store nodes. Refer to them by node ref (number or ULID), not by the
+deleted historical source paths. The former paths may remain in `source.migrated_from`; treat those
+as provenance only.
+
+Start every planning/CC handoff with:
+
+```bash
+./bin/odm orient
+./bin/odm node show <arc-ref>
+./bin/odm node show <slice-ref>
+```
+
+For the current Store-as-Source cutover close, the useful refs are:
+
+```text
+Store-as-Source arc: 61401500
+Slice 04 cutover:    61401504
+CC prompt artifact:  547165000
+Ledger artifact:     558406000
+Closing report:      798832903
+SS-6 proof arc:      798832901
+SS-6 proof slice:    798832902
+```
+
+`odm node show` currently displays metadata, status, parent/children, and ids, but not the node
+body. Until the CLI grows a body-reading view, it is acceptable to locate and read the backing store
+file as a **read-only inspection fallback**:
+
+```bash
+rg -l '^number: <ref>$' .worktrees/odm/nodes
+```
+
+Do not edit that file directly except in an explicit emergency. Use odm verbs:
+
+```bash
+./bin/odm node new <type> "<name>" --parent <parent-ref> --from-file /tmp/body.md --yes
+./bin/odm node set <ref> <name|tags|part_of|status> <value> --yes
+./bin/odm node set-body <ref> --from-file /tmp/body.md --yes
+./bin/odm node set-gate <ref> <gate> --evidence <asserted|attested|reproduced|reconciled> --yes
+./bin/odm node retire <ref> --because "<reason>" --yes
+./bin/odm check
+./bin/odm store status --json
+./bin/odm store commit -m "<message>"
+```
+
+When giving CC a slice, include the refs explicitly: project/arc, slice, cc-prompt artifact, ledger
+artifact, and any close/report artifact already created. If a next slice has not been minted yet,
+say so and have CC create it with `odm node new`, then create prompt/ledger artifacts as child
+artifact nodes of that slice.
 
 
 Guidance for Claude Code (claude.ai/code) when working in this repository.
@@ -49,13 +101,12 @@ Member crates, in dependency / publish order (see ODD-0013 §8):
 | **odm-cli** | — | clap command surface, `--json`, output (oxur-cli / tabled). |
 | **oxur-odm** | `odm` | Umbrella: publishes the `odm` binary; re-exports the library API. |
 
-> **v1.0.0 rebuild in progress.** These crates are currently stubs (the `odm`
-> binary reports `--version` only); real behavior lands slice by slice under
-> `docs/design-v1.0.0/`. The pre-rebuild crate is preserved at
+> **v1.0.0 rebuild in progress.** The pre-rebuild crate is preserved at
 > `legacy/oxur-odm` (package `oxur-odm-legacy`), excluded from the workspace and
-> kept as the harvest source — do not delete it. `odm-index` (Arc 04) and
-> `odm-reconcile` (Arc 05) now exist, created by the arcs that needed them;
-> `odm-migrate` remains deferred to its arc (not yet created).
+> kept as the harvest source — do not delete it. Planning work no longer lands
+> under `docs/design-v1.0.0/`; it lands in the odm store via `./bin/odm node`
+> commands. `odm-index`, `odm-reconcile`, and `odm-migrate` now exist, created
+> by the arcs that needed them.
 
 Shared dependency versions live in `[workspace.dependencies]`; crate manifests
 reference them with `<dep>.workspace = true` (no version literals). Lints are
@@ -117,8 +168,8 @@ no build required:
   into the cloud container via the device bridge, then `chmod +x` and run
   directly (`--help`, `check`, `orient`, etc.) — no Rust toolchain needed
   there. **CDC has already reproduced this end-to-end** in the actual Cowork
-  cloud container (slice05 ledger row F-2,
-  `docs/design-v1.0.0/arc-store-lifecycle/slice05-cdc-binary-access/`):
+  cloud container (Store Lifecycle slice05 ledger row F-2, store artifact
+  `500043200`):
   the full command surface (`--help`, `--version`, `check`, `orient`,
   `validate`, `node show`, `store --help`, `--json` variants) ran clean.
 - **Architecture caveat:** the binary targets **x86_64**. If a given Cowork

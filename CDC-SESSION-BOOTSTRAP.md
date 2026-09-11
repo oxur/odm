@@ -9,6 +9,79 @@
 
 ---
 
+## 0h. Resume update — 2026-08-21 (Store-as-Source cutover DONE; store-native references only — START HERE)
+
+**This is the current "read first." §0g and below are history.** The project has made the
+Store-as-Source flip: the legacy `docs/design-v1.0.0/`, `docs/design/`, and `docs/dev/` planning
+corpora are deleted from the code branch. Planning artifacts now live in the `odm-store` worktree
+and must be referenced by node id/number, not by historical source path.
+
+### Current refs and how to read them
+
+Start with:
+
+```bash
+./bin/odm orient
+./bin/odm node show 61401500
+./bin/odm node show 61401504
+```
+
+The current Store-as-Source cutover close refs are:
+
+| Node | Ref |
+| --- | --- |
+| Store-as-Source arc | `61401500` |
+| Slice 04 cutover | `61401504` |
+| Slice 04 CC prompt artifact | `547165000` |
+| Slice 04 ledger artifact | `558406000` |
+| Slice 04 closing report artifact | `798832903` |
+| SS-6 proof arc | `798832901` |
+| SS-6 proof slice | `798832902` |
+
+`odm node show <ref>` currently shows the metadata/status/children but does not print the body.
+Until the CLI has a body-reading command, use direct store-file reads only as a read-only fallback:
+
+```bash
+rg -l '^number: <ref>$' .worktrees/odm/nodes
+```
+
+Edit/create/retire with odm verbs, not by hand-editing store files:
+
+```bash
+./bin/odm node new <type> "<name>" --parent <parent-ref> --from-file /tmp/body.md --yes
+./bin/odm node set <ref> <name|tags|part_of|status> <value> --yes
+./bin/odm node set-body <ref> --from-file /tmp/body.md --yes
+./bin/odm node set-gate <ref> <gate> --evidence <asserted|attested|reproduced|reconciled> --yes
+./bin/odm node retire <ref> --because "<reason>" --yes
+./bin/odm check
+./bin/odm store status --json
+./bin/odm store commit -m "<message>"
+```
+
+### What landed
+
+- Store-as-Source slice04 cutover is closed. `./docs` no longer carries planning/design source.
+- The store branch is clean locally and ahead of `origin/odm-store`; code branch is ahead of origin.
+- `./bin/odm check` exits 0 with the 10 known decomposition/stub warnings.
+- The SS-6 proof used real odm commands: authored proof arc `798832901`, proof slice `798832902`,
+  body edits via `node set-body`, metadata edits via `node set`, and `check` stayed green.
+
+### Immediate workflow decision
+
+When drawing or handing off the next slice, include refs instead of paths:
+
+- project/arc ref;
+- slice ref, or explicit instruction that the slice must be minted first;
+- cc-prompt artifact ref;
+- ledger artifact ref;
+- associated close/report artifact ref if it already exists.
+
+Store-as-Source slice07 (interactive authoring ergonomics) is still plan-late and has not been
+minted in the Store-as-Source arc children. The LLM command-surface arc is `10842600`. Operator
+priority decides whether to draw slice07 now or move to the LLM arc after the cutover.
+
+---
+
 ## 0g. Resume update — 2026-08-03 (Store-as-Source slices 01–03 CDC-verified + folded into the store; NEXT-SESSION AGENDA recorded — START HERE)
 
 **This is the current "read first." §§0f–0 below are prior resumes, now history.** You are **CDC** —
